@@ -1,0 +1,2890 @@
+import astropy.constants as const
+import astropy.units as u
+import numpy as np
+import healpy as hp
+from gwemopt import utils as gou
+import astropy
+from astropy.cosmology import WMAP9 as cosmo
+from astropy.cosmology import Planck13, z_at_value
+import astropy.units as u
+import copy
+from ast import literal_eval
+import os
+import sys
+import statistics
+from scipy import stats
+import time
+import json
+
+# Import lisebeta stuff
+import lisabeta
+import lisabeta.lisa.lisa_fisher as lisa_fisher
+import lisabeta.lisa.lisa as lisa
+import lisabeta.lisa.lisatools as lisatools
+import lisabeta.lisa.pyLISAnoise as pyLISAnoise
+import lisabeta.lisa.pyresponse as pyresponse
+import lisabeta.tools.pytools as pytools
+import lisabeta.pyconstants as pyconstants
+import lisabeta.inference.inference as inference
+
+# Import ptemcee stuff
+import SYNEX.SYNEX_PTMC as SYP
+import ptemcee
+import ptemcee.mpi_pool as mpi_pool
+
+# import detector and source classes
+import SYNEX.SYNEX_Sources as SYSs
+import SYNEX.SYNEX_Detectors as SYDs
+
+# Finally, plotting stuff
+import matplotlib.pyplot as plt
+import matplotlib as mpl
+import matplotlib.pylab as pylab
+pylab_params = {'legend.fontsize': 8, # 'x-large',
+         'axes.labelsize': 8, # 'x-large',
+         'xtick.labelsize': 4, # 'x-large',
+         'ytick.labelsize': 4, # 'x-large'}
+         'lines.markersize': 0.7,
+         'lines.linewidth': 0.1}
+pylab.rcParams.update(pylab_params)
+mpl.use('MacOSX')
+
+# # Import lalsimulation stuff incase we decide to use it later - you have to download it from the website I think like acor etc.
+# import lalsimulation
+
+# mpi stuff
+try:
+    from mpi4py import MPI
+except ModuleNotFoundError:
+    MPI = None
+
+# global variable for histogram plots and mode calculations
+hist_n_bins=1000
+
+def GetPosteriorStats(DataFileLocAndName, ModeJumpLimit=None, LogLikeJumpLimit=None): # 0.9
+    """
+    Function to extract a posterior estimate, with errors, for a list of parameters infered
+    using ptemcee.
+    """
+
+    if not ModeJumpLimit and not LogLikeJumpLimit:
+        raise print("Specified neither ModeJumpLimit nor LogLikeJumpLimit- taking only likelihood limit of 20 for posterior peak significance.")
+        ModeJumpLimit = None
+        LogLikeJumpLimit = 20.
+        LoopLimit = -LogLikeJumpLimit
+    if not ModeJumpLimit and not LogLikeJumpLimit:
+        raise print("Specified both ModeJumpLimit and LogLikeJumpLimit- taking only likelihood limit for posterior peak significance.")
+        ModeJumpLimit = None
+        LoopLimit = ModeJumpLimit
+
+    if LogLikeJumpLimit:
+        LoopLimit = -LogLikeJumpLimit
+    elif ModeJumpLimit:
+        LoopLimit = ModeJumpLimit
+
+    from scipy.signal import chirp, find_peaks, peak_widths
+
+    [infer_params, inj_param_vals, static_params, meta_data] = read_h5py_file(DataFileLocAndName)
+    # print("metadata keys: ", meta_data.keys())
+    ndim = len(infer_params.keys())
+    infer_param_keys = infer_params.keys()
+
+    # Import utils for mode and FWHM estimations
+    import scipy.optimize as opt
+
+    # Grab data for infered parameters
+    PosteriorStats = {}
+    for key,values in infer_params.items():
+
+        # First histogram for mode locations
+        histn,histbins = np.histogram(values, bins=hist_n_bins)
+        dhistbins = histbins[2]-histbins[1]
+        histbins = histbins[:-1] + 0.5*(dhistbins) # change from left bins edges to middle of bins
+
+        # convert to lists so pop works later
+        histn = list(histn)
+        histbins = list(histbins)
+
+        # mode list
+        Modes = []
+        LowerFWHMs = []
+        UpperFWHMs = []
+
+        # Initalize error
+        LoopError = 1.
+
+        # Bin population must be within a limit of primary mode bin population to be counted as a mode
+        while LoopError>LoopLimit:
+
+            # Check if the histogram is still populated - for low limits this can happen.
+            if not histn:
+                break
+
+            # Get properties of mode
+            ModeLocationLogical = histn==max(histn)
+            ModeLocationIndex = np.where(ModeLocationLogical)[0][0] # take smallest if more than one - second [0]
+            mode = histbins[ModeLocationIndex]
+            mode_population = histn[ModeLocationIndex]
+
+            if key == "lambda" and False:
+                print("Mode:", mode, ", Mode pop.:", mode_population)
+                plt.figure()
+                plt.plot(histbins, histn)
+                plt.show()
+
+            # Check first if population is sufficient to count as a mode
+            if len(Modes)>0:
+                if ModeJumpLimit:
+                    LoopError = mode_population/primary_mode_population
+                    if LoopError < LoopLimit:
+                        break
+                elif LogLikeJumpLimit:
+                    Upper_bool_lnlikes = values<(mode+dhistbins)
+                    Lower_bool_lnlikes = values>(mode-dhistbins)
+                    bool_lnlikes = [Upper_bool_lnlike and Lower_bool_lnlike for Upper_bool_lnlike, Lower_bool_lnlike in zip(Upper_bool_lnlikes,Lower_bool_lnlikes)]
+                    mode_lnlike = statistics.mean(meta_data["lnlike"][bool_lnlikes])
+                    LoopError = - primary_lnlike + mode_lnlike # this should be always negative ?
+                    if LoopError < LoopLimit: # If less negative than the limit then the new mode has likelihood comparable with the primary mode
+                    # Needed to put the extra negatives in so the while loop statement doesn't contradict things
+                        break
+            else:
+                primary_mode_population = mode_population
+                Upper_bool_lnlikes = values<(mode+dhistbins)
+                Lower_bool_lnlikes = values>(mode-dhistbins)
+                bool_lnlikes = [Upper_bool_lnlike and Lower_bool_lnlike for Upper_bool_lnlike, Lower_bool_lnlike in zip(Upper_bool_lnlikes,Lower_bool_lnlikes)]
+                primary_lnlike = statistics.mean(meta_data["lnlike"][bool_lnlikes])
+
+            # Scan to find where bin populations fall to 1% or less of mode population
+            # Cutting out more than enough incase the data is noisy.
+            LowerHalfBins = np.array(histbins[:ModeLocationIndex])
+            LowerHalfn = histn[:ModeLocationIndex]
+            LowerLim = LowerHalfBins[LowerHalfn<=0.002*mode_population]
+            UpperHalfBins = np.array(histbins[ModeLocationIndex:])
+            UpperHalfn = histn[ModeLocationIndex:]
+            UpperLim = UpperHalfBins[UpperHalfn<=0.002*mode_population]
+
+            # Take the closest values to the maw in case of local mins and other sus behaviour
+            if len(LowerLim)==0:
+                LowerLim = histbins[0]
+            else:
+                LowerLim = LowerLim[-1]
+            if len(UpperLim)==0:
+                UpperLim = histbins[-1]
+            else:
+                UpperLim = UpperLim[0]
+
+            # pop data out around mode
+            IndicesToPop = np.where(np.array(histbins<=UpperLim)&np.array(histbins>=LowerLim))[0]
+            histn_popped = histn[IndicesToPop[0]:IndicesToPop[-1]]
+            histbins_popped = histbins[IndicesToPop[0]:IndicesToPop[-1]]
+
+            # Recalculate the histogram around the current mode
+            values_popped = values[np.where(np.array(values<=UpperLim)&np.array(values>=LowerLim))[0][:]]
+            histn_popped,histbins_popped = np.histogram(values_popped, bins=150)
+            histbins_popped = histbins_popped[:-1] + 0.5*(histbins_popped[2]-histbins_popped[1])
+
+            # Calculate an average mode using bins around mode within 5% of mode bin population
+            mode = np.sum(histbins_popped[histn_popped>=0.95*max(histn_popped)])/(1.*len(histbins_popped[histn_popped>=0.95*max(histn_popped)]))
+            mode_population = np.sum(histn_popped[histn_popped>=0.95*max(histn_popped)])/(1.*len(histn_popped[histn_popped>=0.95*max(histn_popped)]))
+
+            # repeat this at 50% (pm 5%) of mode bin population to get FWHM
+            LowerInds = np.where(np.array(histn_popped>=0.45*mode_population)&np.array(histn_popped<=0.55*mode_population)&np.array(histbins_popped<mode))[0]
+            UpperInds = np.where(np.array(histn_popped>=0.45*mode_population)&np.array(histn_popped<=0.55*mode_population)&np.array(histbins_popped>mode))[0]
+            histbins_LowerFWHM = [histbins_popped[LowerInd] for LowerInd in LowerInds]
+            histn_LowerFWHM = [histn_popped[LowerInd] for LowerInd in LowerInds]
+            if len(histbins_LowerFWHM)==0:
+                LowerFWHM = histbins_popped[0]
+            else:
+                LowerFWHM = np.sum(histbins_LowerFWHM)/(1.*len(histbins_LowerFWHM))
+            histbins_UpperFWHM = [histbins_popped[UpperInd] for UpperInd in UpperInds]
+            if len(histbins_UpperFWHM)==0:
+                UpperFWHM = histbins_popped[-1]
+            else:
+                UpperFWHM = np.sum(histbins_UpperFWHM)/(1.*len(histbins_UpperFWHM))
+
+            if key == "lambda" and False:
+                print(key, ", eval over popped range ", str(mode), str(mode_population))
+                plt.figure()
+                plt.plot(histbins_popped, histn_popped, 'r')
+                plt.axvline(x=LowerFWHM)
+                plt.axvline(x=mode)
+                plt.axvline(x=UpperFWHM)
+                plt.show()
+
+            # continue appending after check for error
+            Modes.append(mode)
+            LowerFWHMs.append(LowerFWHM)
+            UpperFWHMs.append(UpperFWHM)
+
+            # pop out values around modes to update histogram bins and populations
+            for x in reversed(IndicesToPop): # relative index changes on each pop so have to remove them in reverse order
+                histn.pop(x)
+                histbins.pop(x)
+
+        PosteriorStats[key] = {
+                         # Averages of data
+                         "mean": statistics.mean(list(values)),
+                         "median": statistics.median(list(values)),
+                         "mode": Modes,
+                         # Errors of averages
+                         "StDv": np.sqrt(np.sum((statistics.mean(list(values))-list(values))**2)/(len(list(values))*1.-1.)), # fit_stdev,
+                         "LowerQuart": np.quantile(list(values),0.25),
+                         "UpperQuart": np.quantile(list(values),0.75),
+                         "LowerFWHMs": LowerFWHMs,
+                         "UpperFWHMs": UpperFWHMs,
+                         # Injected values
+                         "injected_value_SSBframe": inj_param_vals["source_params_SSBframe"][key][0],
+                         "injected_value_Lframe": inj_param_vals["source_params_Lframe"][key][0],
+                         } # Note inj value is npfloat64,like all other variables except FWHMs which is not list. This is json serializable.
+    return PosteriorStats
+
+def PlotInferenceLambdaBeta(DataFileLocAndName, bins=50, SkyProjection=False, SaveFig=False, return_data=False):
+    """
+    Plotting function to output corner plots of inference data.
+    Need to add the post-processing stuff from Sylvain's example online?
+    """
+    # Unpack the data
+    [infer_params, inj_param_vals, static_params, meta_data] = read_h5py_file(DataFileLocAndName)
+    if not inj_param_vals: # Raw files at first didn't record this, so make sure it's there...
+        # Get the inj values from the processed data file instead
+        DataFileLocAndName_NotRaw = DataFileLocAndName[:-7] + ".h5"
+        [_,inj_param_vals,_,_] = read_h5py_file(DataFileLocAndName_NotRaw)
+    ndim = len(infer_params.keys())
+    labels = list(infer_params.keys())
+    if np.size(infer_params[labels[0]][0])>1:
+        nsamples = len(infer_params[labels[0]][0])
+    else:
+        nsamples = len(infer_params[labels[0]])
+    print("Posterior sample length: " + str(nsamples) + ", number of infered parameters: " + str(ndim))
+    # Grab data for infered parameters
+    data = np.empty([ndim,nsamples])
+    SampleModes = []
+    for ii in range(ndim):
+        if np.size(infer_params[labels[0]][0])>1:
+            data[ii][:] = infer_params[labels[ii]][0]
+        else:
+            data[ii][:] = infer_params[labels[ii]]
+        histn,histbins = np.histogram(data[ii,:], bins=hist_n_bins)
+        histbins = histbins[:-1] + 0.5*(histbins[2]-histbins[1]) # change from left bins edges to middle of bins
+        mode = histbins[histn==max(histn)]
+        if len(mode)>1:
+            mode = mode[1] # Doe now take the first on the list, but if there are several we need to work out what to do there...
+        SampleModes.append(mode)
+    data = np.transpose(np.array(data)) # should have shape [nsamples, ndim]
+
+    # Get injected values
+    InjParam_InjVals = []
+    for key in infer_params.keys():
+        InjParam_InjVals.append(inj_param_vals["source_params_Lframe"][key][0]) # Lframe is right.
+
+    # Scatter plot of labmda and beta posterior chains, marginalized over all other params
+    fig = plt.figure()
+    ax = plt.gca()
+    if SkyProjection:
+        plt.subplot(111, projection="aitoff")
+
+    # Get 2D hitogram data
+    levels = [1.-0.997, 1.-0.95, 1.-0.9, 1.-0.68] # Plot contours for 1 sigma, 90% confidence, 2 sigma, and 3 sigma
+
+    # Manually do 2D histogram because I don't trust the ones I found online
+    # data to hist = [data[:,0], data[:,5]] = beta, lambda. Beta is y data since it is declination.
+    hist2D_pops = np.empty([bins,bins])
+    areas = np.empty([bins,bins])
+    bin_max = max(max(data[:,5]),SampleModes[5]+np.pi/10000.)
+    bin_min = min(min(data[:,5]),SampleModes[5]-np.pi/10000.)
+    if bin_max>np.pi:
+        bin_max=np.pi
+    if bin_min<-np.pi:
+        bin_max=-np.pi
+    if isinstance(bin_min,np.ndarray):
+        bin_min = bin_min[0]
+    if isinstance(bin_max,np.ndarray):
+        bin_max = bin_max[0]
+    lambda_bins = np.linspace(bin_min, bin_max, bins+1) # np.linspace(np.min(data[:,5]), np.max(data[:,5]), bins+1)
+    bin_max = max(max(data[:,0]),SampleModes[0]+np.pi/20000.)
+    bin_min = min(min(data[:,0]),SampleModes[0]-np.pi/20000.)
+    if bin_max>np.pi/2.:
+        bin_max=np.pi/2.
+    if bin_min<-np.pi/2.:
+        bin_max=-np.pi/2.
+    if isinstance(bin_min,np.ndarray):
+        bin_min = bin_min[0]
+    if isinstance(bin_max,np.ndarray):
+        bin_max = bin_max[0]
+    beta_bins = np.linspace(bin_min, bin_max, bins+1) # np.linspace(np.min(data[:,0]), np.max(data[:,0]), bins+1)
+    lambda_BinW = np.diff(lambda_bins)
+    beta_BinW = np.diff(beta_bins)
+    for xii in range(bins):
+        list_len = list(range(len(data[:,5])))
+        if xii == 0:
+            values_ii = [valii for valii in list_len if (lambda_bins[xii]<=data[valii,5]<=lambda_bins[xii+1])]
+        else:
+            values_ii = [valii for valii in list_len if (lambda_bins[xii]<=data[valii,5]<lambda_bins[xii+1])]
+        beta_pops, beta_bins = np.histogram(data[values_ii,0], bins=beta_bins) # beta_bins
+        for yii in range(bins):
+            hist2D_pops[yii,xii] = beta_pops[yii] # hist2D_pops[xii,yii] = beta_pops[yii]
+            areas[yii,xii] = beta_BinW[yii]*lambda_BinW[xii]
+
+    # Define bins information
+    lambda_bins = lambda_bins[0:-1] + (lambda_bins[2]-lambda_bins[1] )*0.5
+    beta_bins = beta_bins[0:-1] + (beta_bins[2]-beta_bins[1] )*0.5
+    X,Y = np.meshgrid(lambda_bins, beta_bins)
+
+    # Rescale bin populations to probabilities
+    Z = hist2D_pops/areas
+    Z = Z/bins # Z/np.max(Z)
+    levels = [l*np.max(Z) for l in levels]
+
+    # Plot contour
+    contour = plt.contour(X, Y, Z, levels) ###### Maybe this would be better as just a colour plot to render to populations, and cut everything below 1 sigma?
+    plt.clabel(contour, colors = 'k', fmt = '%1.3f', fontsize=12)
+    # ax = plt.gca()
+
+    # Add injected and mode vertical and horizontal lines
+    if not SkyProjection:
+        ax.axhline(InjParam_InjVals[0], color="r", linestyle=":")
+        ax.axhline(SampleModes[0], color="b", linestyle=":")
+        ax.axvline(InjParam_InjVals[5], color="r", linestyle=":")
+        ax.axvline(SampleModes[5], color="b", linestyle=":")
+
+    # Add points at injected and mode values
+    ax.plot(InjParam_InjVals[5], InjParam_InjVals[0], "sr")
+    ax.plot(SampleModes[5], SampleModes[0], "sb")
+
+    # Labels
+    if not SkyProjection:
+        plt.xlabel(labels[5]) # Lambda
+        plt.ylabel(labels[0]) # beta
+
+    # show now or return?
+    if not return_data:
+        plt.show()
+        plt.grid()
+
+        # save the figure if asked
+        if SaveFig:
+            plt.savefig(FileNameAndPath[:-3]+'.png')
+    else:
+        return fig, InjParam_InjVals, SampleModes, X, lambda_bins, Y, beta_bins, Z
+
+def GetTotSkyAreaFromPostData(DataFileLocAndName,ConfLevel=0.9):
+    """
+    Counting function to give the total sky area for a confidence level given some
+    posterior data
+    """
+    # Unpack the data
+    [infer_params, inj_param_vals, static_params, meta_data] = read_h5py_file(DataFileLocAndName)
+    if not inj_param_vals: # Raw files at first didn't record this, so make sure it's there...
+        # Get the inj values from the processed data file instead
+        DataFileLocAndName_NotRaw = DataFileLocAndName[:-7] + ".h5"
+        [_,inj_param_vals,_,_] = read_h5py_file(DataFileLocAndName_NotRaw)
+    labels = ["lambda","beta"]
+    if np.size(infer_params[labels[0]][0])>1:
+        nsamples = len(infer_params["lambda"][0])
+    else:
+        nsamples = len(infer_params["lambda"])
+    print("Posterior sample length: " + str(nsamples))
+    # Grab data for sky location
+    data = np.empty([2,nsamples])
+    SampleModes = []
+    for ii in range(2):
+        data[ii][:] = infer_params[labels[ii]]
+        histn,histbins = np.histogram(data[ii,:], bins=hist_n_bins)
+        histbins = histbins[:-1] + 0.5*(histbins[2]-histbins[1]) # change from left bins edges to middle of bins
+        mode = histbins[histn==max(histn)]
+        if len(mode)>1:
+            mode = mode[1] # Doe now take the first on the list, but if there are several we need to work out what to do there...
+        SampleModes.append(mode)
+    data = np.transpose(np.array(data)) # should have shape [nsamples, 2]
+
+    # Get injected values
+    InjParam_InjVals = []
+    for key in labels:
+        InjParam_InjVals.append(inj_param_vals["source_params_Lframe"][key][0]) # Lframe is right.
+
+    # Manually do 2D histogram because I don't trust the ones I found online
+    bin_max = max(max(data[:,0]),SampleModes[0]+np.pi/10000.)
+    bin_min = min(min(data[:,0]),SampleModes[0]-np.pi/10000.)
+    if bin_max>np.pi:
+        bin_max=np.pi
+    if bin_min<-np.pi:
+        bin_max=-np.pi
+    if isinstance(bin_min,np.ndarray):
+        bin_min = bin_min[0]
+    if isinstance(bin_max,np.ndarray):
+        bin_max = bin_max[0]
+    if bin_max-bin_min>3.*np.pi/2.:
+        print("Changing lambda bins")
+        nbins_lambda = 200
+    else:
+        nbins_lambda = 100
+    lambda_bins = np.linspace(bin_min, bin_max, nbins_lambda+1) # np.linspace(np.min(data[:,5]), np.max(data[:,5]), bins+1)
+    bin_max = max(max(data[:,1]),SampleModes[1]+np.pi/20000.)
+    bin_min = min(min(data[:,1]),SampleModes[1]-np.pi/20000.)
+    if bin_max>np.pi/2.:
+        bin_max=np.pi/2.
+    if bin_min<-np.pi/2.:
+        bin_max=-np.pi/2.
+    if isinstance(bin_min,np.ndarray):
+        bin_min = bin_min[0]
+    if isinstance(bin_max,np.ndarray):
+        bin_max = bin_max[0]
+    if bin_max-bin_min>3.*np.pi/4.:
+        print("Changing beta bins")
+        nbins_beta = 200
+    else:
+        nbins_beta = 100
+    beta_bins = np.linspace(bin_min, bin_max, nbins_beta+1) # np.linspace(np.min(data[:,0]), np.max(data[:,0]), bins+1)
+    hist2D_pops, areas = hist_lam_bet(data,lambda_bins,beta_bins)
+
+    # update total area if hist value is above sig level value
+    TotArea = 0.
+    Count = 0.
+    CutLim = ConfLevel*np.sum(hist2D_pops)
+    iiloop=0
+    while iiloop<=np.size(hist2D_pops) and Count<=CutLim: # Second term just there because when bins are large it takes forever as it counts bins with populations 1... Can we find a workaroundf or this? Just sum the singular stuff? Idk...
+        TotArea += sum(areas[hist2D_pops==np.max(hist2D_pops)])
+        Count += sum(hist2D_pops[hist2D_pops==np.max(hist2D_pops)])
+        areas[hist2D_pops==np.max(hist2D_pops)] = 0.
+        hist2D_pops[hist2D_pops==np.max(hist2D_pops)] = 0.
+        iiloop+=1
+    print("Counted bin total population = ", Count*100.*ConfLevel/CutLim, "% of total population.")
+    if Count*100.*ConfLevel/CutLim>98.:
+        print(DataFileLocAndName)
+
+    return TotArea
+
+def hist_lam_bet(data,lambda_bins,beta_bins):
+    # data is n*2 numpy array :: 0 element is lambda and 1 element is beta
+    nbins_lambda = len(lambda_bins)-1
+    nbins_beta = len(beta_bins)-1
+    lambda_BinW = np.diff(lambda_bins)
+    beta_BinW = np.diff(beta_bins)
+    hist2D_pops = np.empty([nbins_lambda,nbins_beta])
+    areas = np.empty([nbins_lambda,nbins_beta])
+    for xii in range(nbins_lambda):
+        list_len = list(range(len(data[:,0])))
+        if xii == 0:
+            values_ii = [valii for valii in list_len if (lambda_bins[xii]<=data[valii,0]<=lambda_bins[xii+1])]
+        else:
+            values_ii = [valii for valii in list_len if (lambda_bins[xii]<=data[valii,0]<lambda_bins[xii+1])]
+        beta_pops, beta_bins = np.histogram(data[values_ii,1], bins=beta_bins)
+        for yii in range(nbins_beta):
+            hist2D_pops[xii,yii] = beta_pops[yii]
+            areas[xii,yii] = lambda_BinW[xii]*beta_BinW[yii]
+    return hist2D_pops, areas
+
+def PlotHistsLambdaBeta(DataFileLocAndName, SaveFig=False, ParamToPlot="beta"): # "lambda" # ["beta", "lambda"]
+    """
+    Plotting function to output corner plots of inference data.
+    Need to add the post-processing stuff from Sylvain's example online?
+    """
+    # Convert the requested params to a list if it's not already one
+    if not type(ParamToPlot) == list:
+        ParamToPlot = [ParamToPlot]
+
+    # Unpack the data
+    [infer_params, inj_param_vals, static_params, meta_data] = read_h5py_file(DataFileLocAndName)
+    if not inj_param_vals: # Raw files at first didn't record this, so make sure it's there...
+        # Get the inj values from the processed data file instead
+        DataFileLocAndName_NotRaw = DataFileLocAndName[:-7] + ".h5"
+        [_,inj_param_vals,_,_] = read_h5py_file(DataFileLocAndName_NotRaw)
+    ndim = len(infer_params.keys())
+    labels = list(infer_params.keys())
+    if np.size(infer_params[labels[0]][0])>1:
+        nsamples = len(infer_params[labels[0]][0])
+    else:
+        nsamples = len(infer_params[labels[0]])
+    print("Posterior sample length: " + str(nsamples) + ", number of infered parameters: " + str(ndim))
+    # Grab data for infered parameters
+    data = np.empty([ndim,nsamples])
+    SampleModes = []
+    for ii in range(ndim):
+        if np.size(infer_params[labels[0]][0])>1:
+            data[ii][:] = infer_params[labels[ii]][0]
+        else:
+            data[ii][:] = infer_params[labels[ii]]
+        histn,histbins = np.histogram(data[ii,:], bins=hist_n_bins)
+        histbins = histbins[:-1] + 0.5*(histbins[2]-histbins[1]) # change from left bins edges to middle of bins
+        mode = histbins[histn==max(histn)]
+        if len(mode)>1:
+            mode = mode[1] # Doe now take the first on the list, but if there are several we need to work out what to do there...
+        SampleModes.append(mode)
+    data = np.transpose(np.array(data)) # should have shape [nsamples, ndim]
+
+    # Get injected values
+    InjParam_InjVals = []
+    for key in infer_params.keys():
+        InjParam_InjVals.append(inj_param_vals["source_params_Lframe"][key][0]) # Lframe is right.
+
+    # Sctter plot of labmda and beta posterior chains, marginalized over all other params
+    for PlotParam in ParamToPlot:
+        print(PlotParam)
+        if PlotParam == "beta":
+            iiParam = 0
+        elif PlotParam == "lambda":
+            iiParam = 5
+        fig = plt.figure()
+        ax = plt.gca()
+        plt.hist(data[:,iiParam], 50)
+        ax = plt.gca()
+
+        # Add injected and mode vertical lines
+        ax.axvline(InjParam_InjVals[iiParam], color="g", linestyle=":")
+        ax.axvline(SampleModes[iiParam], color="r", linestyle=":")
+
+        # Labels
+        if PlotParam == "beta":
+            plt.xlabel(r"$\beta$")
+        elif PlotParam == "lambda":
+            plt.xlabel(r"$\lambda$")
+
+        # save the figure if asked
+        if SaveFig:
+            plt.savefig(FileNameAndPath[:-3]+'.png')
+
+        plt.show()
+
+def PlotInferenceData(DataFileLocAndName, SaveFig=False):
+    """
+    Plotting function to output corner plots of inference data.
+    Need to add the post-processing stuff from Sylvain's example online?
+    """
+    import corner
+
+    # Unpack the data
+    [infer_params, inj_param_vals, static_params, meta_data] = read_h5py_file(DataFileLocAndName)
+    if not inj_param_vals: # Raw files at first didn't record this, so make sure it's there...
+        # Get the inj values from the processed data file instead
+        DataFileLocAndName_NotRaw = DataFileLocAndName[:-7] + ".h5"
+        [_,inj_param_vals,_,_] = read_h5py_file(DataFileLocAndName_NotRaw)
+    ndim = len(infer_params.keys())
+    labels = list(infer_params.keys())
+    if np.size(infer_params[labels[0]][0])>1:
+        nsamples = len(infer_params[labels[0]][0])
+    else:
+        nsamples = len(infer_params[labels[0]])
+    print("Posterior sample length: " + str(nsamples) + ", number of infered parameters: " + str(ndim))
+    # Grab data for infered parameters
+    data = np.empty([ndim,nsamples])
+    SampleModes = []
+    for ii in range(ndim):
+        if np.size(infer_params[labels[0]][0])>1:
+            data[ii][:] = infer_params[labels[ii]][0]
+        else:
+            data[ii][:] = infer_params[labels[ii]]
+        histn,histbins = np.histogram(data[ii,:], bins=hist_n_bins)
+        histbins = histbins[:-1] + 0.5*(histbins[2]-histbins[1]) # change from left bins edges to middle of bins
+        mode = histbins[histn==max(histn)]
+        if len(mode)>1:
+            mode = mode[1] # Doe now take the first on the list, but if there are several we need to work out what to do there...
+        SampleModes.append(mode)
+    data = np.transpose(np.array(data)) # should have shape [nsamples, ndim]
+
+    # Get injected values
+    InjParam_InjVals = []
+    for key in infer_params.keys():
+        InjParam_InjVals.append(inj_param_vals["source_params_Lframe"][key][0]) # Lframe is right.
+
+    # Corner plot of posteriors
+    figure = corner.corner(data, labels=labels,
+                           quantiles=[0.16, 0.5, 0.84],
+                           show_titles=True)
+
+    # Extract the axes
+    axes = np.array(figure.axes).reshape((ndim, ndim))
+
+    # Loop over the diagonal
+    for i in range(ndim):
+        ax = axes[i, i]
+        ax.axvline(InjParam_InjVals[i], color="g")
+        ax.axvline(SampleModes[i], color="r")
+
+    # Loop over the histograms
+    for yi in range(ndim):
+        for xi in range(yi):
+            ax = axes[yi, xi]
+            ax.axvline(InjParam_InjVals[xi], color="g")
+            ax.axvline(SampleModes[xi], color="r")
+            ax.axhline(InjParam_InjVals[yi], color="g")
+            ax.axhline(SampleModes[yi], color="r")
+            ax.plot(InjParam_InjVals[xi], InjParam_InjVals[yi], "sg")
+            ax.plot(SampleModes[xi], SampleModes[yi], "sr")
+
+    # save the figure if asked
+    if SaveFig:
+        plt.savefig(FileNameAndPath[:-3]+'.png')
+
+    plt.show()
+
+def GetOctantLikeRatioAndPostProb(JsonFileAndPath,source=None,detector=None):
+    # To do
+    # Change the betas to lisa frame
+    # Add errors to the numbers (root(n) for probs etc)
+
+    # Load the json file to grab source param values
+    f = open(JsonFileAndPath)
+    data = json.load(f)
+    f.close()
+    param_dict = data["source_params"]
+    waveform_params = data["waveform_params"]
+
+    likelihoodClass = lisa.LikelihoodLISASMBH(param_dict, **waveform_params)
+    lnL_skymodes,params_skymode = lisatools.func_loglikelihood_skymodes(likelihoodClass)
+
+    # list skymodes
+    skymodes = [(1,0), (1,1), (1,2), (1,3), (-1,0), (-1,1), (-1,2), (-1,3)]
+
+    # Read h5 data -- Need to change this to search spcifically for ".../inference_param_files/..." and then seperate into a pre and post part for the data file name and path.
+    JsonFileName = JsonFileAndPath.split('inference_param_files')[-1]
+    SYNEX_path = JsonFileAndPath.split('inference_param_files')[0]
+    DataFileLocAndName = str(SYNEX_path + "inference_data" + JsonFileName.split('.')[0] + ".h5")
+    [infer_params, inj_param_vals, static_params, meta_data] = read_h5py_file(DataFileLocAndName)
+    labels = list(infer_params.keys())
+    beta_posteriors = infer_params["beta"]
+    lambda_posteriors = infer_params["lambda"]
+
+    OctantPostProbs = {}
+    lnLikeRatios = {}
+    for skymode in skymodes:
+        # Create dictionary of skymode likelihood ratios
+        lnLikeRatios[skymode] = lnL_skymodes[skymode]# -lnL_skymodes[(1,0)] # this is always negative # lnL_skymodes[skymode] #
+
+        # get the skymode central coords
+        beta_sm = params_skymode[skymode]['beta']
+        lambda_sm = params_skymode[skymode]['lambda']
+
+        # Get the declination limits of the octant
+        beta_lowerlim = np.min([0.,np.sign(params_skymode[(1,0)]['beta'])*skymode[0]*np.pi]) # This should be lisa frame though so you gotta change this to +pi/3 but need to check orientations first
+        beta_upperlim = np.max([0.,np.sign(params_skymode[(1,0)]['beta'])*skymode[0]*np.pi])
+
+        # Get the right accension limits of the octant
+        lambda_lowerlim = lambda_sm - np.pi/4.
+        lambda_upperlim = lambda_sm + np.pi/4.
+
+        # wrap lambda limits into [-pi,pi]
+        if lambda_lowerlim<-np.pi:
+            lambda_lowerlim = lambda_lowerlim+2.*np.pi
+        if lambda_upperlim>np.pi:
+            lambda_upperlim = lambda_upperlim-2.*np.pi
+
+        # Collect the samples in the current octant, take care for limits that have wrapped around
+        if lambda_lowerlim<lambda_upperlim:
+            octant_betas = [beta_posteriors[ii] for ii in range(len(beta_posteriors)) if lambda_posteriors[ii]>=lambda_lowerlim and lambda_posteriors[ii]<=lambda_upperlim]
+        else:
+            octant_betas = [beta_posteriors[ii] for ii in range(len(beta_posteriors)) if lambda_posteriors[ii]>=lambda_lowerlim or lambda_posteriors[ii]<=lambda_upperlim]
+        if beta_lowerlim<beta_upperlim:
+            octant_betas = [p for p in octant_betas if p>=beta_lowerlim and p<=beta_upperlim]
+        else:
+            octant_betas = [p for p in octant_betas if p>=beta_lowerlim or p<=beta_upperlim]
+
+        # Change this into a probability
+        OctantPostProbs[skymode] = np.size(octant_betas)/np.size(beta_posteriors)
+
+    return lnLikeRatios,OctantPostProbs
+
+def read_h5py_file(DataFileLocAndName):
+    from SYNEX import SYNEX_Sources as SYSs
+    import h5py
+
+    # Make sure the file encoding is specified
+    if not DataFileLocAndName[-3] == ".":
+        DataFileLocAndName = DataFileLocAndName + ".h5"
+
+    # Load data from h5 file
+    f = h5py.File(DataFileLocAndName,'r')
+
+    # Get basic source params to differentiate meta-data later
+    from SYNEX.SYNEX_PTMC import list_params as full_list_params
+
+    # Take out the dictionary
+    infer_params = {}
+    inj_param_vals = {}
+    static_params = {}
+    meta_data = {}
+    list_params = f.keys()
+    for key in list_params:
+        if key == "fishercov":
+            meta_data[key] = f[key] # This is a dictionary. I dunno how else to handle this rn
+        elif key == "source_params_Lframe" or key == "source_params_SSBframe":
+            inj_param_vals[key] = f[key]
+        else:
+            param_vals = f[key][:]
+            if np.array([np.diff(param_vals)==0]).all():
+                static_params[key] = param_vals
+            elif key in full_list_params:
+                infer_params[key] = param_vals
+            else:
+                meta_data[key] = param_vals
+    # f.close()
+    return [infer_params, inj_param_vals, static_params, meta_data]
+
+def RunInference(source=None, detector=None, inference_params=None, Plots=False, OutFileName=None,JsonFileAndPath=None,**RunTimekwargs):
+    # Using MPI or not
+    use_mpi=False
+    is_master = True
+    mapper = map
+    if MPI is not None:
+        MPI_size = MPI.COMM_WORLD.Get_size()
+        MPI_rank = MPI.COMM_WORLD.Get_rank()
+        use_mpi = (MPI_size > 1)
+        if use_mpi:
+            print("MPI rank/size: %d / %d" % (MPI_rank, MPI_size), flush=True)
+            pool = ptemcee.mpi_pool.MPIPool(debug=False)
+            is_master = pool.is_master()
+            mapper = pool.map
+        else:
+            print("No MPI", flush=True)
+            is_master = True
+            mapper = map
+
+    if not JsonFileAndPath and not source and not detector:
+        raise ValueError("If you dont specify input json file, you need to hand a detector and source so that a json file can be created.")
+    elif not JsonFileAndPath and source and detector:
+        print('No json file or output file specified - creating file locations and names')
+        [JsonFileAndPath, OutFileLoc, OutFileName] = WriteParamsToJson(source,detector,inference_params,OutFileName,is_master,**RunTimekwargs)
+
+    # Start the run. Data will be saved to the 'inference_data' folder by default
+    # All processes must execute the run together. mapper (inside ptemcee) will handle coordination between p's.
+    SYP.RunPTEMCEE(JsonFileAndPath)
+    # Call plotter if asked for
+
+    if is_master:
+        if Plots and OutFileName:
+            PlotInferenceData(OutFileLoc+OutFileName,True) # Automatically save the fig if called within inference.
+        elif Plots and not OutFileName:
+            raise ValueError('You asked for plots but did not specify the output directory. Data has been saved, dont sweat - this dependency will be updated soon.')
+
+def WriteParamsToJson(source, detector, inference_params, OutFileName=None, IsMaster=True, **RunTimekwargs):
+    ### Need to change default output name and json names from inf params to inj params... Or some combination of the two.
+
+    # import some default parameters defined the ptemcee handler script
+    from SYNEX.SYNEX_PTMC import run_params_default # , waveform_params_default
+
+    # Create the default json file parameters
+    json_default_dict = {}
+    json_default_dict["run_params"] = run_params_default
+
+    # Get additional parameters and add to json param dict
+    # these dictionaries are 1. Base source params 2. waveform params 3. extras for fisher function
+    # Therefore can rename the dictionaries for clarity, and then delete the key,value unwrap next
+    # for the run_params update, since the run_params are handed to the function at call time.
+    # But double check that the run_params are not not in the returned waveform params list etc.
+    [param_dict, waveform_params, _ ] = ClassesToParams(source,detector,"Inference")
+    json_default_dict["source_params"] = param_dict
+    json_default_dict["waveform_params"] = waveform_params
+    json_default_dict["prior_params"] = inference_params
+
+    # Add some missing kwargs in the LISAnoise subdictionary in waveform params. Not really sure what this does but it is needed.
+    # Need to fiure out if this is needed in theFisher stuff too - it will change where we put the defaults etc at detector initialization.
+    json_default_dict["waveform_params"]["LISAnoise"]["lowf_add_pm_noise_f0"]=0.0
+    json_default_dict["waveform_params"]["LISAnoise"]["lowf_add_pm_noise_alpha"]=2.0
+
+    # Update json dict field defaults where needed
+    for key,value in waveform_params.items():
+        if key in json_default_dict["run_params"]:
+            json_default_dict["run_params"][key] = value # these are not in the
+        # elif key in json_default_dict["waveform_params"]:
+        #     json_default_dict["waveform_params"][key] = value
+
+    # Change now any keys set in the run time dictionary of kwargs (this could plot flags, run params values, no. of walkers etc)
+    # This is NOT meant for binary params or prior params - these need to be specified at the highest script level
+    for key,value in RunTimekwargs.items():
+        if key in json_default_dict["run_params"]:
+            json_default_dict["run_params"][key] = value
+        elif key in json_default_dict["waveform_params"]:
+            json_default_dict["waveform_params"][key] = value
+        elif key in json_default_dict["source_params"]:
+            json_default_dict["source_params"][key] = value
+
+    # If the outfile name doesn't exist, create one
+    if not bool(OutFileName):
+        from datetime import date
+        today = date.today()
+        d = today.strftime("%d_%m_%Y")
+        OutFileName = d + "_InferParams_" + '_'.join(inference_params["infer_params"])
+
+    # Get the location of a known module, and then find the location of the output data folder
+    import os
+    # import sys
+    LisaBetaPath = os.path.dirname(os.path.realpath(__file__))
+
+    # Create the file names and file locations based on location of a static element of SYNEX (lisabeta)
+    d_file = OutFileName + '.h5'
+    d_loc = LisaBetaPath + "/../inference_data/"
+    json_file_path = LisaBetaPath+"/../inference_param_files/"
+
+    # Check if a subdirectory was specified in the outfilename, and if yes does it need creating?
+    PathList = OutFileName.split("/")
+    if len(PathList)>1:
+        for PathSeg in PathList[:-1]:
+            d_loc += PathSeg+'/'
+            json_file_path += PathSeg+'/'
+            if not os.path.isdir(d_loc):
+                os.mkdir(d_loc)
+            if not os.path.isdir(json_file_path):
+                os.mkdir(json_file_path)
+    json_file = json_file_path+OutFileName+'.json'
+
+    # Set the output file and directory location in the json param list
+    json_default_dict["run_params"]["out_dir"] = d_loc
+    json_default_dict["run_params"]["out_name"] = OutFileName # this needs to not have the '.h5' added at the end to work
+
+    # Write the json file only if master node or not mpi
+    if IsMaster:
+        with open(json_file, 'w') as f:
+            json.dump(json_default_dict, f, indent=2)
+        f.close()
+    else:
+        time.sleep(10)
+
+    # Return the json file and data file locations
+    return json_file, d_loc, d_file
+
+def RunFoMOverRange(source,detector,ParamDict,FigureOfMerit='SNR',RunGrid=False,inference_params=None,**InferenceTechkwargs):
+    """
+    Function to run a Figure of Merit (FoM) over a range of parameter values.
+
+    An example use would be sky localization error, using a full mcmc inference,
+    over a grid of values for spins chi1 and chi2.
+
+    Parameters
+    ----------
+
+    source : SYNEX 'source' class
+
+    detector : SYNEX 'detector' class
+
+    ParamDict : Dictionary
+        Each field has key equal to the parameter name you want to loop over, this can be any field in the viable fields for the source and detector classes, including for example waveform approximant, total binary mass, or TDI type.
+        The value attributed to each field is ether:
+            - A single value.
+                In this case the value is taken as a change to an existing parameter in the source or
+                detector class. The inference will run by setting the json values from the source and
+                detector classes, but then overwrite them using these set parameters. This is to save
+                speed in the iterations over the loop by not having to create many versions of the
+                same source and detector classes through runtime.
+            - An array of three values.
+                The first and second values are the min and max values, and the third value is the
+                number of steps. This range specifies over what values of a particular variable the
+                FoM should be calculated over. A return value - the value the
+                parameter should return to at the end of the loop (if e.g. running several independent
+                loops not in a grid) is taken as the midpoint between the min and max value.
+            - An array of four values.
+                Same as array with three values, but the fourth value if now the return value.
+            - An array of values with first element = "custom".
+                A custom range e.g. uneaven sampling. THIS IS TO BE IMPLEMENTED.
+
+            NB: the return value in the grid case is not well defined - this will be developed in the future.
+
+        FigureOfMerit : str
+            A string indicated which FoM should be taken. Values are either:
+             - "SNR"
+                 Signal to noise ratio between the noise stored in the detector class, and the waveform
+                 generated by the waveform parameters stored in both the detector and source classes.
+             - "SkyArea"
+                 A Fisher inf matrix estimate of the sky localization , e.g. the error ellipsoid when
+                 infering the source location using the detector.
+             - "SkyLocInfer"
+                 A full MCMC inference of the multimodal posteriors using a set of defined parameter priors
+                 that should also be specified (see "inference_params" definition). If singular values are specified
+                 in "ParamDict", then the inference routine will take these values preferentially to source and
+                 detector values in it's stored dictionaries. The sampler used here is "ptemcee", developed by
+                 Sylvain Marsat in tandem with "lisabeta".
+
+        RunGrid : Bool
+            A boolean to indicate if a 2D grid should be taken over a set of parameters for e.g. a surface plot in
+            the end. If false, the program will create a 1D array of values for the FoM over each param specified in
+            ParamDict.
+
+        inference_params : dict
+            A dictionary containing the prior information for parameters to be inferred if using the "SkyLocInfer"
+            FoM. The dictionary should have the fields:
+             - "infer_params" - array of param names to infer
+             - "params_range" - array of tuples of dim 2 for [min, max]
+             - "prior_type" - array of prior types e.g. "uniform", "sin", "cos", etc.
+             - "wrap_params" - array of flags to wrap the parameter or not
+
+             NB: Each array should be organized in order of param names listed in "infer_params".
+             NB: The dictionary of infered parameters is assumed to be unchanged through the ensemble
+             of loops being asked for, to maintain apples-to-apples in analysis of results.
+
+        InferenceTechkwargs : dict
+            A dictionary of extra parameters used for inference. This includes parameters like number of walkers, flag to include thinning, etc.
+
+        TO DO:
+        ------
+        - mpi.scatter for RunFoMOverRange implementation with mpi. this could handle automatically sending each job to different nodes instead of
+        depending on mpi.map in the inference part. This is important since the parallel side of things seems to be more efficient when scattering
+        jobs rather than parallelizing the inference...
+    """
+
+    if FigureOfMerit=="SkyLocInfer" and not inference_params:
+        raise ValueError("You need a dictionary of inference parameter information to run inference for sky localization. Make sure to include fields for prior type, prior ranges, parameter name and a flag to wrap the parameter or not.")
+    BaseParamDict = {}
+    LoopVars = []
+    ReturnValue = {}
+    for key,values in ParamDict.items():
+        if isinstance(values, (float,int,str)) and len(values)==1:
+            BaseParamDict[key] = copy.deepcopy(values)
+            ReturnValue[key] = copy.deepcopy(values)
+        else:
+            LoopVars.append(key)
+            if len(values)==4:
+                ReturnValue[key] = copy.deepcopy(values[3])
+            else:
+                ReturnValue[key] = (copy.deepcopy(values[0])+copy.deepcopy(values[1]))/2. # include statements that get the return values from the fields in source or detector if they exist
+
+    # Check how many params for grid case are not more than 2 -- TO BE DEVELOPED
+    if RunGrid and len(LoopVars)>2:
+        raise ValueError("If you want to run a grid make sure there are only 2 variables being looped over. This will be developed in the future for larger grud dimensions, but for now please only specify 2 param ranges.")
+
+    FoMOverRange = {}
+
+    # Record the variables that will changed, and if it is a grid or linear range
+    if isinstance(LoopVars, list):
+        FoMOverRange["LoopVariables"] = LoopVars
+    else:
+        FoMOverRange["LoopVariables"] = LoopVars.tolist()
+    FoMOverRange["IsGrid"] = RunGrid
+
+    # Do the loop over each variable
+    if RunGrid:
+        Var1,Var2 = LoopVars[0],LoopVars[1]
+        # Extract the first loop variable
+        Var1_min = ParamDict[Var1][0]
+        Var1_max = ParamDict[Var1][1]
+        Var1_nSteps = ParamDict[Var1][2]
+        if Var1 == "maxf" or Var1 == "M" or Var1 == "m1" or Var1 == "m2" or Var1 == "DeltatL_cut":
+            if Var1 == "DeltatL_cut":
+                Var1Array = np.logspace(np.log10(-Var1_min), np.log10(-Var1_max), Var1_nSteps)
+            else:
+                Var1Array = np.logspace(np.log10(Var1_min), np.log10(Var1_max), Var1_nSteps)
+        else:
+            Var1Array= np.linspace(Var1_min, Var1_max, Var1_nSteps)
+
+        # Extract the second loop variable
+        Var2_min = ParamDict[Var2][0]
+        Var2_max = ParamDict[Var2][1]
+        Var2_nSteps = ParamDict[Var2][2]
+        if Var2 == "maxf" or Var2 == "M" or Var2 == "m1" or Var2 == "m2" or Var2 == "DeltatL_cut":
+            if Var2 == "DeltatL_cut":
+                Var2Array = np.logspace(np.log10(-Var2_min), np.log10(-Var2_max), Var2_nSteps)
+            else:
+                Var2Array = np.logspace(np.log10(Var2_min), np.log10(Var2_max), Var2_nSteps)
+        else:
+            Var2Array= np.linspace(Var2_min, Var2_max, Var2_nSteps)
+
+        # Create space to output into dictionary
+        FoMOverRange[Var1+"_xs"] = Var1Array.tolist()
+        FoMOverRange[Var2+"_xs"] = Var2Array.tolist()
+        FoMOverRange["grid_ys"] = np.empty((Var2_nSteps,Var1_nSteps))
+
+        if FigureOfMerit == 'SkyLocInfer':
+            BaseParamDict.update(InferenceTechkwargs)
+
+        for Loop1ID in range(Var1_nSteps):
+            for Loop2ID in range(Var2_nSteps):
+
+                if FigureOfMerit == 'SkyLocInfer':
+                    # Make sure json and output file locations exist
+                    LisaBetaPath = os.path.dirname(os.path.realpath(__file__))
+                    print(LisaBetaPath)
+                    if not os.path.isdir(os.path.join(LisaBetaPath+"/../inference_param_files/GridInference_"+Var1+"_"+Var2+"/")):
+                        os.mkdir(os.path.join(LisaBetaPath+"/../inference_param_files/GridInference_"+Var1+"_"+Var2+"/"))
+                    if not os.path.isdir(os.path.join(OutFileLoc+"/../inference_data/GridInference_"+Var1+"_"+Var2+"/")):
+                        os.mkdir(os.path.join(OutFileLoc+"/../inference_data/GridInference_"+Var1+"_"+Var2+"/"))
+
+                # Change the variable that needs to be changed
+                if Var1 == "DeltatL_cut":
+                    BaseParamDict[Var1] = -Var1Array[Loop1ID]
+                else:
+                    BaseParamDict[Var1] = Var1Array[Loop1ID]
+                if Var2 == "DeltatL_cut":
+                    BaseParamDict[Var2] = -Var2Array[Loop2ID]
+                else:
+                    BaseParamDict[Var2] = Var2Array[Loop2ID]
+
+                # Calculate the figure of merit, remove special case where a tested DeltatL_cut is larger than time in detection band
+                [source_param_dict, _ , _ ] = ClassesToParams(source,detector,"Inference", **BaseParamDict)
+                fLow, fHigh = lisa.FrequencyBoundsLISATDI_SMBH(source_param_dict)
+                if Var1 == "DeltatL_cut" and pytools.funcNewtonianfoft(source_param_dict["m1"], source_param_dict["m2"], Var1Array[Loop1ID])<fLow:
+                    print("Time cut is larger than detectable life span - setting FoM to 0")
+                    FoM = 1e-30
+                elif Var2 == "DeltatL_cut" and pytools.funcNewtonianfoft(source_param_dict["m1"], source_param_dict["m2"], Var2Array[Loop2ID])<fLow:
+                    print("Time cut is larger than detectable life span - setting FoM to 0")
+                    FoM = 1e-30
+                elif FigureOfMerit == "SNR":
+                    FoMOverRange["FoM"] = "SNR"
+                    FoM = ComputeSNR(source,detector,**BaseParamDict)
+                    # lisa.GenerateLISATDISignal_SOBH(params, **waveform_params) -- this is the function that has a field for snr: tdisignal['SNR']
+                elif FigureOfMerit == "SkyArea":
+                    FoMOverRange["FoM"] = "SkyArea"
+                    fishercov = GetFisher_smbh(source, detector, **BaseParamDict)
+                    FoM = lisatools.sky_area_cov(fishercov, sq_deg=True, n_sigma=None, prob=0.90)
+                elif FigureOfMerit == "SkyLocInfer":
+                    FoMOverRange["FoM"] = "SkyLocInfer"
+                    # Create the output file name - to change on each iteration so it's clear what injection values are
+                    [param_dict, _ , _ ] = ClassesToParams(source,detector,"Inference")
+                    param_keys = param_dict.keys()
+                    param_keys_mod = param_keys[param_keys!=Var1 and param_keys!=Var2]
+                    OutFileName = "GridInference_"+Var1+"_"+Var2+"/InjValues_" + Var1 + "_" + str(Var1Array[Loop1ID]) + "_" + Var2 + "_" + str(Var2Array[Loop2ID])
+                    OutFileName = OutFileName + ["_" + param + "_" + value for param,value in zip([param_keys_mod,BaseParamDict[param_keys_mod]])]
+                    # Manually write the output file location and get the filepath
+                    [InJsonFilePath, OutFileLoc, OutFileName] = WriteParamsToJson(source,detector,inference_params,OutFileName,**BaseParamDict)
+                    # Makesure target folder exists
+                    if not os.path.isdir(os.path.join(OutFileLoc+"GridInference_"+Var1+"_"+Var2+"/")):
+                        os.mkdir(os.path.join(OutFileLoc+"GridInference_"+Var1+"_"+Var2+"/"))
+                    # Iteratively running inference so no plots pls
+                    DoPlots = False
+                    # Run the inference step which will dump data into the output folder
+                    RunInference(inference_params=inference_params, Plots=DoPlots, OutFileName=OutFileName,InJsonFilePath=InJsonFilePath)
+                    # Now need to convert the data to some useful format
+                    FoM = GetPosteriorVal(OutFileLoc+OutFileName) # This is a dictionary of mean, mode, median, quartiles, and standard dev (using mean)
+                elif FigureOfMerit == "SkyModeLikelihoodsBETA":
+                    FoMOverRange["FoM"] = "SkyModeLikelihoodsBETA" # Include beta so later we can include an option to check lamda, psi and other degeneracies.
+                    lnL_skymodes,params_skymode = GetSkyMultiModeProbFromClasses(source, detector, **BaseParamDict)
+                    InjMode = lnL_skymodes[(1,0)]
+                    InjMode += lnL_skymodes[(1,1)]
+                    InjMode += lnL_skymodes[(1,2)]
+                    InjMode += lnL_skymodes[(1,3)]
+                    BetaRefMode = lnL_skymodes[(-1,0)]
+                    BetaRefMode += lnL_skymodes[(-1,1)]
+                    BetaRefMode += lnL_skymodes[(-1,2)]
+                    BetaRefMode += lnL_skymodes[(-1,3)]
+                    FoM = lnL_skymodes[(-1,0)] - lnL_skymodes[(1,0)] # Primary reflection is most important - this is always negative. I think the logic with the the log10 means that taking the difference between all will always capture where reflections happen and not be washed out by others like Sylvain was saying... Need to discusss this with him more- maybe along with discussion of what you changed in PTEMCEE.
+                    # FoM = BetaRefMode - InjMode
+                elif FigureOfMerit == "SkyModeLikelihoodsLAMBDA":
+                    FoMOverRange["FoM"] = "SkyModeLikelihoodsLAMBDA" # Include beta so later we can include an option to check lamda, psi and other degeneracies.
+                    lnL_skymodes,params_skymode = GetSkyMultiModeProbFromClasses(source, detector, **BaseParamDict)
+                    InjMode = lnL_skymodes[(1,0)]
+                    InjMode += lnL_skymodes[(-1,0)]
+                    lambdaRefMode1 = lnL_skymodes[(1,1)]
+                    lambdaRefMode1 += lnL_skymodes[(-1,1)]
+                    lambdaRefMode2 = lnL_skymodes[(1,2)]
+                    lambdaRefMode2 += lnL_skymodes[(-1,2)]
+                    lambdaRefMode3 = lnL_skymodes[(1,3)]
+                    lambdaRefMode3 += lnL_skymodes[(-1,3)]
+                    # FoM = lnL_skymodes[(-1,2)] - lnL_skymodes[(1,0)] # antipodal mode is most important
+                    FoM = lambdaRefMode1 + lambdaRefMode2 + lambdaRefMode3 - InjMode
+                    # FoM = np.max([lnL_skymodes[(1,1)], lnL_skymodes[(-1,1)], lnL_skymodes[(1,2)], lnL_skymodes[(-1,2)], lnL_skymodes[(1,3)], lnL_skymodes[(-1,3)]]) - lnL_skymodes[(1,0)]
+                else:
+                    raise ValueError("FoM requested: " + FigureOfMerit + " not implemented. Try a different FoM.")
+                FoMOverRange["grid_ys"][Loop2ID][Loop1ID] = FoM
+
+        # Change output to list
+        FoMOverRange["grid_ys"] = FoMOverRange["grid_ys"].tolist()
+
+        # Return to initial values
+        BaseParamDict[Var1] = ReturnValue[Var1]
+        BaseParamDict[Var2] = ReturnValue[Var2]
+
+    else:
+        if FigureOfMerit == 'SkyLocInfer':
+            BaseParamDict.update(InferenceTechkwargs)
+
+        for Var in LoopVars:
+            if FigureOfMerit == 'SkyLocInfer':
+                # Make sure json and output file locations exist
+                LisaBetaPath = os.path.dirname(os.path.realpath(__file__))
+                if not os.path.isdir(os.path.join(LisaBetaPath+"/../inference_param_files/RangeInference_"+Var+"/")):
+                    os.mkdir(os.path.join(LisaBetaPath+"/../inference_param_files/RangeInference_"+Var+"/"))
+                if not os.path.isdir(os.path.join(LisaBetaPath+"/../inference_data/RangeInference_"+Var+"/")):
+                    os.mkdir(os.path.join(LisaBetaPath+"/../inference_data/RangeInference_"+Var+"/"))
+
+            # Extract the loop variable
+            Var_min = ParamDict[Var][0]
+            Var_max = ParamDict[Var][1]
+            Var_nSteps = ParamDict[Var][2]
+            if Var == "maxf" or Var == "M" or Var == "m1" or Var == "m2": #  or Var == "DeltatL_cut":
+                VarArray= np.logspace(np.log10(Var_min), np.log10(Var_max), Var_nSteps)
+            else:
+                VarArray= np.linspace(Var_min, Var_max, Var_nSteps)
+
+            # Create space to output into dictionary
+            FoMOverRange[Var+"_xs"] = VarArray.tolist()
+            FoMOverRange[Var+"_ys"] = []
+
+            for LoopID in range(Var_nSteps):
+                # Change the variable that needs to be changed
+                BaseParamDict[Var] = VarArray[LoopID]
+
+                # Calculate the figure of merit, remove special case where a tested DeltatL_cut is larger than time in detection band
+                [source_param_dict, _ , _ ] = ClassesToParams(source,detector,"Inference", **BaseParamDict)
+                fLow, fHigh = lisa.FrequencyBoundsLISATDI_SMBH(source_param_dict)
+                if Var == "DeltatL_cut" and pytools.funcNewtonianfoft(source_param_dict["m1"], source_param_dict["m2"], -VarArray[LoopID])<fLow:
+                    print("Time cut is larger than detectable life span - setting FoM to 0")
+                    FoM = 0.
+                elif FigureOfMerit == "SNR":
+                    FoMOverRange["FoM"] = "SNR"
+                    FoM = ComputeSNR(source,detector,**BaseParamDict)
+                elif FigureOfMerit == "SkyArea":
+                    FoMOverRange["FoM"] = "SkyArea"
+                    fishercov = GetFisher_smbh(source, detector, **BaseParamDict)
+                    FoM = lisatools.sky_area_cov(fishercov, sq_deg=True, n_sigma=None, prob=0.90)
+                elif FigureOfMerit == "SkyLocInfer":
+                    FoMOverRange["FoM"] = "SkyLocInfer"
+                    # Create the output file name - to change on each iteration so it's clear what injection values are
+                    [source_param_dict, _ , _ ] = ClassesToParams(source,detector,"Inference")
+                    for key in source_param_dict: # Update values here that were modified at run time for speed - note though BaseParamDict also has parameters like thinning etc so can't just use dict.update.
+                        if key in BaseParamDict:
+                            source_param_dict[key] = BaseParamDict[key]
+                    _=source_param_dict.pop(Var, None) # source_param_dict contains all parameter values in this inference run, but Var is not updated, so need to pop
+                    JsonFileName = "RangeInference_"+Var+"/InjValues_" + Var + "_" + str(round(10.*VarArray[LoopID])/10.)
+                    for param,value in source_param_dict.items():
+                        JsonFileName = JsonFileName + "_" + param + "_" + str(round(10.*value)/10.)
+
+                    # Manually write the output file location and get the filepath
+                    [JsonFileAndPath, OutFileLoc, OutFileName] = WriteParamsToJson(source,detector,inference_params,JsonFileName,**BaseParamDict)
+
+                    # Iteratively running inference so no plots pls
+                    DoPlots = False
+                    # Run the inference step which will dump data into the output folder
+                    RunInference(inference_params=inference_params, Plots=DoPlots, OutFileName=OutFileName,JsonFileAndPath=JsonFileAndPath)
+                    # Now need to convert the data to some useful format
+                    FoM = GetPosteriorVal(OutFileLoc+OutFileName) # This is a dictionary of mean, mode, median, quartiles, and standard dev (using mean)
+                elif FigureOfMerit == "SkyModeLikelihoodsBETA":
+                    FoMOverRange["FoM"] = "SkyModeLikelihoodsBETA" # Include beta so later we can include an option to check lamda, psi and other degeneracies.
+                    lnL_skymodes,params_skymode = GetSkyMultiModeProbFromClasses(source, detector, **BaseParamDict)
+                    InjMode = lnL_skymodes[(1,0)]
+                    InjMode += lnL_skymodes[(1,1)]
+                    InjMode += lnL_skymodes[(1,2)]
+                    InjMode += lnL_skymodes[(1,3)]
+                    BetaRefMode = lnL_skymodes[(-1,0)]
+                    BetaRefMode += lnL_skymodes[(-1,1)]
+                    BetaRefMode += lnL_skymodes[(-1,2)]
+                    BetaRefMode += lnL_skymodes[(-1,3)]
+                    FoM = BetaRefMode - InjMode
+                elif FigureOfMerit == "SkyModeLikelihoodsLAMBDA":
+                    FoMOverRange["FoM"] = "SkyModeLikelihoodsLAMBDA" # Include beta so later we can include an option to check lamda, psi and other degeneracies.
+                    lnL_skymodes,params_skymode = GetSkyMultiModeProbFromClasses(source, detector, **BaseParamDict)
+                    InjMode = lnL_skymodes[(1,0)]
+                    InjMode += lnL_skymodes[(-1,0)]
+                    lambdaRefMode1 = lnL_skymodes[(1,1)]
+                    lambdaRefMode1 += lnL_skymodes[(-1,1)]
+                    lambdaRefMode2 = lnL_skymodes[(1,2)]
+                    lambdaRefMode2 += lnL_skymodes[(-1,2)]
+                    lambdaRefMode3 = lnL_skymodes[(1,3)]
+                    lambdaRefMode3 += lnL_skymodes[(-1,3)]
+                    FoM = lambdaRefMode1 + lambdaRefMode2 + lambdaRefMode3 - InjMode
+                    # FoM = lambdaRefMode1 - InjMode
+                else:
+                    raise ValueError("FoM requested: " + FigureOfMerit + " not implemented. Try a different FoM.")
+
+                FoMOverRange[Var+"_ys"].append(FoM)
+
+            # Return to initial value
+            BaseParamDict[Var] = ReturnValue[Var]
+
+    return FoMOverRange
+
+def PlotLikeRatioFoMFromJson(JsonFileAndPath, BF_lim=20., SaveFig=False):
+    """
+    Function to eventually replace the base plot functions in other plot util.
+    Return an axis and figure handle that has the base colour plot for the
+    lambda and beta sky mode replection using log(bayes factor) calculations only.
+    """
+
+    with open(JsonFileAndPath) as f:
+        FoMOverRange = json.load(f)
+    f.close()
+
+    # Set the Bayes limit
+    # For inc vs maxf: beta BF_lim=31, lambda BF_lim=15.5
+    # For inc vs beta: beta BF_lim=15.5, lambda BF_lim= anything less than 11,000
+    # For M vs z: beta BF_lim= between 10.5 and 31, lambda BF_lim= between 50 and several 1000
+
+    # Get the variables
+    Vars = FoMOverRange["LoopVariables"]
+
+    # Check that you loaded a grided FoMOverRange file
+    if not FoMOverRange["IsGrid"]:
+        raise ValueError("Must be a full grid FoMOverRange file, otherwise this code does not work.")
+    else:
+
+        ################### PLOT THE MAIN DATA ###################
+
+        X,Y = np.meshgrid(FoMOverRange[Vars[0]+"_xs"], FoMOverRange[Vars[1]+"_xs"])
+
+        if Vars[0] == "T_obs_end_to_merger":
+            X = X/(60.*60.)
+        if Vars[1] == "T_obs_end_to_merger":
+            Y = Y/(60.*60.)
+
+        if FoMOverRange["FoM"] == "SkyModeLikelihoodsBETA" or FoMOverRange["FoM"] == "SkyModeLikelihoodsLAMBDA":
+            Z = np.log10(abs(np.array(FoMOverRange["grid_ys"])+BF_lim))
+        else:
+            Z = np.log10(FoMOverRange["grid_ys"])
+
+        # Master figure and axes
+        fig, ax = plt.subplots(constrained_layout=True)
+        im = ax.pcolormesh(X, Y, Z, shading='gouraud', vmin=Z.min(), vmax=Z.max())
+        cbar = fig.colorbar(im, ax=ax)
+
+        if Vars[0] == "M":
+            ax.set_xscale('log')
+            plt.xlabel(r'M$_{\mathrm{tot}} \; (M_{\odot})$')
+        elif Vars[0] == "inc":
+            ax.set_xlim([0.,np.pi])
+            plt.xlabel(r'$\iota \; (\mathrm{rad.})$')
+        elif Vars[0] == "maxf":
+            ax.set_xscale('log')
+            plt.xlabel(r'$\mathrm{f}_{\mathrm{max}} \; (\mathrm{Hz})$')
+        elif Vars[0] == "beta":
+            plt.xlabel(r'$\beta_{SSB} \; (\mathrm{rad.})$')
+        elif Vars[0] == "z":
+            plt.xlabel(r'z')
+        elif Vars[0] == "T_obs_end_to_merger":
+            ax.set_xscale('log')
+            plt.xlabel(r'T$_{obstm} \; (\mathrm{hr})$')
+
+        if Vars[1] == "M":
+            ax.set_yscale('log')
+            ax.set_ylabel(r'M$_{\mathrm{tot}} \; (M_{\odot})$')
+        elif Vars[1] == "inc":
+            ax.set_ylabel(r'$\iota \; (\mathrm{rad.})$')
+        elif Vars[1] == "maxf":
+            ax.set_yscale('log')
+            ax.set_ylabel(r'$\mathrm{f}_{\mathrm{max}} \; (\mathrm{Hz})$')
+        elif Vars[1] == "beta":
+            ax.set_ylabel(r'$\beta_{SSB} \; (\mathrm{rad.})$')
+        elif Vars[1] == "z":
+            ax.set_ylabel(r'z')
+        elif Vars[1] == "T_obs_end_to_merger":
+            ax.set_yscale('log')
+            plt.ylabel(r'T$_{obstm} \; (\mathrm{hr})$')
+
+        if FoMOverRange["FoM"] == "SkyModeLikelihoodsBETA":
+            cbar.set_label(r'$\log_{10}(|\mathcal{B}_{\beta}|)$') # (r'$\log_{10}(|\Sigma_{b=0}^{3}\log_e(L_{(-1,b)}) - \log_e(L_{(1,b)})+20|)$')
+        elif FoMOverRange["FoM"] == "SkyModeLikelihoodsLAMBDA":
+            cbar.set_label(r'$\log_{10}(|\mathcal{B}_{\lambda}|)$') # r'$\log_{10}(|\Sigma_{a=1,-1}\log_e(L_{(a,1)}) + \log_e(L_{(a,2)}) + \log_e(L_{(a,3)}) - \log_e(L_{(a,0)})+20|)$')
+        else:
+            cbar.set_label(r'$\log_{10}(\Delta \Omega \; (\mathrm{sq. deg.}))$')
+
+    # Save?
+    if SaveFig:
+        if FoMOverRange["FoM"] == "SkyModeLikelihoodsLAMBDA":
+            plt.savefig("/Users/jonathonbaird/Documents/LabEx_PostDoc/Figs/lnL_skymodes_LambdaReflections_" + Vars[0] + "_" + Vars[1] + "_BF_" + str(BF_lim) + ".png", facecolor='w', transparent=False)
+        elif FoMOverRange["FoM"] == "SkyModeLikelihoodsBETA":
+            plt.savefig("/Users/jonathonbaird/Documents/LabEx_PostDoc/Figs/lnL_skymodes_BetaReflections_" + Vars[0] + "_" + Vars[1] + "_BF_" + str(BF_lim) + ".png", facecolor='w', transparent=False)
+        plt.show()
+    else:
+        return fig, ax
+
+def GetSkyMultiModeProbFromClasses(source, detector, **kwargs):
+    # Get the parameters out of the classes and assign if given in kwargs dict
+    [param_dict, waveform_params, extra_params] = ClassesToParams(source,detector,"Inference",**kwargs)
+
+    # Define the likelihood class if not already existant
+    likelihoodClass = lisa.LikelihoodLISASMBH(param_dict, **waveform_params)
+    return lisatools.func_loglikelihood_skymodes(likelihoodClass)
+
+def GetSkyMultiModeProbFromJson(JsonFileAndPath, **kwargs):
+    # Check that the file type has been added or not to the file path and name
+    if not JsonFileAndPath[-5] == '.':
+        JsonFileAndPath += ".json"
+
+    # Read contents of file
+    with open(JsonFileAndPath, 'r') as input_file:
+        input_params = json.load(input_file)
+
+    # Extract params and complete
+    source_params = input_params['source_params']
+    source_params = pytools.complete_mass_params(source_params)
+    prior_params = input_params['prior_params']
+    input_params['waveform_params'] = inference.waveform_params_json2py(
+                                                input_params['waveform_params'])
+    waveform_params = input_params['waveform_params'].copy()
+
+    # Define the likelihood class if not already existant
+    likelihoodClass = lisa.LikelihoodLISASMBH(source_params, **waveform_params)
+
+    # Return
+    return lisatools.func_loglikelihood_skymodes(likelihoodClass)
+
+def GetFisher_smbh(source, detector, **kwargs):
+    """ Function to grab the fisher cov matrix from lisabeta
+
+    Parameters
+    ---------
+    Source : SYNEX source object.
+
+    Detector : SYNEX detector object.
+
+    freqs=None
+    steps=default_steps
+    list_params=default_list_fisher_params
+    list_fixed_params=[]
+    Lframe=False
+    prior_invcov=None
+    """
+    # Get the parameters out of the classes and assign if given in kwargs dict
+    [param_dict, waveform_params, extra_params] = ClassesToParams(source,detector,"Fisher",**kwargs)
+
+    # Call the fisher function
+    return lisa_fisher.fisher_covariance_smbh(param_dict, **waveform_params)
+
+def GetSMBHGWDetection(source, detector, **kwargs):
+    """ Function to grab the measured (TDI) waveform from a SYNEX binary object and SYNEX GW detector object
+
+    Parameters
+    ---------
+    Source : SYNEX source object.
+
+    Detector : SYNEX detector object.
+    """
+    # Get the parameters out of the classes and assign if given in kwargs dict
+    [param_dict, waveform_params, extra_params] = ClassesToParams(source, detector, "Fisher", **kwargs) # this might need to be changed to 'Base' or something...
+
+    # This is a workaround for flexibility with the input dicts. Not sure how fast it is- to be improved later!
+    s = ' '
+    for key,value in waveform_params.items():
+        if isinstance(value, str):
+            s = s + ', ' +  key + '="' + str(value) + '"'
+        else:
+            s = s + ', ' +  key + '=' + str(value)
+    return eval('lisa.GenerateLISATDI_SMBH(param_dict' + s + ',extra_params=extra_params)')
+
+def GetSMBHGWDetection_FreqSeries(source, detector, freqs=None, **kwargs):
+    """ Function to grab the measured (TDI) waveform from a SYNEX binary object and SYNEX GW detector object
+
+    Parameters
+    ---------
+    Source : SYNEX source object.
+
+    Detector : SYNEX detector object.
+    """
+
+    # Get the parameters out of the classes and assign if given in kwargs dict
+    [param_dict, waveform_params, extra_params] = ClassesToParams(source, detector, "Fisher", **kwargs) # this might need to be changed to 'Base' or something...
+
+    # Generate frequencies if not already specified or if specified as a list of requirements, e.g. ['linear', fmin, fmax] (or something)
+    if freqs is None:
+        freqs = ['linear', None]
+    if not isinstance(freqs, np.ndarray):
+        freqs = GenerateFreqs(freqs, param_dict, **waveform_params)
+
+    # This is a workaround for flexibility with the input dicts. Not sure how fast it is- to be improved later!
+    s = ' '
+    for key,value in waveform_params.items():
+        if isinstance(value, str):
+            s = s + ', ' +  key + '="' + str(value) + '"'
+        else:
+            s = s + ', ' +  key + '=' + str(value)
+    print(s)
+    # return lisa.GenerateLISATDIFreqseries_SMBH(param_dict, freqs,
+    # timetomerger_max=1.0, minf=1e-05, t0=0.0, tref=0.0, phiref=0.0, fref_for_phiref=0.0, fref_for_tref=0.0,
+    # force_phiref_fref=True, toffset=0.0, acc=0.0001, approximant="IMRPhenomHM", DeltatL_cut=14400.0, TDI="TDIAET",
+    # order_fresnel_stencil=0, LISAconst="Proposal", responseapprox="full", frozenLISA=False, TDIrescaled=True,
+    # LISAnoise={'InstrumentalNoise': 'SciRDv1', 'WDbackground': True, 'WDduration': 3.0, 'lowf_add_pm_noise_f0': 0.0,
+    # 'lowf_add_pm_noise_alpha': 2.0)
+    return eval('lisa.GenerateLISATDIFreqseries_SMBH(param_dict, freqs' + s + ')') #  + ', **waveform_params)') # ',extra_params=extra_params)')
+
+def ComputeSNR(source, detector, freqs=None, Lframe=False, ReturnAllVariable=False, **kwargs):
+    # Sort into dictionaries params, freqs
+    [params, waveform_params, extra_params] = ClassesToParams(source,detector,"Fisher",**kwargs)
+
+    if Lframe:
+        raise ValueError('Lframe not implemented yet, sorry.')
+
+    # Parameters
+    m1 = params['m1']
+    m2 = params['m2']
+    M = m1 + m2
+    q = m1 / m2
+    params['M'] = M
+    params['q'] = q
+
+    LISAnoise = waveform_params.pop('LISAnoise', pyLISAnoise.LISAnoiseSciRDv1)
+    TDI = waveform_params.get('TDI', 'TDIAET')
+    TDIrescaled = waveform_params.get('TDIrescaled', True)
+    LISAconst = waveform_params.get('LISAconst', pyresponse.LISAconstProposal)
+
+    # Default frequencies (safe and slow):
+    # linear spacing, adjust deltaf=1/(2T) with T approximate duration
+    if freqs is None:
+        freqs = ['linear', None]
+    if not isinstance(freqs, np.ndarray):
+        freqs = GenerateFreqs(freqs, params, **waveform_params)
+
+    # Generate tdi freqseries
+    tdifreqseries_base = lisa.GenerateLISATDIFreqseries_SMBH(params, freqs, **waveform_params)
+
+    # Compute noises
+    noise_evaluator = pyLISAnoise.initialize_noise(LISAnoise,
+                                        TDI=TDI, TDIrescaled=TDIrescaled,
+                                        LISAconst=LISAconst)
+    Sn1_vals, Sn2_vals, Sn3_vals = pyLISAnoise.evaluate_noise(
+                          LISAnoise, noise_evaluator, freqs,
+                          TDI=TDI, TDIrescaled=TDIrescaled, LISAconst=LISAconst)
+
+    # Modes and channels
+    modes = tdifreqseries_base['modes']
+    channels = ['chan1', 'chan2', 'chan3']
+    Snvals = {}
+    Snvals['chan1'] = Sn1_vals
+    Snvals['chan2'] = Sn2_vals
+    Snvals['chan3'] = Sn3_vals
+    h_full = {}
+    for chan in channels:
+        h_full[chan] = np.zeros_like(freqs, dtype=complex)
+        for lm in modes:
+            h_full[chan] += tdifreqseries_base[lm][chan]
+
+    # Compute SNR
+    # We do not assume that deltaf is constant
+    df = np.diff(freqs)
+    SNR = 0.
+    for chan in channels:
+        SNR += 4*np.sum(df * np.real(h_full[chan] * np.conj(h_full[chan]) / Snvals[chan])[:-1])
+
+    if ReturnAllVariable:
+        return np.sqrt(SNR), freqs, h_full, Snvals
+    else:
+        # wftdi = GetSMBHGWDetection(source, detector, **kwargs)
+        # return lisa.computeSNR(wftdi) # ,LISAconstellation=pyresponse.LISAconstProposal,LISAnoise=pyLISAnoise.LISAnoiseProposal,LDCnoise=None,TDIrescaled=False,Nf=None)
+        return np.sqrt(SNR)
+
+def GenerateFreqs(freqs, params, **waveform_params):
+    """
+    Function to automatiucally generate the frequencies needed for caluclations like SNR.
+
+    Params
+    ------
+        freqs : list
+        Object to specify what kind of frequencies is required. For example:
+            freqs = ['linear', None]
+        requests linear spacing, with no pre-required bounds. The generator will find the total
+        time of the signal from the params and waveform_params dictionaries, and then generate a
+        frequeny range that covers the full waveform.
+
+        params : dict
+        Dictionary of parameters describving the source (mass, spin etc).
+
+        waveform_params : dict
+        Dictionary of parameters needed for waveform generation (approximant, modes, etc.)
+    """
+
+    # Determine (2,2) frequency bounds based on frequency and time limits
+    fLow, fHigh = lisa.FrequencyBoundsLISATDI_SMBH(params, **waveform_params)
+
+    # Set of harmonics to be returned, default for approximants
+    # TODO: add error raising if incompatibility with mode content of approx.
+    modes = waveform_params.get('modes', None)
+    if modes is None:
+        if (not 'approximant' in waveform_params) or waveform_params['approximant']=='IMRPhenomD':
+            modes = [(2,2)]
+        elif waveform_params['approximant']=='IMRPhenomHM':
+            modes = [(2,2), (2,1), (3,3), (3,2), (4,4), (4,3)]
+    mmax = max([lm[1] for lm in modes])
+
+    # fHigh is for (2,2) -- we use one single frequency array for all modes
+    fHigh = mmax/2. * fHigh
+
+    # Format: freqs = ['log', npt], npt=None for auto setting with T
+    if freqs[0]=='log':
+        if freqs[1] is not None:
+            nptlog = int(freqs[1])
+        else:
+            # Estimate length and choose deltaf according to Nyquist
+            # NOTE: No safety margin, so set timetomerger_max must carefully
+            T = pytools.funcNewtoniantoff(params["m1"], params["m2"], fLow)
+            deltaf = 1./(2*T)
+            nptlog = np.ceil(np.log(fHigh/fLow) / np.log(1. + deltaf/fLow))
+        freqs = pytools.logspace(fLow, fHigh, nptlog)
+
+    # Format: freqs = ['linear', deltaf], deltaf=None for auto setting with T
+    if freqs[0]=='linear':
+        if freqs[1] is not None:
+            deltaf = freqs[1]#int(freqs[1])
+        else:
+            # Estimate length and choose deltaf according to Nyquist
+            # NOTE: No safety margin, so set timetomerger_max must carefully
+            T = pytools.funcNewtoniantoff(params["m1"], params["m2"], fLow)
+            deltaf = 1./(2*T)
+        freqs = np.arange(fLow, fHigh, deltaf)
+
+    return freqs
+
+def ComputeDetectorNoise(source, detector, freqs=None, Lframe=False, ReturnAllVariable=False, **kwargs):
+    # Grab the variables from classes
+    [params, waveform_params, extra_params] = ClassesToParams(source,detector,"Fisher",**kwargs)
+
+    LISAnoise = waveform_params.get('LISAnoise', pyLISAnoise.LISAnoiseSciRDv1)
+    TDI = waveform_params.get('TDI', 'TDIAET')
+    TDIrescaled = waveform_params.get('TDIrescaled', True)
+    LISAconst = waveform_params.get('LISAconst', pyresponse.LISAconstProposal)
+
+    # Convert input parameters to either Lframe or SSBframe
+    if not params.get('Lframe', False) and Lframe:
+        params_base = lisatools.convert_SSBframe_to_Lframe(
+                            params,
+                            t0=waveform_params['t0'],
+                            frozenLISA=waveform_params['frozenLISA'])
+    elif params.get('Lframe', False) and not Lframe:
+        params_base = lisatools.convert_Lframe_to_SSBframe(
+                            params,
+                            t0=waveform_params['t0'],
+                            frozenLISA=waveform_params['frozenLISA'])
+    else:
+        params_base = params.copy()
+    params_base = pytools.complete_mass_params(params_base)
+    params_base = pytools.complete_spin_params(params_base)
+
+    # Default frequencies (safe and slow):
+    # linear spacing, adjust deltaf=1/(2T) with T approximate duration
+    if freqs is None:
+        freqs = ['linear', None]
+    # Determine the frequencies to use for the overlaps, if not given as input
+    if not isinstance(freqs, np.ndarray):
+        freqs = GenerateFreqs(freqs, params_base, **waveform_params)
+
+    # Compute noises
+    noise_evaluator = pyLISAnoise.initialize_noise(LISAnoise,
+                                        TDI=TDI, TDIrescaled=TDIrescaled,
+                                        LISAconst=LISAconst)
+    Sn1_vals, Sn2_vals, Sn3_vals = pyLISAnoise.evaluate_noise(
+                          LISAnoise, noise_evaluator, freqs,
+                          TDI=TDI, TDIrescaled=TDIrescaled, LISAconst=LISAconst)
+
+    # Compute derivatives dh
+    Snvals = {}
+    Snvals['chan1'] = Sn1_vals
+    Snvals['chan2'] = Sn2_vals
+    Snvals['chan3'] = Sn3_vals
+
+    detector.Snvals = Snvals
+
+def fmaxFromTimeToMerger(source, detector, T_obs_end_to_merger=4.*60.*60., ReturnVal=False, **kwargs):
+    # Get the relevant waveform data from classes, needed to ensure any other changes variables are propagated
+    [param_dict, waveform_params, _ ] = ClassesToParams(source,detector,"Inference",**kwargs)
+
+    # Calculate the frequency at which the time to merger is equal to what we want
+    F = pytools.funcNewtonianfoft(param_dict["m1"], param_dict["m2"], T_obs_end_to_merger)
+
+    if ReturnVal:
+        # return the calculated value too if requested (used in RunFoMOverRange function)
+        return F
+    else:
+        # Else modify the stored fmax in source class directly
+        source.maxf = F
+
+def ClassesToParams(source, detector, CollectionMethod="Inference",**kwargs): # "Fisher"
+    """ Function to change parameters embedded in the classes and handed to functions
+    in dictionaries, to dictionaries and parameter lists for function calls in lisabeta.
+
+    Parameters
+    ---------
+    Source : SYNEX source object.
+
+    Detector : SYNEX detector object.
+    """
+    # First gather the parameters into the right format to pass to the lisabeta functions
+    param_dict = {
+              "m1": source.m1,                # Redshifted mass of body 1 (solar masses)
+              "m2": source.m2,                # Redshifted mass of body 2 (solar masses)
+              "chi1": source.chi1,            # Dimensionless spin of body 1 (in [-1, 1])
+              "chi2": source.chi2,            # Dimensionless spin of body 2 (in [-1, 1])
+              "Deltat": source.Deltat,        # Frequency at the start of the observations (Hz)
+              "dist": source.dist,            # Luminosity distance (Mpc)
+              "inc": source.inc,              # Inclination angle (rad)
+              "phi": source.phi,              # Observer's azimuthal phase (rad)
+              "lambda": source.lamda,         # Source longitude in SSB-frame (rad)
+              "beta": source.beta,            # Source latitude in SSB-frame (rad)
+              "psi": source.psi,              # Polarization angle (rad)
+              "Lframe": source.Lframe,                 # Params always in Lframe - this is easier for the sampler.
+              }
+
+    # Take out any modification, to these parameters in tge kwargs dict
+    for key, value in kwargs.items():
+        if key in param_dict:
+            param_dict[key] = value
+
+    # Sort out case where z is specified in kwargs
+    if "z" in kwargs:
+        param_dict["dist"] = cosmo.luminosity_distance(kwargs["z"]).to("Mpc").value
+
+    # Sort out case where q and/or M are specified in kwargs
+    if "M" in kwargs and "q" in kwargs:
+        param_dict["m1"] = kwargs["M"]*(kwargs["q"](1.+kwargs["q"]))
+        param_dict["m2"] = kwargs["M"]/(1.+kwargs["q"])
+    elif "M" in kwargs and "m1" in kwargs:
+        param_dict["m2"] = kwargs["M"]-kwargs["m1"]
+    elif "M" in kwargs and "m2" in kwargs:
+        param_dict["m1"] = kwargs["M"]-kwargs["m2"]
+    elif "q" in kwargs and "m1" in kwargs:
+        param_dict["m2"] = kwargs["m1"]/kwargs["q"]
+    elif "q" in kwargs and "m2" in kwargs:
+        param_dict["m1"] = kwargs["q"]*kwargs["m2"]
+    elif "q" in kwargs: # Now cases where only one is specified - take other needed values from source
+        # vary q and keep M the same
+        param_dict["m1"] = source.M*(kwargs["q"]/(1.+kwargs["q"]))
+        param_dict["m2"] = source.M/(1.+kwargs["q"])
+    elif "M" in kwargs:
+        # vary M and keep q the same
+        param_dict["m1"] = kwargs["M"]*source.q/(1.+source.q)
+        param_dict["m2"] = kwargs["M"]/(1.+source.q)
+
+    # Unwrap the positional arguments and override the source and detector values set
+    # source params
+    waveform_params = {}
+    if "timetomerger_max" in kwargs:
+        waveform_params["timetomerger_max"] = kwargs["timetomerger_max"]
+    elif source.timetomerger_max!=None:
+        waveform_params["timetomerger_max"] = source.timetomerger_max                        # Included
+    if "minf" in kwargs:
+        waveform_params["minf"] = kwargs["minf"]
+    elif source.minf!=None:
+        waveform_params["minf"] = source.minf                        # Included
+    if "maxf" in kwargs:
+        waveform_params["maxf"] = kwargs["maxf"]
+    elif source.maxf!=None and not source.DeltatL_cut:
+        waveform_params["maxf"] = source.maxf                        # Included
+    if "t0" in kwargs:
+        waveform_params["t0"] = kwargs["t0"]
+    elif source.t0!=None:
+        waveform_params["t0"] = source.t0                        # Included
+    if "tref" in kwargs:
+        waveform_params["tref"] = kwargs["tref"]
+    elif source.tref!=None:
+        waveform_params["tref"] = source.tref                        # Included
+    if "phiref" in kwargs:
+        waveform_params["phiref"] = kwargs["phiref"]
+    elif source.phiref!=None:
+        waveform_params["phiref"] = source.phiref                        # Included
+    if "fref_for_phiref" in kwargs:
+        waveform_params["fref_for_phiref"] = kwargs["fref_for_phiref"]
+    elif source.fref_for_phiref!=None:
+        waveform_params["fref_for_phiref"] = source.fref_for_phiref                        # Included
+    if "fref_for_tref" in kwargs:
+        waveform_params["fref_for_tref"] = kwargs["fref_for_tref"]
+    elif source.fref_for_tref!=None:
+        waveform_params["fref_for_tref"] = source.fref_for_tref                        # Included
+    if "force_phiref_fref" in kwargs:
+        waveform_params["force_phiref_fref"] = kwargs["force_phiref_fref"]
+    elif source.force_phiref_fref!=None:
+        waveform_params["force_phiref_fref"] = source.force_phiref_fref                        # Included
+    if "toffset" in kwargs:
+        waveform_params["toffset"] = kwargs["toffset"]
+    elif source.toffset!=None:
+        waveform_params["toffset"] = source.toffset                        # Included
+    if "modes" in kwargs:
+        waveform_params["modes"] = kwargs["modes"]
+    elif source.modes!=None:
+        waveform_params["modes"] = source.modes                        # Included
+    if "acc" in kwargs:
+        waveform_params["acc"] = kwargs["acc"]
+    elif source.acc!=None:
+        waveform_params["acc"] = source.acc                        # Included
+    if "approximant" in kwargs:
+        waveform_params["approximant"] = kwargs["approximant"]
+    elif source.approximant!=None:
+        waveform_params["approximant"] = source.approximant                        # Included
+    if "DeltatL_cut" in kwargs:
+        waveform_params["DeltatL_cut"] = kwargs["DeltatL_cut"]
+    elif hasattr(source, "DeltatL_cut"):
+        waveform_params["DeltatL_cut"] = source.DeltatL_cut                        # Included
+    # detector params
+    if "tmin" in kwargs:
+        waveform_params["tmin"] = kwargs["tmin"]
+    elif hasattr(detector, "tmin") and detector.tmin!=None:
+        waveform_params["tmin"] = detector.tmin                        # Included
+    if "tmax" in kwargs:
+        waveform_params["tmax"] = kwargs["tmax"]
+    elif hasattr(detector, "tmax") and detector.tmax!=None:
+        waveform_params["tmax"] = detector.tmax                        # Included
+    if "TDI" in kwargs:
+        waveform_params["TDI"] = kwargs["TDI"]
+    elif hasattr(detector, "TDI") and detector.TDI!=None:
+        waveform_params["TDI"] = detector.TDI                        # Included
+    if "order_fresnel_stencil" in kwargs:
+        waveform_params["order_fresnel_stencil"] = kwargs["order_fresnel_stencil"]
+    elif hasattr(detector, "order_fresnel_stencil") and detector.order_fresnel_stencil!=None:
+        waveform_params["order_fresnel_stencil"] = detector.order_fresnel_stencil                        # Included
+    if "LISAconst" in kwargs:
+        waveform_params["LISAconst"] = kwargs["LISAconst"]
+    elif hasattr(detector, "LISAconst") and detector.LISAconst!=None:
+        waveform_params["LISAconst"] = detector.LISAconst                        # Included
+    if "responseapprox" in kwargs:
+        waveform_params["responseapprox"] = kwargs["responseapprox"]
+    elif hasattr(detector, "responseapprox") and detector.responseapprox!=None:
+        waveform_params["responseapprox"] = detector.responseapprox                        # Included
+    if "frozenLISA" in kwargs:
+        waveform_params["frozenLISA"] = kwargs["frozenLISA"]
+    elif hasattr(detector, "frozenLISA") and detector.frozenLISA!=None:
+        waveform_params["frozenLISA"] = detector.frozenLISA                        # Included
+    if "TDIrescaled" in kwargs:
+        waveform_params["TDIrescaled"] = kwargs["TDIrescaled"]
+    elif hasattr(detector, "TDIrescaled") and detector.TDIrescaled!=None:
+        waveform_params["TDIrescaled"] = detector.TDIrescaled                        # Included
+    if "LISAnoise" in kwargs:
+        waveform_params["LISAnoise"] = kwargs["LISAnoise"]
+    elif hasattr(detector, "LISAnoise") and detector.LISAnoise!=None:
+        waveform_params["LISAnoise"] = detector.LISAnoise                        # Included
+
+
+    # Optional parameters that depend on what method is being called
+    # Need to understand if these are important differences...
+    if CollectionMethod=="Inference":
+        if "fend" in kwargs:
+            waveform_params["fend"] = kwargs["fend"]
+        elif source.fend!=None:
+            waveform_params["fend"] = source.fend
+    elif CollectionMethod=="Fisher":
+        if "tf_method" in kwargs:
+            waveform_params["tf_method"] = kwargs["tf_method"]
+        elif hasattr(source, "tf_method") and source.tf_method!=None:
+            waveform_params["tf_method"] = source.tf_method
+        if "fstart22" in kwargs:
+            waveform_params["fstart22"] = kwargs["fstart22"]
+        elif hasattr(source, "fstart22") and source.fstart22!=None:
+            waveform_params["fstart22"] = source.fstart22
+        if "fend22" in kwargs:
+            waveform_params["fend22"] = kwargs["fend22"]
+        elif hasattr(source, "fend22") and source.fend22!=None:
+            waveform_params["fend22"] = source.fend22
+        if "gridfreq" in kwargs:
+            waveform_params["gridfreq"] = kwargs["gridfreq"]
+        elif hasattr(source, "gridfreq") and source.gridfreq!=None:
+            waveform_params["gridfreq"] = source.gridfreq
+
+    # Extra parameters important for fisher only (?)
+    extra_params={'scale_mode_freq': True, 'use_buggy_LAL_tpeak': False}
+
+    return param_dict, waveform_params, extra_params
+
+def ParamsToClasses(input_params,CollectionMethod="Inference",**kwargs): # "Fisher"
+    """ Function to change parameters embedded in a json saved file of input param files
+    to a source class.
+
+    Parameters
+    ---------
+    input_params : Either a dictionary loaded from a SYNEX generated input param file (json format),
+                   or a string of the path to where to find the SYNEX generated
+                   input param file (json format).
+    """
+    # First check if the input variable is a path to the file or the contents of the file itself
+    if isinstance(input_params,str):
+        # Make sure the end is json oriented and not the data file
+        input_file = input_params.split("inference_data")[0] + "inference_param_files" + input_params.split("inference_data")[-1].split(".")[0] + ".json"
+        with open(json_file, 'r') as f:
+            input_params = json.load(f)
+        f.close()
+
+    # Now form the three sub dictionaries
+    run_params = input_params["run_params"]
+    waveform_params = input_params["waveform_params"]
+    prior_params = input_params["prior_params"]
+    param_dict = input_params["source_params"]
+
+    # Take out any modification, to these parameters in tge kwargs dict
+    for key, value in kwargs.items():
+        if key in param_dict:
+            param_dict[key] = value
+
+    # Sort out case where z is specified in kwargs
+    if "z" in kwargs:
+        param_dict["dist"] = cosmo.luminosity_distance(kwargs["z"]).to("Mpc").value
+
+    # Sort out case where q and/or M are specified in kwargs
+    if "M" in kwargs and "q" in kwargs:
+        param_dict["m1"] = kwargs["M"]*(kwargs["q"](1.+kwargs["q"]))
+        param_dict["m2"] = kwargs["M"]/(1.+kwargs["q"])
+    elif "M" in kwargs and "m1" in kwargs:
+        param_dict["m2"] = kwargs["M"]-kwargs["m1"]
+    elif "M" in kwargs and "m2" in kwargs:
+        param_dict["m1"] = kwargs["M"]-kwargs["m2"]
+    elif "q" in kwargs and "m1" in kwargs:
+        param_dict["m2"] = kwargs["m1"]/kwargs["q"]
+    elif "q" in kwargs and "m2" in kwargs:
+        param_dict["m1"] = kwargs["q"]*kwargs["m2"]
+    elif "q" in kwargs: # Now cases where only one is specified - take other needed values from source
+        # vary q and keep M the same
+        param_dict["m1"] = source.M*(kwargs["q"]/(1.+kwargs["q"]))
+        param_dict["m2"] = source.M/(1.+kwargs["q"])
+    elif "M" in kwargs:
+        # vary M and keep q the same
+        param_dict["m1"] = kwargs["M"]*source.q/(1.+source.q)
+        param_dict["m2"] = kwargs["M"]/(1.+source.q)
+
+    # Unwrap the positional arguments and override the source and detector values set
+    # source params
+    if "timetomerger_max" in kwargs:
+        waveform_params["timetomerger_max"] = kwargs["timetomerger_max"]
+    if "minf" in kwargs:
+        waveform_params["minf"] = kwargs["minf"]
+    if "maxf" in kwargs:
+        waveform_params["maxf"] = kwargs["maxf"]
+    if "t0" in kwargs:
+        waveform_params["t0"] = kwargs["t0"]
+    if "tref" in kwargs:
+        waveform_params["tref"] = kwargs["tref"]
+    if "phiref" in kwargs:
+        waveform_params["phiref"] = kwargs["phiref"]
+    if "fref_for_phiref" in kwargs:
+        waveform_params["fref_for_phiref"] = kwargs["fref_for_phiref"]
+    if "fref_for_tref" in kwargs:
+        waveform_params["fref_for_tref"] = kwargs["fref_for_tref"]
+    if "force_phiref_fref" in kwargs:
+        waveform_params["force_phiref_fref"] = kwargs["force_phiref_fref"]
+    if "toffset" in kwargs:
+        waveform_params["toffset"] = kwargs["toffset"]
+    if "modes" in kwargs:
+        waveform_params["modes"] = kwargs["modes"]
+    if "acc" in kwargs:
+        waveform_params["acc"] = kwargs["acc"]
+    if "approximant" in kwargs:
+        waveform_params["approximant"] = kwargs["approximant"]
+    if "DeltatL_cut" in kwargs:
+        waveform_params["DeltatL_cut"] = kwargs["DeltatL_cut"]
+    # detector params
+    if "tmin" in kwargs:
+        waveform_params["tmin"] = kwargs["tmin"]
+    if "tmax" in kwargs:
+        waveform_params["tmax"] = kwargs["tmax"]
+    if "TDI" in kwargs:
+        waveform_params["TDI"] = kwargs["TDI"]
+    if "order_fresnel_stencil" in kwargs:
+        waveform_params["order_fresnel_stencil"] = kwargs["order_fresnel_stencil"]
+    if "LISAconst" in kwargs:
+        waveform_params["LISAconst"] = kwargs["LISAconst"]
+    if "responseapprox" in kwargs:
+        waveform_params["responseapprox"] = kwargs["responseapprox"]
+    if "frozenLISA" in kwargs:
+        waveform_params["frozenLISA"] = kwargs["frozenLISA"]
+    if "TDIrescaled" in kwargs:
+        waveform_params["TDIrescaled"] = kwargs["TDIrescaled"]
+    if "LISAnoise" in kwargs:
+        waveform_params["LISAnoise"] = kwargs["LISAnoise"]
+
+
+    # Optional parameters that depend on what method is being called
+    # Need to understand if these are important differences...
+    if CollectionMethod=="Inference":
+        if "fend" in kwargs:
+            waveform_params["fend"] = kwargs["fend"]
+    elif CollectionMethod=="Fisher":
+        if "tf_method" in kwargs:
+            waveform_params["tf_method"] = kwargs["tf_method"]
+        if "fstart22" in kwargs:
+            waveform_params["fstart22"] = kwargs["fstart22"]
+        if "fend22" in kwargs:
+            waveform_params["fend22"] = kwargs["fend22"]
+        if "gridfreq" in kwargs:
+            waveform_params["gridfreq"] = kwargs["gridfreq"]
+
+    # Create a dummy source object
+    source_dummy = SYSs.SMBH_Merger(**param_dict)
+
+    # Now update waveform params
+    for field in waveform_params:
+        if hasattr(source_dummy,field):
+            param_dict[field] = waveform_params[field]
+
+    # Now create the real source object to return
+    source = SYSs.SMBH_Merger(**param_dict)
+
+    return source
+
+def PlotLikeRatioFoMFromJsonWithInferenceInlays(JsonFileAndPath, BF_lim=20., SaveFig=False, InlayType="histogram"): # "scatter"
+    # Load data
+    # JsonFileAndPath = "FoMOverRange_SkyModeLikelihoodsLambda_M_z.json" # "FoMOverRange_SkyModeLikelihoodsBeta_inc_maxf.json" # "FoMOverRange_SkyModeLikelihoodsLambda_inc_beta.json" #
+    with open(JsonFileAndPath) as f:
+        FoMOverRange = json.load(f)
+    f.close()
+
+    # Set the Bayes limit
+    # For inc vs maxf: beta BF_lim=31, lambda BF_lim=15.5
+    # For inc vs beta: beta BF_lim=15.5, lambda BF_lim= anything less than 11,000
+    # For M vs z: beta BF_lim= between 10.5 and 31, lambda BF_lim= between 50 and several 1000
+
+    # Get the variables
+    Vars = FoMOverRange["LoopVariables"]
+
+    # Check that you loaded a grided FoMOverRange file
+    if not FoMOverRange["IsGrid"]:
+        raise ValueError("Must be a full grid FoMOverRange file, otherwise this code does not work.")
+    else:
+        ################### PLOT THE MAIS DATA ###################
+
+        X,Y = np.meshgrid(FoMOverRange[Vars[0]+"_xs"], FoMOverRange[Vars[1]+"_xs"])
+        if FoMOverRange["FoM"] == "SkyModeLikelihoodsBETA" or FoMOverRange["FoM"] == "SkyModeLikelihoodsLAMBDA":
+            Z = np.log10(abs(np.array(FoMOverRange["grid_ys"])+BF_lim))
+        else:
+            Z = np.log10(FoMOverRange["grid_ys"])
+
+        # Master figure and axes
+        fig, ax = plt.subplots(constrained_layout=True)
+        im = ax.pcolormesh(X, Y, Z, shading='gouraud', vmin=Z.min(), vmax=Z.max())
+        cbar = fig.colorbar(im, ax=ax)
+
+
+        ################### DEFINE X-VARIABLE INLAYS ###################
+
+        if Vars[0] == "M":
+            ax.set_xscale('log')
+            plt.xlabel(r'M$_{\mathrm{tot}} \; (M_{\odot})$')
+            VarStringForSaveFile = "Mass_"
+
+            # Positioning arguments for inlay inference plots
+            pos_lefts = np.array([0.13, 0.36, 0.61])
+            pos_bottoms = np.array([0.42, 0.45, 0.47])
+            pos_widths = np.array([0.2, 0.2, 0.2])
+            pos_heights = np.array([0.2, 0.2, 0.2])
+
+            # Inference plot files and strings
+            VarsTestedStrs = ["3e6", "1e7", "8e7"]
+            DataFilePath = "/Users/jonathonbaird/Documents/LabEx_PostDoc/SYNEX/inference_data/MassGridTest_NoMpi_"
+            jsonFilePath = "/Users/jonathonbaird/Documents/LabEx_PostDoc/SYNEX/inference_param_files/MassGridTest_NoMpi_"
+
+            # Arrow coords and widths
+            Arrow_xs = [3.e6, 1.e7, 8e7]
+            Arrow_ys = [3., 3., 3.]
+            Arrow_dxs = [2.e6-Arrow_xs[0], 2.e7-Arrow_xs[1], 9.e7-Arrow_xs[2]]
+            Arrow_dys = [5.-Arrow_ys[0], 5.6-Arrow_ys[1], 4.2-Arrow_ys[2]]
+
+            # Record the coord of the inferrence point
+            ax.plot(Arrow_xs, Arrow_ys, 'ro', linestyle='None')
+        elif Vars[0] == "inc":
+            ax.set_xlim([0.,np.pi])
+            plt.xlabel(r'$\iota \; (\mathrm{rad.})$')
+            VarStringForSaveFile = "Inc_"
+
+            # Inference plot files and strings
+            VarsTestedStrs = ["0", "3PiBy6", "Pi"]
+            DataFilePath = "/Users/jonathonbaird/Documents/LabEx_PostDoc/SYNEX/inference_data/IncGridTest_NoMpi_"
+            jsonFilePath = "/Users/jonathonbaird/Documents/LabEx_PostDoc/SYNEX/inference_param_files/IncGridTest_NoMpi_"
+
+            # Arrow coords and widths
+            if Vars[1] == "beta":
+                # Positioning arguments for inlay inference plots
+                pos_lefts = np.array([0.13, 0.36, 0.61])
+                pos_bottoms = np.array([0.42, 0.45, 0.47])
+                pos_widths = np.array([0.2, 0.2, 0.2])
+                pos_heights = np.array([0.2, 0.2, 0.2])
+
+                Arrow_xs = [0.000000002, 3.*np.pi/6., np.pi-0.000000002]
+                Arrow_ys = [-0.6785264548614762, -0.6785264548614762, -0.6785264548614762] # [-3.*np.pi/8., -3.*np.pi/8., -3.*np.pi/8.]
+                Arrow_dxs = [0.2-Arrow_xs[0], 1.8-Arrow_xs[1], 3.-Arrow_xs[2]]
+                Arrow_dys = [-0.45-Arrow_ys[0], -0.41-Arrow_ys[1], -0.32-Arrow_ys[2]]
+            elif Vars[1] == "maxf":
+                # Positioning arguments for inlay inference plots
+                pos_lefts = np.array([0.13, 0.36, 0.61])
+                pos_bottoms = np.array([0.71, 0.71, 0.71])
+                pos_widths = np.array([0.2, 0.2, 0.2])
+                pos_heights = np.array([0.2, 0.2, 0.2])
+
+                Arrow_xs = [0.000000002, 3.*np.pi/6., np.pi-0.000000002]
+                Arrow_ys = [0.5, 0.5, 0.5]
+                Arrow_dxs = [0.2-Arrow_xs[0], 0., 3.-Arrow_xs[2]] # 1.8-Arrow_xs[1]
+                Arrow_dys = [0.2-Arrow_ys[0], 0.2-Arrow_ys[1], 0.2-Arrow_ys[2]]
+
+            # Record the coord of the inferrence point
+            ax.plot(Arrow_xs, Arrow_ys, 'ro', linestyle='None')
+        elif Vars[0] == "maxf":
+            ax.set_xscale('log')
+            plt.xlabel(r'$\mathrm{f}_{\mathrm{max}} \; (\mathrm{Hz})$')
+            VarStringForSaveFile = "Fmax_"
+        elif Vars[0] == "beta":
+            plt.xlabel(r'$\beta_{SSB} \; (\mathrm{rad.})$')
+            VarStringForSaveFile = "Beta_"
+        elif Vars[0] == "z":
+            plt.xlabel(r'z')
+            VarStringForSaveFile = "Red_"
+
+        ################### ADD X-VARIABLE INLAYS ###################
+        # Add arrows
+        for iArrow in range(len(Arrow_xs)):
+            mpl.pyplot.arrow(Arrow_xs[iArrow], Arrow_ys[iArrow], Arrow_dxs[iArrow], Arrow_dys[iArrow], width=0.000001)
+
+        PostVals = {}
+        for i in range(len(VarsTestedStrs)):
+            DataFile = DataFilePath + VarsTestedStrs[i] + ".h5"
+            jsonFile = jsonFilePath + VarsTestedStrs[i] + ".json"
+            DataFileRaw = DataFile[:-3]+"_raw.h5"
+
+            # Make the inference plots from scratch since we don't pass back axes handles in the utils functions
+            DataFileLocAndName = DataFile
+            hist_n_bins=1000
+            [infer_params, inj_param_vals, static_params, meta_data] = read_h5py_file(DataFileLocAndName)
+            # print(inj_param_vals["source_params_Lframe"]["beta"][0], inj_param_vals["source_params_SSBframe"]["beta"][0])
+            if not inj_param_vals: # Raw files at first didn't record this, so make sure it's there...
+                # Get the inj values from the processed data file instead
+                DataFileLocAndName_NotRaw = DataFileLocAndName[:-7] + ".h5"
+                [_,inj_param_vals,_,_] = read_h5py_file(DataFileLocAndName_NotRaw)
+            ndim = len(infer_params.keys())
+            labels = list(infer_params.keys())
+            if np.size(infer_params[labels[0]][0])>1:
+                nsamples = len(infer_params[labels[0]][0])
+            else:
+                nsamples = len(infer_params[labels[0]])
+            print("Posterior sample length: " + str(nsamples) + ", number of infered parameters: " + str(ndim))
+            # Grab data for infered parameters
+            data = np.empty([ndim,nsamples])
+            SampleModes = []
+            for ii in range(ndim):
+                if np.size(infer_params[labels[0]][0])>1:
+                    data[ii][:] = infer_params[labels[ii]][0]
+                else:
+                    data[ii][:] = infer_params[labels[ii]]
+                histn,histbins = np.histogram(data[ii,:], bins=hist_n_bins)
+                histbins = histbins[:-1] + 0.5*(histbins[2]-histbins[1]) # change from left bins edges to middle of bins
+                mode = histbins[histn==max(histn)]
+                if len(mode)>1:
+                    mode = mode[1] # Doe now take the first on the list, but if there are several we need to work out what to do there...
+                SampleModes.append(mode)
+            data = np.transpose(np.array(data)) # should have shape [nsamples, ndim]
+
+            # Get injected values
+            InjParam_InjVals = []
+            for key in infer_params.keys():
+                InjParam_InjVals.append(inj_param_vals["source_params_Lframe"][key][0]) # Lframe is right.
+
+            if InlayType=="scatter":
+                # Scatter plot of labmda and beta posterior chains, marginalized over all other params
+                ax_inlay = plt.axes([pos_lefts[i], pos_bottoms[i], pos_widths[i], pos_heights[i]], facecolor='w')
+                ax_inlay.set_facecolor('yellow')
+                ax_inlay.scatter(data[:,0], data[:,5], marker=".", linestyle="None")
+
+                # Add injected and mode vertical and horizontal lines
+                ax_inlay.axvline(InjParam_InjVals[0], color="green", linestyle=":")
+                ax_inlay.axvline(SampleModes[0], color="blue", linestyle=":")
+                ax_inlay.axhline(InjParam_InjVals[5], color="green", linestyle=":")
+                ax_inlay.axhline(SampleModes[5], color="blue", linestyle=":")
+
+                # Add points at injected and mode values
+                ax_inlay.plot(InjParam_InjVals[0], InjParam_InjVals[5], "sg")
+                ax_inlay.plot(SampleModes[0], SampleModes[5], "sb")
+
+                # Labels and grid
+                plt.grid()
+                ax_inlay.set_xlabel(r'$\beta_{L}$') # (labels[0])
+                ax_inlay.set_ylabel(r'$\lambda_{L}$') # (labels[5])
+            elif InlayType=="histogram":
+                # Histogram of labmda or beta posterior chains, marginalized over all other params
+                ax_inlay = plt.axes([pos_lefts[i], pos_bottoms[i], pos_widths[i], pos_heights[i]], facecolor='w')
+                ax_inlay.set_facecolor('yellow')
+                if FoMOverRange["FoM"] == "SkyModeLikelihoodsBETA":
+                    iiData = 0
+                elif FoMOverRange["FoM"] == "SkyModeLikelihoodsLAMBDA":
+                    iiData = 5
+                ax_inlay.hist(data[:,iiData], 100)
+
+                # Add injected and mode vertical lines
+                ax_inlay.axvline(InjParam_InjVals[iiData], color="green", linestyle=":")
+                ax_inlay.axvline(SampleModes[iiData], color="blue", linestyle=":")
+
+                # Labels
+                if FoMOverRange["FoM"] == "SkyModeLikelihoodsBETA":
+                    ax_inlay.set_xlabel(r'$\beta_{L}$') # (labels[0])
+                elif FoMOverRange["FoM"] == "SkyModeLikelihoodsLAMBDA":
+                    ax_inlay.set_xlabel(r'$\lambda_{L}$') # (labels[5])
+
+            # Move to position
+            plt.xticks([])
+            plt.yticks([])
+
+        ################### DEFINE Y-VARIABLE INLAYS ###################
+
+        if Vars[1] == "M":
+            ax.set_yscale('log')
+            ax.set_ylabel(r'M$_{\mathrm{tot}} \; (M_{\odot})$')
+            VarStringForSaveFile += "Mass"
+        elif Vars[1] == "inc":
+            ax.set_ylabel(r'$\iota \; (\mathrm{rad.})$')
+            VarStringForSaveFile += "Iota"
+        elif Vars[1] == "maxf":
+            ax.set_yscale('log')
+            ax.set_ylabel(r'$\mathrm{f}_{\mathrm{max}} \; (\mathrm{Hz})$')
+            VarStringForSaveFile += "Fmax"
+
+            # Positioning arguments for inlay inference plots
+            pos_lefts = np.array([0.61, 0.39, 0.17])
+            pos_bottoms = np.array([0.18, 0.29, 0.41])
+            pos_widths = np.array([0.2, 0.2, 0.2])
+            pos_heights = np.array([0.2, 0.2, 0.2])
+
+            # Inference plot files and strings
+            VarsTestedStrs = ["4eM4", "2eM3", "3eM2"]
+            DataFilePath = "/Users/jonathonbaird/Documents/LabEx_PostDoc/SYNEX/inference_data/maxfGridTest_NoMpi_"
+            jsonFilePath = "/Users/jonathonbaird/Documents/LabEx_PostDoc/SYNEX/inference_param_files/maxFGridTest_NoMpi_"
+
+            # Arrow coords and widths
+            Arrow_xs = [np.pi/10., np.pi/10., np.pi/10.]
+            Arrow_ys = [4.e-4, 2.e-3, 3.e-2] # [-3.*np.pi/8., 3.*np.pi/8.]
+            Arrow_dxs = [2.2-Arrow_xs[0], 1.2-Arrow_xs[1], 0.3-Arrow_xs[2]] # [2.*np.pi/10.-Arrow_xs[0], 2.5*np.pi/10.-Arrow_xs[1], 2.5*np.pi/10.-Arrow_xs[1]]
+            Arrow_dys = [0.0003, 0.0005, -0.02] # [0.0005-Arrow_ys[0], 0.2-Arrow_ys[1]]
+
+            # Record the coord of the inferrence point
+            ax.plot(Arrow_xs, Arrow_ys, 'ro', linestyle='None')
+        elif Vars[1] == "beta":
+            ax.set_ylabel(r'$\beta_{SSB} \; (\mathrm{rad.})$')
+            VarStringForSaveFile += "Beta"
+
+            # Positioning arguments for inlay inference plots
+            pos_lefts = np.array([0.25, 0.3])
+            pos_bottoms = np.array([0.18, 0.75])
+            pos_widths = np.array([0.2, 0.2])
+            pos_heights = np.array([0.2, 0.2])
+
+            # Inference plot files and strings
+            VarsTestedStrs = ["Neg3PiBy8", "3PiBy8"]
+            DataFilePath = "/Users/jonathonbaird/Documents/LabEx_PostDoc/SYNEX/inference_data/BetaGridTest_NoMpi_"
+            jsonFilePath = "/Users/jonathonbaird/Documents/LabEx_PostDoc/SYNEX/inference_param_files/BetaGridTest_NoMpi_"
+
+            # Arrow coords and widths
+            Arrow_xs = [np.pi/10., np.pi/10.]
+            Arrow_ys = [-0.6785264548614762, 0.30074618202252795] # [-3.*np.pi/8., 3.*np.pi/8.]
+            Arrow_dxs = [2.*np.pi/10.-Arrow_xs[0], 2.5*np.pi/10.-Arrow_xs[1]]
+            Arrow_dys = [-2.*np.pi/8.-Arrow_ys[0], 2.*np.pi/8.-Arrow_ys[1]]
+
+            # Record the coord of the inferrence point
+            ax.plot(Arrow_xs, Arrow_ys, 'ro', linestyle='None')
+        elif Vars[1] == "z":
+            ax.set_ylabel(r'z')
+            VarStringForSaveFile += "Red"
+
+            # Positioning arguments for inlay inference plots
+            pos_lefts = np.array([0.38, 0.38])
+            pos_bottoms = np.array([0.18, 0.75])
+            pos_widths = np.array([0.2, 0.2])
+            pos_heights = np.array([0.2, 0.2])
+
+            # Inference plot files and strings
+            VarsTestedStrs = ["2", "8"]
+            DataFilePath = "/Users/jonathonbaird/Documents/LabEx_PostDoc/SYNEX/inference_data/RedGridTest_NoMpi_"
+            jsonFilePath = "/Users/jonathonbaird/Documents/LabEx_PostDoc/SYNEX/inference_param_files/RedGridTest_NoMpi_"
+
+            # Arrow coords and widths
+            Arrow_xs = [6.e6, 6.e6]
+            Arrow_ys = [2., 8.]
+            Arrow_dxs = [1.3e7-Arrow_xs[0], 1.5e7-Arrow_xs[1]]
+            Arrow_dys = [1.48-Arrow_ys[0], 8.75-Arrow_ys[1]]
+
+            # Record the coord of the inferrence point
+            ax.plot(Arrow_xs, Arrow_ys, 'ro', linestyle='None')
+        if FoMOverRange["FoM"] == "SkyModeLikelihoodsBETA":
+            cbar.set_label(r'$\log_{10}(|\mathcal{B}_{\beta}|)$') # (r'$\log_{10}(|\Sigma_{b=0}^{3}\log_e(L_{(-1,b)}) - \log_e(L_{(1,b)})+20|)$')
+        elif FoMOverRange["FoM"] == "SkyModeLikelihoodsLAMBDA":
+            cbar.set_label(r'$\log_{10}(|\mathcal{B}_{\lambda}|)$') # r'$\log_{10}(|\Sigma_{a=1,-1}\log_e(L_{(a,1)}) + \log_e(L_{(a,2)}) + \log_e(L_{(a,3)}) - \log_e(L_{(a,0)})+20|)$')
+        else:
+            cbar.set_label(r'$\log_{10}(\Delta \Omega \; (\mathrm{sq. deg.}))$')
+
+        ################### ADD Y-VARIABLE INLAYS ###################
+        # Set active axes back to master axes
+        plt.sca(ax)
+
+        # Add arrows
+        for iArrow in range(len(Arrow_xs)):
+            mpl.pyplot.arrow(Arrow_xs[iArrow], Arrow_ys[iArrow], Arrow_dxs[iArrow], Arrow_dys[iArrow], Figure=fig, width=0.000001)
+
+        PostVals = {}
+        for i in range(len(VarsTestedStrs)):
+            DataFile = DataFilePath + VarsTestedStrs[i] + ".h5"
+            jsonFile = jsonFilePath + VarsTestedStrs[i] + ".json"
+            DataFileRaw = DataFile[:-3]+"_raw.h5"
+
+            # Make the inference plots from scratch since we don't pass back axes handles in the utils functions
+            DataFileLocAndName = DataFile
+            hist_n_bins=1000
+            [infer_params, inj_param_vals, static_params, meta_data] = read_h5py_file(DataFileLocAndName)
+            # print(inj_param_vals["source_params_Lframe"]["beta"][0], inj_param_vals["source_params_SSBframe"]["beta"][0])
+            # print(z_at_value(Planck13.distmod, inj_param_vals["source_params_Lframe"]["dist"][0]))
+            # from astropy.cosmology import WMAP9 as cosmo
+            # print(cosmo.luminosity_distance(3.).to("Mpc").value, inj_param_vals["source_params_SSBframe"]["dist"][0])
+            if not inj_param_vals: # Raw files at first didn't record this, so make sure it's there...
+                # Get the inj values from the processed data file instead
+                DataFileLocAndName_NotRaw = DataFileLocAndName[:-7] + ".h5"
+                [_,inj_param_vals,_,_] = read_h5py_file(DataFileLocAndName_NotRaw)
+            ndim = len(infer_params.keys())
+            labels = list(infer_params.keys())
+            if np.size(infer_params[labels[0]][0])>1:
+                nsamples = len(infer_params[labels[0]][0])
+            else:
+                nsamples = len(infer_params[labels[0]])
+            print("Posterior sample length: " + str(nsamples) + ", number of infered parameters: " + str(ndim))
+            # Grab data for infered parameters
+            data = np.empty([ndim,nsamples])
+            SampleModes = []
+            for ii in range(ndim):
+                if np.size(infer_params[labels[0]][0])>1:
+                    data[ii][:] = infer_params[labels[ii]][0]
+                else:
+                    data[ii][:] = infer_params[labels[ii]]
+                histn,histbins = np.histogram(data[ii,:], bins=hist_n_bins)
+                histbins = histbins[:-1] + 0.5*(histbins[2]-histbins[1]) # change from left bins edges to middle of bins
+                mode = histbins[histn==max(histn)]
+                if len(mode)>1:
+                    mode = mode[1] # Doe now take the first on the list, but if there are several we need to work out what to do there...
+                SampleModes.append(mode)
+            data = np.transpose(np.array(data)) # should have shape [nsamples, ndim]
+
+            # Get injected values
+            InjParam_InjVals = []
+            for key in infer_params.keys():
+                InjParam_InjVals.append(inj_param_vals["source_params_Lframe"][key][0]) # Lframe is right.
+
+            if InlayType=="scatter":
+                # Sctter plot of labmda and beta posterior chains, marginalized over all other params
+                ax_inlay = plt.axes([pos_lefts[i], pos_bottoms[i], pos_widths[i], pos_heights[i]], facecolor='w')
+                ax_inlay.set_facecolor('yellow')
+                ax_inlay.scatter(data[:,0], data[:,5], marker=".", linestyle="None")
+
+                # Add injected and mode vertical and horizontal lines
+                ax_inlay.axvline(InjParam_InjVals[0], color="green", linestyle=":")
+                ax_inlay.axvline(SampleModes[0], color="blue", linestyle=":")
+                ax_inlay.axhline(InjParam_InjVals[5], color="green", linestyle=":")
+                ax_inlay.axhline(SampleModes[5], color="blue", linestyle=":")
+
+                # Add points at injected and mode values
+                ax_inlay.plot(InjParam_InjVals[0], InjParam_InjVals[5], "sg")
+                ax_inlay.plot(SampleModes[0], SampleModes[5], "sb")
+
+                # Labels and grid
+                plt.grid()
+                ax_inlay.set_xlabel(r'$\beta_{L}$') # (labels[0])
+                ax_inlay.set_ylabel(r'$\lambda_{L}$') # (labels[5])
+
+            elif InlayType=="histogram":
+                # histogram of labmda or beta posterior chains, marginalized over all other params
+                ax_inlay = plt.axes([pos_lefts[i], pos_bottoms[i], pos_widths[i], pos_heights[i]], facecolor='w')
+                ax_inlay.set_facecolor('yellow')
+                if FoMOverRange["FoM"] == "SkyModeLikelihoodsBETA":
+                    iiData = 0
+                elif FoMOverRange["FoM"] == "SkyModeLikelihoodsLAMBDA":
+                    iiData = 5
+                ax_inlay.hist(data[:,iiData], 100)
+
+                # Add injected and mode vertical lines
+                ax_inlay.axvline(InjParam_InjVals[iiData], color="green", linestyle=":")
+                ax_inlay.axvline(SampleModes[iiData], color="blue", linestyle=":")
+
+                # Labels
+                if FoMOverRange["FoM"] == "SkyModeLikelihoodsBETA":
+                    ax_inlay.set_xlabel(r'$\beta_{L}$') # (labels[0])
+                elif FoMOverRange["FoM"] == "SkyModeLikelihoodsLAMBDA":
+                    ax_inlay.set_xlabel(r'$\lambda_{L}$') # (labels[5])
+
+            # Move to position
+            plt.xticks([])
+            plt.yticks([])
+
+    # Save?
+    if SaveFig:
+        if FoMOverRange["FoM"] == "SkyModeLikelihoodsLAMBDA":
+            plt.savefig("/Users/jonathonbaird/Documents/LabEx_PostDoc/Figs/lnL_skymodes_LambdaReflections_" + VarStringForSaveFile + "_inlays_BF_" + str(BF_lim) + ".png", facecolor='w', transparent=False)
+        elif FoMOverRange["FoM"] == "SkyModeLikelihoodsBETA":
+            plt.savefig("/Users/jonathonbaird/Documents/LabEx_PostDoc/Figs/lnL_skymodes_BetaReflections_" + VarStringForSaveFile + "_inlays_BF_" + str(BF_lim) + ".png", facecolor='w', transparent=False)
+    plt.show()
+
+def PlotLikeRatioFoMFromJsonWithAllInferencePoints(JsonFileAndPath, BF_lim=20., ModeJumpLimit=0.1, SaveFig=False):
+    # Load data
+    # JsonFileAndPath = "FoMOverRange_SkyModeLikelihoodsLambda_M_z.json" # "FoMOverRange_SkyModeLikelihoodsBeta_inc_maxf.json" # "FoMOverRange_SkyModeLikelihoodsLambda_inc_beta.json" #
+    with open(JsonFileAndPath) as f:
+        FoMOverRange = json.load(f)
+    f.close()
+
+    # Set the Bayes limit
+    # For inc vs maxf: beta BF_lim=31, lambda BF_lim=15.5
+    # For inc vs beta: beta BF_lim=15.5, lambda BF_lim= anything less than 11,000
+    # For M vs z: beta BF_lim= between 10.5 and 31, lambda BF_lim= between 50 and several 1000
+
+    # Get the variables
+    Vars = FoMOverRange["LoopVariables"]
+
+    # Check that you loaded a grided FoMOverRange file
+    if not FoMOverRange["IsGrid"]:
+        raise ValueError("Must be a full grid FoMOverRange file, otherwise this code does not work.")
+    else:
+        ################### PLOT THE MAIN DATA ###################
+
+        X,Y = np.meshgrid(FoMOverRange[Vars[0]+"_xs"], FoMOverRange[Vars[1]+"_xs"])
+        if FoMOverRange["FoM"] == "SkyModeLikelihoodsBETA" or FoMOverRange["FoM"] == "SkyModeLikelihoodsLAMBDA":
+            Z = np.log10(abs(np.array(FoMOverRange["grid_ys"])+BF_lim))
+        else:
+            Z = np.log10(FoMOverRange["grid_ys"])
+
+        # Master figure and axes
+        fig, ax = plt.subplots(constrained_layout=True)
+        im = ax.pcolormesh(X, Y, Z, shading='gouraud', vmin=Z.min(), vmax=Z.max())
+        cbar = fig.colorbar(im, ax=ax)
+
+        # Get the path for lisabeta to coordinate search for inference data
+        import os
+        LisaBetaPath = os.path.dirname(os.path.realpath(__file__))
+        InfDataPath = LisaBetaPath + "/../inference_data/"
+        jsonFilesPath = LisaBetaPath+"/../inference_param_files/"
+
+        ################### DEFINE X-VARIABLE INLAYS ###################
+        import glob
+        if Vars[0] == "M":
+            ax.set_xscale('log')
+            plt.xlabel(r'M$_{\mathrm{tot}} \; (M_{\odot})$')
+            VarStringForSaveFile = "Mass_"
+
+            # Get the values tested
+            GridJsons = glob.glob(jsonFilesPath+"MassGridTest_NoMpi_*.json")
+        elif Vars[0] == "inc":
+            ax.set_xlim([0.,np.pi])
+            plt.xlabel(r'$\iota \; (\mathrm{rad.})$')
+            VarStringForSaveFile = "Inc_"
+
+            # Get the values tested
+            GridJsons = glob.glob(jsonFilesPath+"IncGridTest_NoMpi_*.json")
+        elif Vars[0] == "maxf":
+            ax.set_xscale('log')
+            plt.xlabel(r'$\mathrm{f}_{\mathrm{max}} \; (\mathrm{Hz})$')
+            VarStringForSaveFile = "Fmax_"
+
+            # Get the values tested
+            GridJsons = glob.glob(jsonFilesPath+"maxfGridTest_NoMpi_*.json")
+        elif Vars[0] == "beta":
+            plt.xlabel(r'$\beta_{SSB} \; (\mathrm{rad.})$')
+            VarStringForSaveFile = "Beta_"
+
+            # Get the values tested
+            GridJsons = glob.glob(jsonFilesPath+"BetaGridTest_NoMpi_*.json")
+        elif Vars[0] == "z":
+            plt.xlabel(r'z')
+            VarStringForSaveFile = "Red_"
+
+            # Get the values tested
+            GridJsons = glob.glob(jsonFilesPath+"RedGridTest_NoMpi_*.json")
+
+        ################### DEFINE Y-VARIABLE Points ###################
+
+        if Vars[1] == "M":
+            ax.set_yscale('log')
+            ax.set_ylabel(r'M$_{\mathrm{tot}} \; (M_{\odot})$')
+            VarStringForSaveFile += "Mass"
+
+            # Get the values tested
+            [GridJsons.append(FileString) for FileString in glob.glob(jsonFilesPath+"MassGridTest_NoMpi_*.json")]
+        elif Vars[1] == "inc":
+            ax.set_ylabel(r'$\iota \; (\mathrm{rad.})$')
+            VarStringForSaveFile += "Iota"
+
+            # Get the values tested
+            [GridJsons.append(FileString) for FileString in glob.glob(jsonFilesPath+"IncGridTest_NoMpi_*.json")]
+        elif Vars[1] == "maxf":
+            ax.set_yscale('log')
+            ax.set_ylabel(r'$\mathrm{f}_{\mathrm{max}} \; (\mathrm{Hz})$')
+            VarStringForSaveFile += "Fmax"
+
+            # Get the values tested
+            [GridJsons.append(FileString) for FileString in glob.glob(jsonFilesPath+"maxfGridTest_NoMpi_*.json")]
+        elif Vars[1] == "beta":
+            ax.set_ylabel(r'$\beta_{SSB} \; (\mathrm{rad.})$')
+            VarStringForSaveFile += "Beta"
+
+            # Get the values tested
+            [GridJsons.append(FileString) for FileString in glob.glob(jsonFilesPath+"BetaGridTest_NoMpi_*.json")]
+        elif Vars[1] == "z":
+            ax.set_ylabel(r'z')
+            VarStringForSaveFile += "Red"
+
+            # Get the values tested
+            [GridJsons.append(FileString) for FileString in glob.glob(jsonFilesPath+"RedGridTest_NoMpi_*.json")]
+        if FoMOverRange["FoM"] == "SkyModeLikelihoodsBETA":
+            cbar.set_label(r'$\log_{10}(|\mathcal{B}_{\beta}|)$') # (r'$\log_{10}(|\Sigma_{b=0}^{3}\log_e(L_{(-1,b)}) - \log_e(L_{(1,b)})+20|)$')
+        elif FoMOverRange["FoM"] == "SkyModeLikelihoodsLAMBDA":
+            cbar.set_label(r'$\log_{10}(|\mathcal{B}_{\lambda}|)$') # r'$\log_{10}(|\Sigma_{a=1,-1}\log_e(L_{(a,1)}) + \log_e(L_{(a,2)}) + \log_e(L_{(a,3)}) - \log_e(L_{(a,0)})+20|)$')
+        else:
+            cbar.set_label(r'$\log_{10}(\Delta \Omega \; (\mathrm{sq. deg.}))$')
+
+
+        ################### Get the values of each point requested ###################
+
+        VarsTestedStrs = [(GridJson.split('_')[-1]).split('.')[0] for GridJson in GridJsons]
+        Gridh5s = [str(InfDataPath + '_'.join((GridJson.split('/')[-1]).split('_')[:-1]) + "_" + (GridJson.split('_')[-1]).split('.')[0] + ".h5") for GridJson in GridJsons]
+        TestedVals_xs = []
+        TestedVals_ys = []
+        PointColours = []
+        for iifile in range(len(GridJsons)):
+            # Load rach json file that stored param values of each tested point
+            with open(GridJsons[iifile]) as f:
+                GridJsonData = json.load(f)
+            f.close()
+
+            #Grab the right data depending on which parameters are being plotted
+            if Vars[0]=="M":
+                TestedVals_xs.append(GridJsonData["source_params"]["m1"]+GridJsonData["source_params"]["m2"])
+            elif Vars[0]=="z":
+                # TestedVals_xs.append(GridJsonData["source_params"]["dist"])
+                TestedVals_xs.append(z_at_value(cosmo.luminosity_distance, GridJsonData["source_params"]["dist"]*u.Mpc))
+            elif Vars[0]=="maxf":
+                TestedVals_xs.append(GridJsonData["waveform_params"]["maxf"])
+            else:
+                TestedVals_xs.append(GridJsonData["source_params"][Vars[0]])
+
+            if Vars[1]=="M":
+                TestedVals_ys.append(GridJsonData["source_params"]["m1"]+GridJsonData["source_params"]["m2"])
+            elif Vars[1]=="z":
+                # TestedVals_ys.append(GridJsonData["source_params"]["dist"])
+                TestedVals_ys.append(z_at_value(cosmo.luminosity_distance, GridJsonData["source_params"]["dist"]*u.Mpc))
+            elif Vars[1]=="maxf":
+                TestedVals_ys.append(GridJsonData["waveform_params"]["maxf"])
+            else:
+                TestedVals_ys.append(GridJsonData["source_params"][Vars[1]])
+
+            # Grab an estimate of the posterior modes to check if they are degenerate in either lambda or beta
+            PosteriorStats = GetPosteriorStats(Gridh5s[iifile], ModeJumpLimit=ModeJumpLimit) # LogLikeJumpLimit=BF_lim) #
+
+            if len(PosteriorStats["beta"]["mode"]) == 1 and len(PosteriorStats["lambda"]["mode"]) == 1:
+                PointColours.append("black")
+            elif len(PosteriorStats["beta"]["mode"]) > 1 and len(PosteriorStats["lambda"]["mode"]) == 1:
+                PointColours.append("blue")
+            elif len(PosteriorStats["beta"]["mode"]) == 1 and len(PosteriorStats["lambda"]["mode"]) > 1:
+                PointColours.append("green")
+            elif len(PosteriorStats["beta"]["mode"]) > 1 and len(PosteriorStats["lambda"]["mode"]) > 1:
+                PointColours.append("red")
+
+
+        ################### ADD points ###################
+        from itertools import compress
+        iiToScatter = [PointColour=="black" for PointColour in PointColours]
+        ax.scatter(list(compress(TestedVals_xs, iiToScatter)), list(compress(TestedVals_ys, iiToScatter)),
+                    c="black", marker='o', label=r'1-mode: No ref.')
+        iiToScatter = [PointColour=="blue" for PointColour in PointColours]
+        ax.scatter(list(compress(TestedVals_xs, iiToScatter)), list(compress(TestedVals_ys, iiToScatter)),
+                    c="blue", marker='o', label=r'2-mode: $\beta$ ref.')
+        iiToScatter = [PointColour=="green" for PointColour in PointColours]
+        ax.scatter(list(compress(TestedVals_xs, iiToScatter)), list(compress(TestedVals_ys, iiToScatter)),
+                    c="green", marker='o', label=r'4-mode: $\lambda$ ref.')
+        iiToScatter = [PointColour=="red" for PointColour in PointColours]
+        ax.scatter(list(compress(TestedVals_xs, iiToScatter)), list(compress(TestedVals_ys, iiToScatter)),
+                    c="red", marker='o', label=r'8-mode: $\beta$ and $\lambda$ ref.')
+        ax.legend()
+
+    # Save?
+    if SaveFig:
+        if FoMOverRange["FoM"] == "SkyModeLikelihoodsLAMBDA":
+            plt.savefig("/Users/jonathonbaird/Documents/LabEx_PostDoc/Figs/lnL_skymodes_LambdaReflections_" + VarStringForSaveFile + "_Points_BF_" + str(BF_lim) + ".png", facecolor='w', transparent=False)
+        elif FoMOverRange["FoM"] == "SkyModeLikelihoodsBETA":
+            plt.savefig("/Users/jonathonbaird/Documents/LabEx_PostDoc/Figs/lnL_skymodes_BetaReflections_" + VarStringForSaveFile + "_Points_BF_" + str(BF_lim) + ".png", facecolor='w', transparent=False)
+    plt.show()
+
+def PlotTilesArea(TileJsonFile,n_tiles=10):
+    """
+    Function to plot a sample of tiles from a json file with a dictionary of tiles
+    for a given area
+    """
+    # Load Tile dictionary
+    with open(TileJsonFile, 'r') as f:
+        TileDict = json.load(f)
+    f.close()
+    from matplotlib.patches import Rectangle
+
+    # Set the default color cycle
+    TileColor=["#1f77b4", "#ff7f0e", "#2ca02c", "#d62728", "#9467bd", "#8c564b", "#e377c2", "#7f7f7f", "#bcbd22", "#17becf"]
+    n_tile_colours = 10
+
+    # Initiate plot
+    # fig, ax = plt.subplots()
+
+    # Get background data for liklihoods
+    fig, InjParam_InjVals, SampleModes, X, lambda_bins, Y, beta_bins, Z = PlotInferenceLambdaBeta(TileDict["LISA Data File"], bins=50, SkyProjection=False, SaveFig=False, return_data=True)
+    # fig = PlotInferenceLambdaBeta(TileDict["LISA Data File"], bins=50, SkyProjection=False, SaveFig=False, return_data=True)
+    ax = plt.gca()
+    # plt.show()
+
+    # Add the liklihood values as a heat map first
+    # print(lambda_bins[0], lambda_bins[-1], beta_bins[0], beta_bins[-1])
+    # im = plt.imshow(
+    # Z,
+    # extent=(lambda_bins[0], lambda_bins[-1], beta_bins[0], beta_bins[-1]),
+    # origin='lower')
+    # fig.colorbar(im)
+
+    # Add n_tiles tiles
+    for ii in range(1,n_tiles+1):
+        x_lower = TileDict[str(ii)]["lambda_range"][0]
+        y_lower = TileDict[str(ii)]["beta_range"][0]
+        x_upper = TileDict[str(ii)]["lambda_range"][1]
+        y_upper = TileDict[str(ii)]["beta_range"][1]
+        width = x_upper-x_lower
+        height = y_upper-y_lower
+        if ii<n_tile_colours:
+            ax.add_patch(Rectangle((x_lower, y_lower), width, height, linewidth=1,
+                             facecolor="none", edgecolor=TileColor[ii]))
+        else:
+            ax.add_patch(Rectangle((x_lower, y_lower), width, height, linewidth=1,
+                             facecolor="none", edgecolor=TileColor[ii%n_tile_colours]))
+
+    # Formatting stuff
+    plt.xlabel("RA [rad]")
+    plt.ylabel("Dec [rad]")
+    plt.xlim([-np.pi,np.pi])
+    plt.ylim([-np.pi/2.,np.pi/2.])
+    plt.show()
+
+def CreateSkyMapStruct(go_params,FileName=None):
+    """
+    Create a sky_map dictionary either from a lisabeta posterior h5 file, or from
+    a saved skymap file (in .fits file containing an astropy table of pixel probs only)
+
+    Params:
+            Method = string
+                Either "from_lisabeta_posteriors" to load from lisabeta posteriors in h5
+                file and calculate the picels etc from scratch
+
+                Or "from_skymap_file" to load a previously saved skymap file, and then
+                run the gwemopt function to check the skymap_truct and go_params
+                are coherent in pixel number, nsides, etc. Here you can load a
+                saved skymap and alter it too using kwargs... But still have to code
+                this option...
+    """
+    # Case where no file is specified
+    if FileName==None:
+        FileName = go_params["skymap"]
+        # Add extension if not already included
+        if FileName[-5:]!='.fits':
+            FileName = FileName+'.fits'
+            go_params["skymap"] = FileName
+
+    # Check that input args are compatible...
+    method=None
+    if FileName[-5:]==".fits":
+        method="from_skymap_file"
+    else:
+        method="from_lisabeta_posteriors"
+
+    # Check if we are ok to proceed...
+    if method==None:
+        raise ValueError("If you are trying to load from fits file, you must either not specify FileName, or make sure to include the '.fits' extension in FileName, otherwise we assume you want to load lisabeta posteriors and create a map_struct from that...")
+
+    if method=="from_lisabeta_posteriors":
+        go_params,map_struct=CreateSkyMapStructFromLisabetaPosteriors(FileName,go_params)
+    elif method=="from_skymap_file": # keep this as an input option so we can include more later if we want...
+        map_struct=None
+
+    # Run through the GWEMOPT checker for compataboility between go_params and sky_map. Can apply rotations and other things here - TO INCLUDE LATER
+    map_struct=gou.read_skymap(go_params,is3D=False,map_struct=map_struct)
+    print(type(map_struct),type(go_params))
+
+    return go_params,map_struct
+
+def CreateSkyMapStructFromLisabetaPosteriors(FileName,go_params):
+    # Get the data and json filenames
+    _,FileLocAndName = CompleteLisabetaDataAndJsonFileNames(FileName)
+
+    # Read in data from file
+    [infer_params, _, _, _] = read_h5py_file(FileLocAndName)
+    labels = ["lambda","beta"]
+    if np.size(infer_params[labels[0]][0])>1:
+        nsamples = len(infer_params["lambda"][0])
+    else:
+        nsamples = len(infer_params["lambda"])
+
+    # Get pixel locations from healpy params
+    npix = hp.nside2npix(go_params["nside"])
+    pix_thetas, pix_phis = hp.pix2ang(go_params["nside"], np.arange(npix))
+    pix_ras = np.rad2deg(pix_phis) # Ra and Dec for pix are stored in map_struct in degrees NOT radians
+    pix_decs = np.rad2deg(0.5*np.pi - pix_thetas)
+    pixels_numbers=hp.ang2pix(go_params["nside"], pix_thetas, pix_phis)
+
+    # Convert post angles to theta,phi
+    post_phis = infer_params["lambda"]+np.pi
+    post_thetas = np.pi/2.-infer_params["beta"]
+    post_pix = hp.ang2pix(go_params["nside"],post_thetas,post_phis)
+
+    # Probabilities of pixels
+    probs,bin_edges = np.histogram(post_pix, bins=np.arange(npix+1), density=True)
+
+    # Make the dictionary
+    map_struct = {"prob":probs,
+                  "ra":pix_ras,
+                  "dec":pix_decs}
+
+    # Get additional data required by GWEMOPT
+    sort_idx = np.argsort(map_struct["prob"])[::-1]
+    csm = np.empty(len(map_struct["prob"]))
+    csm[sort_idx] = np.cumsum(map_struct["prob"][sort_idx])
+    map_struct["cumprob"] = csm
+    map_struct["ipix_keep"] = np.where(csm <= 1.)[0] # params["iterativeOverlap"])[0]
+    pixarea = hp.nside2pixarea(go_params["nside"])
+    pixarea_deg2 = hp.nside2pixarea(go_params["nside"], degrees=True)
+    map_struct["pixarea"] = pixarea
+    map_struct["pixarea_deg2"] = pixarea_deg2
+
+    # Save to file
+    SkyMapFileName = FileLocAndName.split("inference_data")[0] + 'Skymap_files' + FileLocAndName.split("inference_data")[-1]
+    SkyMapFileName = SkyMapFileName[:-3] + '.fits'
+    go_params,map_struct = WriteSkymapToFile(go_params,map_struct,SkyMapFileName)
+
+    return go_params,map_struct
+
+def WriteSkymapToFile(go_params,map_struct,SkyMapFileName):
+    """
+    Note: filename is JUST the name without the path- the path is calculated in situ.
+    """
+    from ligo.skymap.io.hdf5 import write_samples
+    from astropy.table import Table, Column
+    import os.path
+    table = Table([
+        Column(map_struct["prob"], name='prob'), # , meta={'vary': FIXED}),
+        ])
+
+    # get path and check filename...
+    # TO DO: Check that the subdirectories after Skymap_files exist, and create them if not.
+    # TO DO: seperate this into a helper function to check the path of the skymap files.... Can also do this for tile functions?
+    if len(SkyMapFileName.split("Skymap_files"))==1:
+        print("WARNING: Skymap filename does not indicate to store in .../SYNEX/Skymap_files/ - adding this path to filename provided...")
+        SkyMapFileName = os.path.dirname(os.path.realpath(__file__)).split("SYNEX")[0] + "SYNEX/Skymap_files/" + SkyMapFileName
+    if SkyMapFileName[-5:]!='.fits':
+        SkyMapFileName = SkyMapFileName+'.fits'
+
+    # Write to fits file
+    kwargs={}
+    write_samples(table, SkyMapFileName, metadata=None, overwrite=True, **kwargs)
+
+    # update the filename stored in go_params
+    go_params["skymap"] = SkyMapFileName
+
+    return go_params,map_struct
+
+def CompleteLisabetaDataAndJsonFileNames(FileName):
+    """
+    Function to give back the json and h5 filenames complete with paths
+    based on a single input Filename that could be to either json or h5
+    file, with or without full path to file.
+
+    This could be done just by reading in the json file and returning it
+    and the saved datafile path inside... Something feels faster about
+    avoiding reading in jsons and just manipulating strings though, and
+    since we want to apply this code to an optimization routine I am
+    starting to avoid too much overhead per loop...
+
+    TO DO: Add checks that the subdirectories exist in both inference_param_files and
+    inference_data files, and create them if not.
+    """
+
+    # Find paths to data and json files
+    LisabetaJsonPath = os.path.dirname(os.path.realpath(__file__)).split("SYNEX")[0] + "SYNEX/inference_param_files"
+    LisabetaDataPath = os.path.dirname(os.path.realpath(__file__)).split("SYNEX")[0] + "SYNEX/inference_data"
+
+    # Figure out if its a json or h5 filename
+    if FileName[-3]==".":
+        JsonFileLocAndName = FileName[:-3] + '.json'
+        H5FileLocAndName = FileName
+    elif FileName[-5]==".":
+        JsonFileLocAndName = FileName
+        H5FileLocAndName = FileName[:-5] + '.h5'
+    else:
+        JsonFileLocAndName = FileName[:-3] + '.json'
+        H5FileLocAndName = FileName[:-5] + '.h5'
+
+    # Add file path if only the filenames specified
+    bool_vec = [len(FileName.split("inference_param_files"))==1,len(FileName.split("inference_data"))==1]
+    if bool_vec[0] and bool_vec[1]:
+        H5FileLocAndName = LisabetaDataPath + H5FileLocAndName
+        JsonFileLocAndName = LisabetaJsonPath + JsonFileLocAndName
+    elif bool_vec[0] and not bool_vec[1]:
+        JsonFileLocAndName = LisabetaJsonPath + JsonFileLocAndName.split("inference_data")[-1]
+    elif not bool_vec[0] and bool_vec[1]:
+        H5FileLocAndName = LisabetaDataPath + H5FileLocAndName.split("inference_param_files")[-1]
+
+    return JsonFileLocAndName,H5FileLocAndName
+
+def RunPSO(source, detector, fitness_function=None, N=50, w=0.8, c_1=1, c_2=1, auto_coef=True, max_iter=100, NumSwarms=1, priors=None, **kwargs):
+    print("Initializing Swarm(s)...")
+    PSO_Classes = [PSO(fitness_function, priors=priors,N=N, w=w, c_1=c_1, c_2=c_2,
+                       max_iter=max_iter, auto_coef=True) for iSwarm in range(NumSwarms)]
+    PSO_IsRunning = [PSO_Class.is_running for PSO_Class in PSO_Classes]
+
+    # Pre-run output
+    print("Running PSO... ")
+    ProgressBarText = "PSO progress"
+    StartProgress(ProgressBarText)
+
+    # Run
+    while all(PSO_IsRunning):
+        # Step each swarm forward 1 generation at a time
+        for PSO_Class in PSO_Classes:
+            PSO_Class.next()
+        if PSO_Classes[0].iter % 10 == 0:
+            # Plot snapshot
+            PlotPSOSnapshot(PSO_Classes)
+            # Output progress bar
+            progress = 100.*PSO_Classes[0].iter/PSO_Classes[0].max_iter
+            UpdateProgress(progress)
+
+        # Update condition list for outer while loop
+        PSO_IsRunning = [PSO_Class.is_running for PSO_Class in PSO_Classes]
+
+    # Close progress bar
+    EndProgress()
+
+    # print the final variable values
+    iSwarm = 1
+    for PSO_Class in PSO_Classes:
+        OutStr = "Swarm " + str(iSwarm) + "/" + str(NumSwarms) + " optimal loc: " + str(PSO_Class.g_best)
+        OutStr += ", " + PSO_Class.__str__()
+        print(OutStr)
+        iSwarm += 1
+
+def PlotPSOSnapshot(PSO_Classes):
+    surf_xs = np.linspace(-5.,5.,20)
+    surf_ys = np.linspace(-5.,5.,20)
+    surf_X, surf_Y = np.meshgrid(surf_xs, surf_ys)
+    particles_surf = [[x,y] for x,y in zip(np.ndarray.flatten(surf_X), np.ndarray.flatten(surf_Y))]
+    surf_Z = PSO_Classes[0].fitness_function(particles_surf)
+    N_surf = len(particles_surf)
+    surf_Z = np.reshape(surf_Z,[int(np.sqrt(N_surf)),int(np.sqrt(N_surf))])
+
+    # Plot the surface.
+    fig, ax = plt.subplots() # subplot_kw={"projection": "3d"})
+    plt.contour(surf_X, surf_Y, surf_Z, 20, cmap='RdGy');
+    # surf = ax.plot_surface(surf_X, surf_Y, surf_Z, linewidth=0, antialiased=False, cmap=mpl.cm.coolwarm,)
+
+    # Extract particle positions for each swarm
+    for PSO_Class in PSO_Classes:
+        parts = PSO_Class.particles
+        Vels = PSO_Class.velocities
+        FuncVals = PSO_Class.fitness_function(PSO_Class.particles)
+
+        # Plot particles
+        ax.scatter(parts[:,0], parts[:,1], s=2.5) # s=FuncVals,
+        # ax.scatter(parts[:,0], parts[:,1], FuncVals, s=2.5) # c="black",
+
+    # Show
+    plt.show()
+
+class PSO:
+    def __init__(self, fitness_function, particles=None, velocities=None, priors=None,
+                 N=100,w=0.8, c_1=1, c_2=1, max_iter=100, auto_coef=True):
+
+        # Set the class variables
+        self.N = N # Number of particles in swarm
+        self.ndim = len(priors["infer_params"]) # Number of params defining search volume
+        self.w = w # Particle inertia
+        self.c_1 = c_1 # Cognitive coefficient
+        self.c_2 = c_2 # Social coefficient
+        self.auto_coef = auto_coef # Adapt coefficient at each generation
+        self.max_iter = max_iter # Max number of generations (iterations of search)
+        self.priors = priors # Dictionary of prior ranges and priors matching prior dict for lisabeta
+        if isinstance(self.priors, dict):
+            self.params_range = np.array(self.priors["params_range"]) # ndim by 2 np.array
+            self.SearchWidths = np.array([u-l for l,u in self.params_range]) # ndim np.array
+
+        # Initiate particles and velocities if not already done
+        if all([particles==None, velocities==None, priors==None]):
+            raise ValueError("To initiate PSO you need to specify either particles and velocities, or priors")
+        elif all([particles==None, velocities==None, isinstance(self.priors, dict)]):
+            # Stochastic particle initial positions and velocities (within prior bounds for each dimension)
+            particles = []
+            velocities = []
+            for idim in range(self.ndim):
+                partiles_dim = self.SearchWidths[idim]*(np.random.random(self.N)-0.5)*0.9 # factor 0.9 to initialize far enough from the boundary to stop stray particles
+                particles.append(partiles_dim)
+                vel_xs = self.SearchWidths[idim]*0.000001*(np.random.random(self.N)-0.5) # Initial velocity doesnt seem to change much the test runs
+                velocities.append(vel_xs)
+            particles = np.reshape(np.array(particles),(self.N,self.ndim))
+            velocities = np.reshape(np.array(velocities),(self.N,self.ndim))
+
+        # Store as class variables
+        self.particles = particles
+        self.velocities = velocities
+        self.fitness_function = fitness_function
+
+        # Initiate local and global best estimates
+        self.p_bests = self.particles
+        self.p_bests_values = self.fitness_function(self.particles)
+        self.g_best = self.p_bests[0]
+        self.g_best_value = self.p_bests_values[0]
+        self.update_bests()
+
+        # Set some runtime variables
+        self.iter = 0
+        self.is_running = True
+        self.update_coef()
+
+    def __str__(self):
+        return f'[{self.iter}/{self.max_iter}] $w$:{self.w:.3f} - $c_1$:{self.c_1:.3f} - $c_2$:{self.c_2:.3f}'
+
+    def next(self):
+        if self.iter > 0:
+            self.move_particles()
+            self.update_bests()
+            self.update_coef()
+
+        self.iter += 1
+        self.is_running = self.is_running and self.iter < self.max_iter
+
+        return self.is_running
+
+    def update_coef(self):
+        if self.auto_coef:
+            t = self.iter
+            n = self.max_iter
+            self.w = (0.4/n**2) * (t - n) ** 2 + 0.4
+            self.c_1 = -3 * t / n + 3.5
+            self.c_2 =  3 * t / n + 0.5
+
+    def move_particles(self):
+
+        # add inertia
+        new_velocities = self.w * self.velocities
+
+        # add cognitive component
+        r_1 = np.random.random(self.N)
+        r_1 = np.tile(r_1[:, None], (1, self.ndim))
+
+        new_velocities += self.c_1 * r_1 * (self.p_bests - self.particles)/self.SearchWidths
+
+        # add social component
+        r_2 = np.random.random(self.N)
+        r_2 = np.tile(r_2[:, None], (1, self.ndim))
+        g_best = np.tile(self.g_best[None], (self.N, 1))
+        new_velocities += self.c_2 * r_2 * (g_best  - self.particles)/self.SearchWidths
+
+        self.is_running = np.sum(self.velocities - new_velocities) != 0
+
+        # Scale velocity components so it does not exceed some upper limit,
+        # and  heck particles do not exit the allowed explorable volume (prior ranges)
+        if isinstance(self.priors, dict)  and isinstance(self.priors, dict):
+            for ivel in range(self.N):
+                for idim in range(self.ndim):
+                    # Check if velocity is too large - I think this might be obsoolete after adding factor 1/SearchWidths tp social and cognitive velocity components above...
+                    if new_velocities[ivel,idim]/self.SearchWidths[idim] >= 0.2:
+                        new_velocities[ivel,idim] = 0.2*self.SearchWidths[idim]
+                    # Check if velocity will put particles out of region, and reverse vel component if true
+                    # Velocity should always be small enough that if the above conditions are true, reversing
+                    # the vel component should not place the particle out of the other side of the search volume
+                    if self.particles[ivel,idim] + new_velocities[ivel,idim] >= self.params_range[idim,1]:
+                        new_velocities[ivel,idim] = -new_velocities[ivel,idim]
+                    if self.particles[ivel,idim] + new_velocities[ivel,idim] <= self.params_range[idim,0]:
+                        new_velocities[ivel,idim] = -new_velocities[ivel,idim]
+
+        # Update particle and particle velocities
+        self.velocities = new_velocities
+        self.particles = self.particles + new_velocities
+
+    def update_bests(self):
+        fits = self.fitness_function(self.particles)
+
+        for i in range(len(self.particles)):
+            # update best personnal value (cognitive)
+            if fits[i] < self.p_bests_values[i]:
+                self.p_bests_values[i] = fits[i]
+                self.p_bests[i] = self.particles[i]
+                # update best global value (social)
+                if fits[i] < self.g_best_value:
+                    self.g_best_value = fits[i]
+                    self.g_best = self.particles[i]
+
+# Fancy progress bar functions
+def StartProgress(title):
+    global progress_old
+    sys.stdout.write(title + ": [" + "-"*40 + "]" + chr(8)*41)
+    sys.stdout.flush()
+    progress_old = 0
+def UpdateProgress(x):
+    global progress_old
+    x = int(x * 40 // 100)
+    sys.stdout.write("#" * (x - progress_old))
+    sys.stdout.flush()
+    progress_old = x
+def EndProgress():
+    sys.stdout.write("#" * (40 - progress_old) + "]\n")
+    sys.stdout.flush()

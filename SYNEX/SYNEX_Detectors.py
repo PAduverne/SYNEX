@@ -118,6 +118,12 @@ class Athena:
         Time to initialize Athena. E.g. if prior to the GW alert it was pointing
         elsewhere in the sky or in the middle of commissioning/calibration runs
         then this time gives the delay before tiling can begin.
+
+
+        ### TO DO ###
+        Need to include extra gwemopt params in Athena init function. This will clean up interaction functions with gwemopt.
+        - If file names for tiling etc are specified AND if a file already exists, then we should skip certain steps and load
+          data from files.
     """
 
     def __init__(self, **kwargs):
@@ -197,10 +203,25 @@ class Athena:
                 tile_lambda = lambdas[arg_max]
 
                 # Put in the tile to the tile dictionary
-                Tile = {"beta":tile_beta,
-                        "lambda":tile_lambda,
-                        "beta_range":[tile_beta-extent,tile_beta+extent],
-                        "lambda_range":[tile_lambda-extent,tile_lambda+extent],
+                lambda_range=[tile_lambda-extent/2.,tile_lambda+extent/2.]
+                beta_range=[tile_beta-extent/2.,tile_beta+extent/2.]
+                ra_range=[np.rad2deg(lambda_range[0]+np.pi),np.rad2deg(lambda_range[1]+np.pi)]
+                dec_range=[np.rad2deg(beta_range[0]),np.rad2deg(beta_range[1])]
+                corners=np.array([[ra_range[0],dec_range[0]], ## Following convention of gwemopt ordering
+                         [ra_range[1],dec_range[0]],
+                         [ra_range[0],dec_range[1]],
+                         [ra_range[1],dec_range[1]]])
+                Tile = {"ra":np.rad2deg(tile_lambda+np.pi), ## gwemopt dict fields -- 'ra', 'dec', 'ipix', 'corners', 'patch', 'area', 'segmentlist'
+                        "dec":np.rad2deg(tile_beta),
+                        "ipix":[], ## this is a number but I'm not sure what it is yet...
+                        "corners":corners,
+                        "patch":[], ## this is a matplotlib 'path' thing but I'm not sure what it is yet...
+                        "area":self.FoView*(180./np.pi)**2,
+                        "segmentlist":[],
+                        "lambda":tile_lambda, ## lisabeta dict fields
+                        "beta":tile_beta,
+                        "lambda_range":lambda_range,
+                        "beta_range":beta_range,
                         "Center post prob": tile_prob}
                 TileDict["tile_structs"][self.telescope][TileNo] = Tile
 
@@ -234,21 +255,41 @@ class Athena:
             # Plot tiles using gwemopt directly...
             gwemopt.plotting.tiles(go_params, map_struct, tile_structs)
 
-            # Keeping the sub-dict used by gwemopt just in case (for now), insert some value conversions for SYNEX compatibility
+            # Keeping the sub-dict used by gwemopt just in case (for now), insert some value conversions for SYNEX compatibility -- might get rid of this later and stick to gwemopt conventions...
             print(tile_structs[self.telescope][0].keys()) # 'ra', 'dec', 'ipix', 'corners', 'patch', 'area', 'segmentlist'
             print("ra:",tile_structs[self.telescope][0]['ra'])
             print("dec:",tile_structs[self.telescope][0]['dec'])
             print("ipix:",tile_structs[self.telescope][0]['ipix'])
             print("corners:",tile_structs[self.telescope][0]['corners'])
+            print("corners shape and type:",np.shape(tile_structs[self.telescope][0]['corners']), type(tile_structs[self.telescope][0]['corners']))
             print("patch:",tile_structs[self.telescope][0]['patch'])
             print("area:",tile_structs[self.telescope][0]['area'])
             print("segmentlist:",tile_structs[self.telescope][0]['segmentlist'])
             for tileID in range(len(tile_structs[self.telescope].keys())):
-                tile_structs[self.telescope][tileID]["beta"]=tile_beta
-                tile_structs[self.telescope][tileID]["lambda"]=tile_beta
-                tile_structs[self.telescope][tileID]["beta_range"]=tile_beta
-                tile_structs[self.telescope][tileID]["lambda_range"]=tile_beta
-                tile_structs[self.telescope][tileID]["Center post prob"]=tile_beta
+                corners=tile_structs[self.telescope][0]['corners']
+                lambda_range=[np.deg2rad(corners[0][0]),np.deg2rad(corners[1][0])]
+                beta_range=[np.deg2rad(corners[0][1]),np.deg2rad(corners[2][1])]
+                print(lambda_range, beta_range, corners)
+                print(tile_structs[self.telescope][tileID]['ipix'])
+                tile_structs[self.telescope][tileID]["lambda"]=np.deg2rad(tile_structs[self.telescope][tileID]['ra'])-np.pi
+                tile_structs[self.telescope][tileID]["beta"]=np.deg2rad(tile_structs[self.telescope][tileID]['dec'])
+                print([tile_structs[self.telescope][tileID]["lambda"],tile_structs[self.telescope][tileID]["beta"]])
+                tile_structs[self.telescope][tileID]["lambda_range"]=lambda_range
+                tile_structs[self.telescope][tileID]["beta_range"]=beta_range
+                tile_structs[self.telescope][tileID]["Center post prob"]=np.nan # Need to work out how to put this in here...
+
+            # Tile = {"ra":np.rad2deg(tile_lambda+np.pi), ## gwemopt dict fields -- 'ra', 'dec', 'ipix', 'corners', 'patch', 'area', 'segmentlist'
+            #         "dec":np.rad2deg(tile_beta),
+            #         "ipix":[], ## this is a number but I'm not sure what it is yet...
+            #         "corners":corners,
+            #         "patch":[], ## this is a matplotlib 'path' thing but I'm not sure what it is yet...
+            #         "area":self.FoView*(180./np.pi)**2,
+            #         "segmentlist":[],
+            #         "lambda":tile_lambda, ## lisabeta dict fields
+            #         "beta":tile_beta,
+            #         "lambda_range":lambda_range,
+            #         "beta_range":beta_range,
+            #         "Center post prob": tile_prob}
 
             # Output dictionary of tile properties
             TileDict = {"Tile Strat": TileStrat,
@@ -291,7 +332,7 @@ class Athena:
             pickle.dump(TileDict, f)
 
         # Write the name of the file to the detector object
-        self.TilePickleName = TilePickleName
+        self.TilePickleName = TilePickleName ### Pickle or dat files? Not sure which is better here...
 
     def GetKuiper(self, TilePickleFile, source=None):
         # Check first that the necessary steps have been done for the source and detector

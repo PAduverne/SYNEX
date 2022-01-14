@@ -2479,7 +2479,7 @@ def PlotTilesArea(TilePickleName,n_tiles=10):
     for a given area
     """
     # Load Tile dictionary
-    with open(TilePickleFile, 'rb') as f:
+    with open(TilePickleName, 'rb') as f:
         TileDict = pickle.load(f)
     from matplotlib.patches import Rectangle
 

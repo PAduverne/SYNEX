@@ -2,8 +2,9 @@ import astropy.constants as const
 import astropy.units as u
 import numpy as np
 import healpy as hp
+import gwemopt
 from gwemopt import utils as gou
-import astropy
+import astropy, astroplan
 from astropy.cosmology import WMAP9 as cosmo
 from astropy.cosmology import Planck13, z_at_value
 import astropy.units as u
@@ -15,6 +16,7 @@ import statistics
 from scipy import stats
 import time
 import json
+import pathlib
 
 # Import lisebeta stuff
 import lisabeta
@@ -57,6 +59,9 @@ try:
     from mpi4py import MPI
 except ModuleNotFoundError:
     MPI = None
+
+# Set the path to root SYNEX directory so file reading and writing is easier -- NOTE: NO TRAILING SLASH
+SYNEX_PATH=os.path.dirname(os.path.realpath(__file__)).split("SYNEX")[0]+"SYNEX"
 
 # global variable for histogram plots and mode calculations
 hist_n_bins=1000
@@ -1759,19 +1764,12 @@ def ParamsToClasses(input_params,CollectionMethod="Inference",**kwargs): # "Fish
 
     Parameters
     ---------
-    input_params : Either a dictionary loaded from a SYNEX generated input param file (json format),
-                   or a string of the path to where to find the SYNEX generated
-                   input param file (json format).
-    """
-    # First check if the input variable is a path to the file or the contents of the file itself
-    if isinstance(input_params,str):
-        # Make sure the end is json oriented and not the data file
-        input_file = input_params.split("inference_data")[0] + "inference_param_files" + input_params.split("inference_data")[-1].split(".")[0] + ".json"
-        with open(json_file, 'r') as f:
-            input_params = json.load(f)
-        f.close()
+    input_params : A dictionary loaded from a SYNEX generated input param file (json format).
 
-    # Now form the three sub dictionaries
+    TO DO -- update this to include a return of detector. Needs to probe the params within
+    to see if its a LISA-interacted source or ATHENA-interacted source or other.
+    """
+    # Form the three sub dictionaries
     run_params = input_params["run_params"]
     waveform_params = input_params["waveform_params"]
     prior_params = input_params["prior_params"]
@@ -1885,6 +1883,17 @@ def ParamsToClasses(input_params,CollectionMethod="Inference",**kwargs): # "Fish
     source = SYSs.SMBH_Merger(**param_dict)
 
     return source
+
+def GetSourceFromInferenceData(FileName):
+    # First complete the file names for json and inference locations
+    JsonFileLocAndName,H5FileLocAndName=CompleteLisabetaDataAndJsonFileNames(FileName)
+
+    # Extract data
+    with open(JsonFileLocAndName, 'r') as f:
+        input_params = json.load(f)
+    f.close()
+
+    return ParamsToClasses(input_params,CollectionMethod="Inference")
 
 def PlotLikeRatioFoMFromJsonWithInferenceInlays(JsonFileAndPath, BF_lim=20., SaveFig=False, InlayType="histogram"): # "scatter"
     # Load data
@@ -2464,15 +2473,14 @@ def PlotLikeRatioFoMFromJsonWithAllInferencePoints(JsonFileAndPath, BF_lim=20., 
             plt.savefig("/Users/jonathonbaird/Documents/LabEx_PostDoc/Figs/lnL_skymodes_BetaReflections_" + VarStringForSaveFile + "_Points_BF_" + str(BF_lim) + ".png", facecolor='w', transparent=False)
     plt.show()
 
-def PlotTilesArea(TileJsonFile,n_tiles=10):
+def PlotTilesArea(TilePickleName,n_tiles=10):
     """
     Function to plot a sample of tiles from a json file with a dictionary of tiles
     for a given area
     """
     # Load Tile dictionary
-    with open(TileJsonFile, 'r') as f:
-        TileDict = json.load(f)
-    f.close()
+    with open(TilePickleFile, 'rb') as f:
+        TileDict = pickle.load(f)
     from matplotlib.patches import Rectangle
 
     # Set the default color cycle
@@ -2518,49 +2526,169 @@ def PlotTilesArea(TileJsonFile,n_tiles=10):
     plt.ylim([-np.pi/2.,np.pi/2.])
     plt.show()
 
-def CreateSkyMapStruct(go_params,FileName=None):
+def gou_params_checker(go_params, detector=None, ConfigFileName=None):
+    """
+    Maybe its better to just take out the functions and copy into SYNEX...
+    """
+
+    # Adjust parameters to SYNEX locations if not already specified
+    if "skymap" not in go_params.keys():
+        go_params["skymap"] = None
+
+    if "outputDir" not in go_params.keys():
+        go_params["outputDir"] = SYNEX_PATH+"/gwemopt_output"
+
+    if "tilingDir" not in go_params.keys():
+        go_params["tilingDir"] = SYNEX_PATH+"/Tile_files"
+
+    if "catalogDir" not in go_params.keys():
+        go_params["catalogDir"] = None # SYNEX_PATH+"/catalogs" # in original code, this was "../catalogs", but there wasnt a folder labelled like this so I guess it's created at runtime if needed.
+
+    if "event" not in go_params.keys():
+        go_params["event"] = "IdeaPaperSystem"
+
+    if "coverageFiles" not in go_params.keys():
+        go_params["coverageFiles"] = SYNEX_PATH+"/gwemtop_cover_files/Athena_test.dat"
+
+    if "telescopes" not in go_params.keys():
+        if detector!=None:
+            go_params["telescopes"] = detector.telescope
+        else:
+            go_params["telescopes"] = "Athena_test"
+
+    if type(go_params["telescopes"]) == str:
+        go_params["telescopes"] = go_params["telescopes"].split(",")
+
+    if "lightcurveFiles" not in go_params.keys():
+        go_params["lightcurveFiles"] = SYNEX_PATH+"/gwemopt/lightcurves/Me2017_H4M050V20.dat" ### THIS NEEDS TO BE CHANGED LATER WHEN WE HAVE SOME LIGHTCURVES...
+
+    if "tilesType" not in go_params.keys():
+        go_params["tilesType"] = "moc"
+
+    if "scheduleType" not in go_params.keys():
+        go_params["scheduleType"] = "greedy"
+
+    if "configDirectory" not in go_params.keys():
+        go_params["configDirectory"] = SYNEX_PATH+"/gwemopt_conf_files"
+
+    if "doSingleExposure" not in go_params.keys():
+        go_params["doSingleExposure"] = False
+
+    # Create config struct -- copied and sjusted from gwemopt code so it doesn't load every sings config file by default...
+    if ConfigFileName==None:
+        # create empty dict to add to
+        go_params["config"]={}
+
+        # Create detector object if we don't have one given...
+        for telescope in go_params["telescopes"]:
+            if detector==None:
+                Athena_kwargs={"telescope": telescope} ## Figure out where to put these params - within go_params? As a kwargs extra dict at function call?
+                detector=SYDs.Athena(**Athena_kwargs)
+
+            # Create the config struct using detector class stuff
+            config_struct = {
+            "telescope" : go_params["telescopes"],
+            "filt" : "c",
+            "magnitude" : 18.7,
+            "exposuretime" : detector.T_lat, # 30.0,
+            "latitude" : 20.7204,       ### this could be a problem... Need to understand how gwemopt uses telesope location...
+            "longitude" : -156.1552,    ### this could be a problem... Need to understand how gwemopt uses telesope location...
+            "elevation" : 3055.0,       ### this could be a problem... Need to understand how gwemopt uses telesope location...
+            "FOV_coverage" : detector.FoView*(180./np.pi)**2, # In deg^2
+            "FOV" : detector.FoView*(180./np.pi)**2, # In deg^2
+            "FOV_coverage_type" : "square",
+            "FOV_type" : "square",
+            "tesselationFile" : SYNEX_PATH+"/gwemopt_tess_files/Athena_test.tess",
+            "slew_rate" : detector.slew_rate*(np.pi/180.), # in s/deg
+            "readout" : 6,
+            "horizon" : 30,
+            "overhead_per_exposure" : 10.0, # Settle time after each slew/per tile? in seconds or what?
+            "filt_change_time" : 60
+            }
+
+            # Assign the struct...
+            go_params["config"][telescope]=config_struct #### NEEED TO INCLUDE CASE OF MULTIPLE TELESCOPES??
+    else:
+        go_params["config"] = {}
+        if ConfigFileName=="all": # add flexibility if we ever want to load everything we have...
+            configFiles = glob.glob("%s/*.config"%go_params["configDirectory"])
+        else:
+            configFiles = ConfigFileName # either one for a list of configs to load
+        for configFile in configFiles:
+            telescope = configFile.split("/")[-1].replace(".config","")
+            if not telescope in go_params["telescopes"]: continue
+            go_params["config"][telescope] = gwemopt.utils.readParamsFromFile(configFile)
+            go_params["config"][telescope]["telescope"] = telescope
+
+    # Now run some extra calcs according to gwemopt stuff
+    for telescope in go_params["telescopes"]:
+        if go_params["doSingleExposure"]:
+            exposuretime = np.array(opts.exposuretimes.split(","),dtype=np.float)[0] # not sure what opts is... they dont import it or anything in the utils script where this is copied from...
+
+            nmag = -2.5*np.log10(np.sqrt(go_params["config"][telescope]["exposuretime"]/exposuretime))
+            go_params["config"][telescope]["magnitude"] = go_params["config"][telescope]["magnitude"] + nmag
+            go_params["config"][telescope]["exposuretime"] = exposuretime
+        if "tesselationFile" in go_params["config"][telescope]:
+            if not os.path.isfile(go_params["config"][telescope]["tesselationFile"]):
+                if go_params["config"][telescope]["FOV_type"] == "circle":
+                    gwemopt.tiles.tesselation_spiral(go_params["config"][telescope])
+                elif go_params["config"][telescope]["FOV_type"] == "square":
+                    gwemopt.tiles.tesselation_packing(go_params["config"][telescope])
+            if go_params["tilesType"] == "galaxy":
+                go_params["config"][telescope]["tesselation"] = np.empty((3,))
+            else:
+                go_params["config"][telescope]["tesselation"] = np.loadtxt(go_params["config"][telescope]["tesselationFile"],usecols=(0,1,2),comments='%')
+
+        if "referenceFile" in go_params["config"][telescope]:
+            from astropy import table
+            refs = table.unique(table.Table.read(
+                go_params["config"][telescope]["referenceFile"],
+                format='ascii', data_start=2, data_end=-1)['field', 'fid'])
+            reference_images =\
+                {group[0]['field']: group['fid'].astype(int).tolist()
+                for group in refs.group_by('field').groups}
+            reference_images_map = {1: 'g', 2: 'r', 3: 'i'}
+            for key in reference_images:
+                reference_images[key] = [reference_images_map.get(n, n)
+                                         for n in reference_images[key]]
+            go_params["config"][telescope]["reference_images"] = reference_images
+
+        location = astropy.coordinates.EarthLocation(go_params["config"][telescope]["longitude"],go_params["config"][telescope]["latitude"],go_params["config"][telescope]["elevation"])
+        observer = astroplan.Observer(location=location)
+        go_params["config"][telescope]["observer"] = observer
+
+    # Baseline check for remaining fields missing, using gwemopt check function
+    go_params = gou.params_checker(go_params)
+
+    # Get segments... Not sure why
+    go_params=gwemopt.segments.get_telescope_segments(go_params)
+
+    return go_params
+
+def CreateSkyMapStruct(go_params,SkymapFileName=None,LisabetaFileName=None):
     """
     Create a sky_map dictionary either from a lisabeta posterior h5 file, or from
     a saved skymap file (in .fits file containing an astropy table of pixel probs only)
-
-    Params:
-            Method = string
-                Either "from_lisabeta_posteriors" to load from lisabeta posteriors in h5
-                file and calculate the picels etc from scratch
-
-                Or "from_skymap_file" to load a previously saved skymap file, and then
-                run the gwemopt function to check the skymap_truct and go_params
-                are coherent in pixel number, nsides, etc. Here you can load a
-                saved skymap and alter it too using kwargs... But still have to code
-                this option...
     """
-    # Case where no file is specified
-    if FileName==None:
-        FileName = go_params["skymap"]
-        # Add extension if not already included
-        if FileName[-5:]!='.fits':
-            FileName = FileName+'.fits'
-            go_params["skymap"] = FileName
+    # Check we can actually do something...
+    if SkymapFileName==None and LisabetaFileName==None and go_params["skymap"]==None:
+        print("No SkymapFileName or LisabetaFileName given... setting to default: LisabetaFileName='IdeaPaperSystem_9d_raw.h5'")
+        LisabetaFileName="IdeaPaperSystem_9d_raw.h5"
 
-    # Check that input args are compatible...
-    method=None
-    if FileName[-5:]==".fits":
-        method="from_skymap_file"
-    else:
-        method="from_lisabeta_posteriors"
-
-    # Check if we are ok to proceed...
-    if method==None:
-        raise ValueError("If you are trying to load from fits file, you must either not specify FileName, or make sure to include the '.fits' extension in FileName, otherwise we assume you want to load lisabeta posteriors and create a map_struct from that...")
-
-    if method=="from_lisabeta_posteriors":
-        go_params,map_struct=CreateSkyMapStructFromLisabetaPosteriors(FileName,go_params)
-    elif method=="from_skymap_file": # keep this as an input option so we can include more later if we want...
+    # Case where SkymapFileName is specified either in go_params or seperately (in order to overwrite what's in go_params)
+    if go_params["skymap"]!=None and SkymapFileName==None:
+        SkymapFileName=go_params["skymap"]
         map_struct=None
+    elif go_params["skymap"]==None and SkymapFileName!=None:
+        go_params["skymap"]=SkymapFileName
+        map_struct=None
+
+    # Create map_struct
+    if LisabetaFileName!=None: # preferentially create map_struct from lisabeta posteriors.
+        go_params,map_struct=CreateSkyMapStructFromLisabetaPosteriors(LisabetaFileName,go_params)
 
     # Run through the GWEMOPT checker for compataboility between go_params and sky_map. Can apply rotations and other things here - TO INCLUDE LATER
     map_struct=gou.read_skymap(go_params,is3D=False,map_struct=map_struct)
-    print(type(map_struct),type(go_params))
 
     return go_params,map_struct
 
@@ -2582,6 +2710,7 @@ def CreateSkyMapStructFromLisabetaPosteriors(FileName,go_params):
     pix_ras = np.rad2deg(pix_phis) # Ra and Dec for pix are stored in map_struct in degrees NOT radians
     pix_decs = np.rad2deg(0.5*np.pi - pix_thetas)
     pixels_numbers=hp.ang2pix(go_params["nside"], pix_thetas, pix_phis)
+
 
     # Convert post angles to theta,phi
     post_phis = infer_params["lambda"]+np.pi
@@ -2626,13 +2755,21 @@ def WriteSkymapToFile(go_params,map_struct,SkyMapFileName):
         ])
 
     # get path and check filename...
-    # TO DO: Check that the subdirectories after Skymap_files exist, and create them if not.
-    # TO DO: seperate this into a helper function to check the path of the skymap files.... Can also do this for tile functions?
-    if len(SkyMapFileName.split("Skymap_files"))==1:
-        print("WARNING: Skymap filename does not indicate to store in .../SYNEX/Skymap_files/ - adding this path to filename provided...")
-        SkyMapFileName = os.path.dirname(os.path.realpath(__file__)).split("SYNEX")[0] + "SYNEX/Skymap_files/" + SkyMapFileName
+    # TO DO: add this to a helper function to check paths of data directories are congruent.... Can also do this for tile functions in the same function but different to lisabeta function, but this function reference lisabeta one to harmonize the architectures..
+    if len(SkyMapFileName.split("Skymap_files"))==1 and len(SkyMapFileName.split("SYNEX"))>1:
+        raise ValueError("Sorry but for continuity across functions please direct skymap directories to be within './SYNEX/Skymap_files/...'")
+    elif len(SkyMapFileName.split("Skymap_files"))>1 and len(SkyMapFileName.split("SYNEX"))==1:
+        print("Directing given filename to './SYNEX/Skymap_files/...'")
+        SkyMapFileName = SYNEX_PATH + "/Skymap_files" + SkyMapFileName.split("Skymap_files")[-1]
+    elif len(SkyMapFileName.split("Skymap_files"))==1 and len(SkyMapFileName.split("SYNEX"))==1:
+        print("WARNING: Adding ./SYNEX/Skymap_files/ to filename provided...")
+        SkyMapFileName = SYNEX_PATH + "/Skymap_files/" + SkyMapFileName
     if SkyMapFileName[-5:]!='.fits':
         SkyMapFileName = SkyMapFileName+'.fits'
+
+    # Check if directory exists and create if it doesnt
+    SkyMapFilePath = "/".join(SkyMapFileName.split("/")[:-1])
+    pathlib.Path(SkyMapFilePath).mkdir(parents=True, exist_ok=True)
 
     # Write to fits file
     kwargs={}
@@ -2654,14 +2791,15 @@ def CompleteLisabetaDataAndJsonFileNames(FileName):
     avoiding reading in jsons and just manipulating strings though, and
     since we want to apply this code to an optimization routine I am
     starting to avoid too much overhead per loop...
-
-    TO DO: Add checks that the subdirectories exist in both inference_param_files and
-    inference_data files, and create them if not.
     """
 
-    # Find paths to data and json files
-    LisabetaJsonPath = os.path.dirname(os.path.realpath(__file__)).split("SYNEX")[0] + "SYNEX/inference_param_files"
-    LisabetaDataPath = os.path.dirname(os.path.realpath(__file__)).split("SYNEX")[0] + "SYNEX/inference_data"
+    # Create paths to data and json folders
+    LisabetaJsonPath = SYNEX_PATH + "/inference_param_files"
+    LisabetaDataPath = SYNEX_PATH + "/inference_data"
+
+    if FileName[0]!="/":
+        LisabetaJsonPath+="/"
+        LisabetaDataPath+="/"
 
     # Figure out if its a json or h5 filename
     if FileName[-3]==".":
@@ -2671,8 +2809,8 @@ def CompleteLisabetaDataAndJsonFileNames(FileName):
         JsonFileLocAndName = FileName
         H5FileLocAndName = FileName[:-5] + '.h5'
     else:
-        JsonFileLocAndName = FileName[:-3] + '.json'
-        H5FileLocAndName = FileName[:-5] + '.h5'
+        JsonFileLocAndName = FileName + '.json'
+        H5FileLocAndName = FileName + '.h5'
 
     # Add file path if only the filenames specified
     bool_vec = [len(FileName.split("inference_param_files"))==1,len(FileName.split("inference_data"))==1]
@@ -2684,8 +2822,19 @@ def CompleteLisabetaDataAndJsonFileNames(FileName):
     elif not bool_vec[0] and bool_vec[1]:
         H5FileLocAndName = LisabetaDataPath + H5FileLocAndName.split("inference_param_files")[-1]
 
+    # Now check if the subdirectories exist yet or not for both data and json areas...
+    JsonPathOnly="/".join(JsonFileLocAndName.split("/")[:-1])
+    DataPathOnly="/".join(H5FileLocAndName.split("/")[:-1])
+    pathlib.Path(JsonPathOnly).mkdir(parents=True, exist_ok=True)
+    pathlib.Path(DataPathOnly).mkdir(parents=True, exist_ok=True)
+
+    # Return full paths and names all harmonious and what not
     return JsonFileLocAndName,H5FileLocAndName
 
+
+
+
+### This can be used if we have a saved skymap and Athena tiling strategy, then optimize the given schedule using latency time / jump time / other params...
 def RunPSO(source, detector, fitness_function=None, N=50, w=0.8, c_1=1, c_2=1, auto_coef=True, max_iter=100, NumSwarms=1, priors=None, **kwargs):
     print("Initializing Swarm(s)...")
     PSO_Classes = [PSO(fitness_function, priors=priors,N=N, w=w, c_1=c_1, c_2=c_2,

@@ -2,7 +2,9 @@ import astropy.units as u
 import astropy.stats as astat
 import numpy as np
 import SYNEX.SYNEX_Utils as SYU
+import gwemopt
 import json
+import pickle
 import matplotlib
 import matplotlib.pyplot as plt
 import matplotlib.pylab as pylab
@@ -128,6 +130,8 @@ class Athena:
                 self.T_init = value
             elif key=='slew_rate':
                 self.slew_rate = value
+            elif key=='telescope':
+                self.telescope = value
         if not hasattr(self,"FoView"):
             self.FoView = 1.*(np.pi/180.)**2 # 1sq degree
         if not hasattr(self,"T_lat"):
@@ -135,14 +139,28 @@ class Athena:
         if not hasattr(self,"T_init"):
             self.T_init = 0. # No delay to begin tiling
         if not hasattr(self,"slew_rate"):
-            self.slew_rate = 1. # 1 s/deg
+            self.slew_rate = 1.*(180./np.pi) # 1 s/deg
+        if not hasattr(self,"telescope"):
+            self.telescope = "Athena_test" # for compliance with gwemopt tile struct fields...
 
-    def TileSkyArea(self,LISAPosteriorDataFile,TileJsonName=None,TileStrat="MaxProb", overlap=0.5, SAVE_SOURCE_EM_PROPERTIES_IN_TILE_JSON=True):
+    def TileSkyArea(self,LISAPosteriorDataFile,TilePickleName=None,TileStrat="MaxProb", overlap=0.5, SAVE_SOURCE_EM_PROPERTIES_IN_TILE_JSON=True, go_params=None):
         """
         Function to load and tile a posterior sky area, saving a file of sky positions
         in order of a specification for a given tiling strategy.
+
+        TileStrat : STRING
+            - "MaxProb"
+                Most basic tiling algorithm that selects locations in descending posterior probability.
+                No asumptions (for the time being ) are made about slew rates, dead time, reboot times, etc.
+
+            - "greedy"
+                GWEMOPT tiling strategy named 'greedy'.
         """
-        
+
+        # Security check on filename - in gwemopt tiling methods this will be checked again... Need to optimize layout of checks.
+        JsonFileLocAndName,H5FileLocAndName=SYU.CompleteLisabetaDataAndJsonFileNames(LISAPosteriorDataFile)
+
+        # Choose strategy for tiling
         if TileStrat=="MaxProb":
             """
             Most basic way to tile - find the max prob sky location, and start there.
@@ -151,23 +169,23 @@ class Athena:
             # Params for run time
             extent = np.sqrt(self.FoView) # in radians to match lisabeta units - side length of FoV
             BreakFlag = False
-            TileNo = 1
+            TileNo = 0 # start at 0 to comply with gwemopt convention
 
             # Get data
-            _, _, _, X, _, Y, _, Z = SYU.PlotInferenceLambdaBeta(LISAPosteriorDataFile, bins=50, SkyProjection=False, SaveFig=False, return_data=True)
+            _, _, _, X, _, Y, _, Z = SYU.PlotInferenceLambdaBeta(H5FileLocAndName, bins=50, SkyProjection=False, SaveFig=False, return_data=True)
             betas = Y.flatten()
 
             # Repeat binning to ensure you can get the right points for overlap
             if betas[-1]-betas[0]>extent*overlap:
                 bins = 2*int((betas[-1]-betas[0])/(extent*overlap))
-                _, _, _, X, _, Y, _, Z = SYU.PlotInferenceLambdaBeta(LISAPosteriorDataFile, bins=bins, SkyProjection=False, SaveFig=False, return_data=True)
+                _, _, _, X, _, Y, _, Z = SYU.PlotInferenceLambdaBeta(H5FileLocAndName, bins=bins, SkyProjection=False, SaveFig=False, return_data=True)
             Post_probs = Z.flatten()
             lambdas = X.flatten()
             betas = Y.flatten()
             plt.close('all')
 
             # Output dictionary of tile properties
-            TileDict = {"Tile Strat": TileStrat, "overlap": overlap, "LISA Data File":LISAPosteriorDataFile}
+            TileDict = {"Tile Strat": TileStrat, "overlap": overlap, "tile_structs":{self.telesope:{}}, "LISA Data File":H5FileLocAndName}
 
             # Run through the space of confidence area, extracting tile properties and reducing the list of total tiles
             while BreakFlag == False:
@@ -184,7 +202,7 @@ class Athena:
                         "beta_range":[tile_beta-extent,tile_beta+extent],
                         "lambda_range":[tile_lambda-extent,tile_lambda+extent],
                         "Center post prob": tile_prob}
-                TileDict[TileNo] = Tile
+                TileDict["tile_structs"][self.telescope][TileNo] = Tile
 
                 # Delete coordinates of mode that's done minus some overlap
                 mask = [np.all([betas[ii]<tile_beta+overlap*extent, betas[ii]>tile_beta-overlap*extent, lambdas[ii]<tile_lambda+overlap*extent, lambdas[ii]>tile_lambda-overlap*extent]) for ii in range(len(lambdas))]
@@ -196,19 +214,53 @@ class Athena:
                 if len(Post_probs) <= 100 or TileNo>100:
                     BreakFlag = True
                 TileNo+=1
+        elif TileStrat=="greedy":
+            import gwemopt.tiles as gots
+            from gwemopt import utils as gou
+
+            # check the params given and create if not
+            if go_params==None:
+                go_params={"nside":16,"Ntiles":10} # set 200, 10 for debugging, total tiles for now and later we cut ones we dont need. this helps if we only change things like latency times later...
+
+            # Run checker to ensure dict is complete according to gwemopt definitions
+            go_params = SYU.gou_params_checker(go_params)
+
+            # Create the necessary sky_map dictionary
+            go_params,map_struct = SYU.CreateSkyMapStruct(go_params,LisabetaFileName=H5FileLocAndName)
+
+            # Get the tiles
+            tile_structs = gots.greedy(go_params,map_struct)
+
+            # Plot tiles using gwemopt directly...
+            gwemopt.plotting.tiles(go_params, map_struct, tile_structs)
+
+            # Keeping the sub-dict used by gwemopt just in case (for now), insert some value conversions for SYNEX compatibility
+            print(tile_structs[self.telescope][0].keys()) # 'ra', 'dec', 'ipix', 'corners', 'patch', 'area', 'segmentlist'
+            print("ra:",tile_structs[self.telescope][0]['ra'])
+            print("dec:",tile_structs[self.telescope][0]['dec'])
+            print("ipix:",tile_structs[self.telescope][0]['ipix'])
+            print("corners:",tile_structs[self.telescope][0]['corners'])
+            print("patch:",tile_structs[self.telescope][0]['patch'])
+            print("area:",tile_structs[self.telescope][0]['area'])
+            print("segmentlist:",tile_structs[self.telescope][0]['segmentlist'])
+            for tileID in range(len(tile_structs[self.telescope].keys())):
+                tile_structs[self.telescope][tileID]["beta"]=tile_beta
+                tile_structs[self.telescope][tileID]["lambda"]=tile_beta
+                tile_structs[self.telescope][tileID]["beta_range"]=tile_beta
+                tile_structs[self.telescope][tileID]["lambda_range"]=tile_beta
+                tile_structs[self.telescope][tileID]["Center post prob"]=tile_beta
+
+            # Output dictionary of tile properties
+            TileDict = {"Tile Strat": TileStrat,
+                        "LISA Data File": H5FileLocAndName,
+                        "tile_structs": tile_structs,
+                        "go_params": go_params,
+                        "map_struct": map_struct}
 
         # Add source properties to dictionary for faster kuiper step if requested
         if SAVE_SOURCE_EM_PROPERTIES_IN_TILE_JSON:
             # grab source parameters from corresponding json file
-            source_h5_file = TileDict["LISA Data File"]
-            source_json_file = source_h5_file.split("inference_data")[0] + "inference_param_files" + source_h5_file.split("inference_data")[-1].split(".")[0] + ".json"
-            with open(source_json_file, 'r') as f:
-                input_params = json.load(f)
-            f.close()
-
-            # convert the json params to source class
-            # print("Stored input params in json",input_params)
-            source = SYU.ParamsToClasses(input_params)
+            source = SYU.GetSourceFromInferenceData(JsonFileLocAndName)
 
             # Recreate the EM flux and CTR - fime name and gamma hard coded for now... Maybe shoul dbe given at entry line to this function for continuity?
             source.GenerateEMFlux(self)
@@ -229,21 +281,19 @@ class Athena:
             }
 
         # Make output file name if not specified - this will put the file in folder where user is executing their top most script
-        if TileJsonName==None:
-            TileJsonpPath = LISAPosteriorDataFile.split("SYNEX")[0] + "SYNEX/tile_files/"
-            TileJsonName = TileJsonpPath + LISAPosteriorDataFile.split("/")[-1]
-            TileJsonName = TileJsonName[:-3] + "_tiled.json"
-            print(TileJsonName)
+        if TilePickleName==None:
+            TilePickleName = H5FileLocAndName.split("inference_data")[0] + "Tile_files" + H5FileLocAndName.split("inference_data")[-1]
+            TilePickleName = TilePickleName[:-3] + "_tiled.pkl"
+            print(TilePickleName)
 
         # Write to file
-        with open(TileJsonName, 'w') as f:
-            json.dump(TileDict, f, indent=2)
-        f.close()
+        with open(TilePickleName, 'wb+') as f:
+            pickle.dump(TileDict, f)
 
         # Write the name of the file to the detector object
-        self.TileJsonName = TileJsonName
+        self.TilePickleName = TilePickleName
 
-    def GetKuiper(self, TileJsonFile, source=None):
+    def GetKuiper(self, TilePickleFile, source=None):
         # Check first that the necessary steps have been done for the source and detector
         # if not hasattr(source, "CTR"):
         #     raise ValueError("Source object does not have a CTR - please call source.GenerateEMFlux followed by source.GenerateCTR...")
@@ -255,12 +305,11 @@ class Athena:
         # cutting out the last m tiles (m<n) once the slew time consumes the equivalent time for m tiles.
         # Define the time to merger
         # Get tiles from json file
-        with open(TileJsonFile, 'r') as f:
-            TileDict = json.load(f)
-        f.close()
+        with open(TilePickleFile, 'rb') as f:
+            TileDict = pickle.load(f)
 
-        json_file = TileDict["LISA Data File"]
-        json_file = json_file.split("inference_data")[0] + "inference_param_files" + json_file.split("inference_data")[-1].split(".")[0] + ".json"
+        H5FileLocAndName = TileDict["LISA Data File"]
+        json_file,H5FileLocAndName=SYU.CompleteLisabetaDataAndJsonFileNames(LISAPosteriorDataFile)
         with open(json_file, 'r') as f:
             input_params = json.load(f)
         f.close()
@@ -295,8 +344,12 @@ class Athena:
         print(n_times, "tiles in remaining time to merger...")
 
         # Sort the dictionary to contain just the tiles we want
-        Extra_keys = ["Tile Strat", "overlap", "LISA Data File", "source_EM_properties"]
-        TileDict_reduced = {k: v for k, v in TileDict.items() if k not in Extra_keys and int(k)<n_times}
+        Extra_keys = ["Tile Strat", "overlap", "LISA Data File", "source_EM_properties", "tile_structs", "go_params", "map_struct"]
+        if TileDict["Tile Strat"]=="MaxProb":
+            TileDict_reduced = {k: v for k, v in TileDict.items() if k not in Extra_keys and int(k)<n_times}
+        else:
+            for telescope in TileDict["tile_structs"].keys(): ######### NEED TO ADJUST THIS SO WE CAN HANDLE SEVERAL TELESCOPE INSTANCES... MAYBE WE DON'T NEED TO AND WE CAN FOCUS ON SEVERAL TILING METHODS AT A TIME INSTEAD?
+                TileDict_reduced = {k: v for k, v in TileDict["tile_structs"][telescope].items() if int(k)<n_times} ######## I THINK YOU CAN REDUCE COMLEXITY HERE IF WE CAN FEED N_TILES DIRECTLY INTO GWEMOPT- IT HAS A PARAM IN go_params THAT INDICATES HOW MANY TILES TO CALCULATE...
         max_key = [int(k) for k in TileDict_reduced.keys()]
         max_key = max(max_key)
         if max_key<n_times:
@@ -352,6 +405,7 @@ class Athena:
         bin_pops_normed_mean = np.mean(bin_pops_normed)
         probs_merger_mean = np.mean(probs_merger)
 
+        ###########    THIS NEEDS CLEANING UP !!    ###########
         kuipers = [0.1]
         self.n_photons = []
         self.n_exposures = 0

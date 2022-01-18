@@ -2473,10 +2473,9 @@ def PlotLikeRatioFoMFromJsonWithAllInferencePoints(JsonFileAndPath, BF_lim=20., 
             plt.savefig("/Users/jonathonbaird/Documents/LabEx_PostDoc/Figs/lnL_skymodes_BetaReflections_" + VarStringForSaveFile + "_Points_BF_" + str(BF_lim) + ".png", facecolor='w', transparent=False)
     plt.show()
 
-def PlotTilesArea(TilePickleName,n_tiles=10):
+def PlotTilesArea_old(TilePickleName,n_tiles=10):
     """
-    Function to plot a sample of tiles from a json file with a dictionary of tiles
-    for a given area
+    Function to plot a sample of tiles from a saved dictionary of tiles
     """
     # Load Tile dictionary
     with open(TilePickleName, 'rb') as f:
@@ -2487,22 +2486,10 @@ def PlotTilesArea(TilePickleName,n_tiles=10):
     TileColor=["#1f77b4", "#ff7f0e", "#2ca02c", "#d62728", "#9467bd", "#8c564b", "#e377c2", "#7f7f7f", "#bcbd22", "#17becf"]
     n_tile_colours = 10
 
-    # Initiate plot
-    # fig, ax = plt.subplots()
-
     # Get background data for liklihoods
     fig, InjParam_InjVals, SampleModes, X, lambda_bins, Y, beta_bins, Z = PlotInferenceLambdaBeta(TileDict["LISA Data File"], bins=50, SkyProjection=False, SaveFig=False, return_data=True)
     # fig = PlotInferenceLambdaBeta(TileDict["LISA Data File"], bins=50, SkyProjection=False, SaveFig=False, return_data=True)
     ax = plt.gca()
-    # plt.show()
-
-    # Add the liklihood values as a heat map first
-    # print(lambda_bins[0], lambda_bins[-1], beta_bins[0], beta_bins[-1])
-    # im = plt.imshow(
-    # Z,
-    # extent=(lambda_bins[0], lambda_bins[-1], beta_bins[0], beta_bins[-1]),
-    # origin='lower')
-    # fig.colorbar(im)
 
     # Add n_tiles tiles
     for ii in range(1,n_tiles+1):
@@ -2526,136 +2513,11 @@ def PlotTilesArea(TilePickleName,n_tiles=10):
     plt.ylim([-np.pi/2.,np.pi/2.])
     plt.show()
 
-def gou_params_checker(go_params, detector=None, ConfigFileName=None):
+def GetGWEMOPTParams(detector=None, ConfigFileName=None):
     """
-    Maybe its better to just take out the functions and copy into SYNEX...
+    Iterate over all detectors handed to function to create the dictionaries used in gwemopt
+    to run over several realizations of the same detector with different parameter values.
     """
-
-    # Adjust parameters to SYNEX locations if not already specified
-    if "skymap" not in go_params.keys():
-        go_params["skymap"] = None
-
-    if "outputDir" not in go_params.keys():
-        go_params["outputDir"] = SYNEX_PATH+"/gwemopt_output"
-
-    if "tilingDir" not in go_params.keys():
-        go_params["tilingDir"] = SYNEX_PATH+"/Tile_files"
-
-    if "catalogDir" not in go_params.keys():
-        go_params["catalogDir"] = None # SYNEX_PATH+"/catalogs" # in original code, this was "../catalogs", but there wasnt a folder labelled like this so I guess it's created at runtime if needed.
-
-    if "event" not in go_params.keys():
-        go_params["event"] = "IdeaPaperSystem"
-
-    if "coverageFiles" not in go_params.keys():
-        go_params["coverageFiles"] = SYNEX_PATH+"/gwemtop_cover_files/Athena_test.dat"
-
-    if "telescopes" not in go_params.keys():
-        if detector!=None:
-            go_params["telescopes"] = detector.telescope
-        else:
-            go_params["telescopes"] = "Athena_test"
-
-    if type(go_params["telescopes"]) == str:
-        go_params["telescopes"] = go_params["telescopes"].split(",")
-
-    if "lightcurveFiles" not in go_params.keys():
-        go_params["lightcurveFiles"] = SYNEX_PATH+"/gwemopt/lightcurves/Me2017_H4M050V20.dat" ### THIS NEEDS TO BE CHANGED LATER WHEN WE HAVE SOME LIGHTCURVES...
-
-    if "tilesType" not in go_params.keys():
-        go_params["tilesType"] = "moc"
-
-    if "scheduleType" not in go_params.keys():
-        go_params["scheduleType"] = "greedy"
-
-    if "configDirectory" not in go_params.keys():
-        go_params["configDirectory"] = SYNEX_PATH+"/gwemopt_conf_files"
-
-    if "doSingleExposure" not in go_params.keys():
-        go_params["doSingleExposure"] = False
-
-    # Create config struct -- copied and sjusted from gwemopt code so it doesn't load every sings config file by default...
-    if ConfigFileName==None:
-        # create empty dict to add to
-        go_params["config"]={}
-
-        # Create detector object if we don't have one given...
-        for telescope in go_params["telescopes"]:
-            if detector==None:
-                Athena_kwargs={"telescope": telescope} ## Figure out where to put these params - within go_params? As a kwargs extra dict at function call?
-                detector=SYDs.Athena(**Athena_kwargs)
-
-            # Create the config struct using detector class stuff
-            config_struct = {
-            "telescope" : go_params["telescopes"],
-            "filt" : "c",
-            "magnitude" : 18.7,
-            "exposuretime" : detector.T_lat, # 30.0,
-            "latitude" : 20.7204,       ### this could be a problem... Need to understand how gwemopt uses telesope location...
-            "longitude" : -156.1552,    ### this could be a problem... Need to understand how gwemopt uses telesope location...
-            "elevation" : 3055.0,       ### this could be a problem... Need to understand how gwemopt uses telesope location...
-            "FOV_coverage" : detector.FoView*(180./np.pi)**2, # In deg^2
-            "FOV" : detector.FoView*(180./np.pi)**2, # In deg^2
-            "FOV_coverage_type" : "square",
-            "FOV_type" : "square",
-            "tesselationFile" : SYNEX_PATH+"/gwemopt_tess_files/Athena_test.tess",
-            "slew_rate" : detector.slew_rate*(np.pi/180.), # in s/deg
-            "readout" : 6,
-            "horizon" : 30,
-            "overhead_per_exposure" : 10.0, # Settle time after each slew/per tile? in seconds or what?
-            "filt_change_time" : 60
-            }
-
-            # Assign the struct...
-            go_params["config"][telescope]=config_struct #### NEEED TO INCLUDE CASE OF MULTIPLE TELESCOPES??
-    else:
-        go_params["config"] = {}
-        if ConfigFileName=="all": # add flexibility if we ever want to load everything we have...
-            configFiles = glob.glob("%s/*.config"%go_params["configDirectory"])
-        else:
-            configFiles = ConfigFileName # either one for a list of configs to load
-        for configFile in configFiles:
-            telescope = configFile.split("/")[-1].replace(".config","")
-            if not telescope in go_params["telescopes"]: continue
-            go_params["config"][telescope] = gwemopt.utils.readParamsFromFile(configFile)
-            go_params["config"][telescope]["telescope"] = telescope
-
-    # Now run some extra calcs according to gwemopt stuff
-    for telescope in go_params["telescopes"]:
-        if go_params["doSingleExposure"]:
-            exposuretime = np.array(opts.exposuretimes.split(","),dtype=np.float)[0] # not sure what opts is... they dont import it or anything in the utils script where this is copied from...
-
-            nmag = -2.5*np.log10(np.sqrt(go_params["config"][telescope]["exposuretime"]/exposuretime))
-            go_params["config"][telescope]["magnitude"] = go_params["config"][telescope]["magnitude"] + nmag
-            go_params["config"][telescope]["exposuretime"] = exposuretime
-        if "tesselationFile" in go_params["config"][telescope]:
-            if not os.path.isfile(go_params["config"][telescope]["tesselationFile"]):
-                if go_params["config"][telescope]["FOV_type"] == "circle":
-                    gwemopt.tiles.tesselation_spiral(go_params["config"][telescope])
-                elif go_params["config"][telescope]["FOV_type"] == "square":
-                    gwemopt.tiles.tesselation_packing(go_params["config"][telescope])
-            if go_params["tilesType"] == "galaxy":
-                go_params["config"][telescope]["tesselation"] = np.empty((3,))
-            else:
-                go_params["config"][telescope]["tesselation"] = np.loadtxt(go_params["config"][telescope]["tesselationFile"],usecols=(0,1,2),comments='%')
-
-        if "referenceFile" in go_params["config"][telescope]:
-            from astropy import table
-            refs = table.unique(table.Table.read(
-                go_params["config"][telescope]["referenceFile"],
-                format='ascii', data_start=2, data_end=-1)['field', 'fid'])
-            reference_images =\
-                {group[0]['field']: group['fid'].astype(int).tolist()
-                for group in refs.group_by('field').groups}
-            reference_images_map = {1: 'g', 2: 'r', 3: 'i'}
-            for key in reference_images:
-                reference_images[key] = [reference_images_map.get(n, n)
-                                         for n in reference_images[key]]
-            go_params["config"][telescope]["reference_images"] = reference_images
-
-        location = astropy.coordinates.EarthLocation(go_params["config"][telescope]["longitude"],go_params["config"][telescope]["latitude"],go_params["config"][telescope]["elevation"])
-        observer = astroplan.Observer(location=location)
-        go_params["config"][telescope]["observer"] = observer
 
     # Baseline check for remaining fields missing, using gwemopt check function
     go_params = gou.params_checker(go_params)
@@ -2711,7 +2573,6 @@ def CreateSkyMapStructFromLisabetaPosteriors(FileName,go_params):
     pix_decs = np.rad2deg(0.5*np.pi - pix_thetas)
     pixels_numbers=hp.ang2pix(go_params["nside"], pix_thetas, pix_phis)
 
-
     # Convert post angles to theta,phi
     post_phis = infer_params["lambda"]+np.pi
     post_thetas = np.pi/2.-infer_params["beta"]
@@ -2735,6 +2596,14 @@ def CreateSkyMapStructFromLisabetaPosteriors(FileName,go_params):
     pixarea_deg2 = hp.nside2pixarea(go_params["nside"], degrees=True)
     map_struct["pixarea"] = pixarea
     map_struct["pixarea_deg2"] = pixarea_deg2
+
+    # Assign parameters linked to source
+    go_params["Tobs"] ### this is used no where I can find in gwemopt but it might be important so set anyway.
+    go_params["true_ra"]
+    go_params["true_dec"]
+    go_params["true_distance"]
+    # go_params["phi"]     ##### WHAT IS THIS? IT DOES NOT CORRESPOND TO THEIR DEFAULT VALUE OF "true_ra"
+    # go_params["theta"]   ##### WHAT IS THIS? IT DOES NOT CORRESPOND TO THEIR DEFAULT VALUE OF "true_dec"
 
     # Save to file
     SkyMapFileName = FileLocAndName.split("inference_data")[0] + 'Skymap_files' + FileLocAndName.split("inference_data")[-1]
@@ -2830,6 +2699,58 @@ def CompleteLisabetaDataAndJsonFileNames(FileName):
 
     # Return full paths and names all harmonious and what not
     return JsonFileLocAndName,H5FileLocAndName
+
+def GWEMOPTPathChecks(go_params, config_struct):
+    """
+    Function to check formatting of file paths specified at initiation of gwemopt
+    params dictionary. This will check the locations as well as file names are
+    coherent with telescope type... But haven't coded that yet...
+
+    TO DO: Need to add checks that the proper file locations are specified (tile_files etc)...
+    """
+
+    PATH_VARS = ["outputDir", "tilingDir", "catalogDir", "configDirectory"]
+    FILE_VARS = ["coverageFiles", "lightcurveFiles"]
+    CONFIG_FILE_VARS = ["tesselationFile"]
+
+    # Check if paths are complete
+    for PathVar in PATH_VARS:
+        if len(go_params[PathVar].split("SYNEX"))==1:
+            # Needs SYNEX_PATH added
+            go_params[PathVar] = SYNEX_PATH+go_params[PathVar]
+        # Check if it exists
+        pathlib.Path(go_params[PathVar]).mkdir(parents=True, exist_ok=True)
+
+    # Now specified files
+    for FileVar in FILE_VARS:
+        if len(go_params[FileVar].split("SYNEX"))==1:
+            # Needs SYNEX_PATH added
+            go_params[FileVar] = SYNEX_PATH+go_params[FileVar]
+        # Check file endings to match gwemopt hardcoded stuff
+        if len(go_params[FileVar].split("."))==1:
+            go_params[FileVar] = go_params[FileVar] + ".dat"
+        elif go_params[FileVar].split(".")[-1]!="dat":
+            go_params[FileVar] = go_params[FileVar].split(".")[0] + ".dat"
+        # Check if it exists
+        PathOnly = "/".join(go_params[FileVar].split("/")[:-1])
+        pathlib.Path(PathOnly).mkdir(parents=True, exist_ok=True)
+
+    # Now config_struct paths
+    for FileVar in CONFIG_FILE_VARS:
+        if len(config_struct[FileVar].split("SYNEX"))==1:
+            # Needs SYNEX_PATH added
+            config_struct[FileVar] = SYNEX_PATH+config_struct[FileVar]
+        # Check file endings to match gwemopt hardcoded stuff
+        if len(config_struct[FileVar].split("."))==1:
+            config_struct[FileVar] = config_struct[FileVar] + ".tess"
+        elif config_struct[FileVar].split(".")[-1]!="tess":
+            config_struct[FileVar] = config_struct[FileVar].split(".")[0] + ".tess"
+        # Check if it exists
+        PathOnly = "/".join(config_struct[FileVar].split("/")[:-1])
+        pathlib.Path(PathOnly).mkdir(parents=True, exist_ok=True)
+
+    return go_params_default, config_struct
+
 
 
 

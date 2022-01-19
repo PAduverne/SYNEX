@@ -141,6 +141,23 @@ class SMBH_Merger:
                 self.DeltatL_cut = value
             elif key == 'Lframe':
                 self.Lframe = value
+            elif key=='DataFile':
+                JsonFileLocAndName,H5FileLocAndName=SYU.CompleteLisabetaDataAndJsonFileNames(value)
+                if os.path.isfile(JsonFileLocAndName) and os.path.isfile(H5FileLocAndName):
+                    self.H5File=H5FileLocAndName
+                    self.JsonFile=H5FileLocAndName
+                elif not os.path.isfile(JsonFileLocAndName) and os.path.isfile(H5FileLocAndName):
+                    print("Warning: no Json file found- setting json and h5 filenames to None...")
+                    self.H5File=None
+                    self.JsonFile=None
+                elif os.path.isfile(JsonFileLocAndName) and not os.path.isfile(H5FileLocAndName):
+                    print("Warning: no h5 data file found- setting json and h5 filenames to None...")
+                    self.H5File=None
+                    self.JsonFile=None
+                else :
+                    print("Warning: no json or h5 data file found- setting json and h5 filenames to None...")
+                    self.H5File=None
+                    self.JsonFile=None
 
         # Make sure m1>m2 and q>1
         if hasattr(self,"m1") and hasattr(self,"m2"):
@@ -295,7 +312,11 @@ class SMBH_Merger:
                 self.DeltatL_cut = None     # Included
         if not hasattr(self,"Lframe"):
                 self.Lframe = True
-    
+        if not hasattr(self,"H5File"):
+                self.H5File=None
+        if not hasattr(self,"JsonFile"):
+                self.JsonFile=None
+
     def GenerateEMFlux(self,detector,fstart22=1e-4,**EM_kwargs):
         # Empty LALParams dict
         LALParams = lal.CreateDict();

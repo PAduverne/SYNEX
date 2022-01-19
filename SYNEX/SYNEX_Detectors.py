@@ -1,5 +1,6 @@
 import astropy.units as u
 import astropy.stats as astat
+import astropy, astroplan
 import numpy as np
 import SYNEX.SYNEX_Utils as SYU
 import gwemopt
@@ -122,55 +123,65 @@ class Athena:
 
     def __init__(self, **kwargs):
         # Import default gwemopt dict
-        from SYNEX.gwemopt_defaults import go_params_default, config_struct_default as go_params, config_struct
+        from SYNEX.gwemopt_defaults import go_params_default, config_struct_default as detector_go_params, detector_config_struct
 
         # Change all things in go_params that are specified in kwargs,
         # and warn the user if any of the things they set are not used...
         print_reminder = False
         for key,value in kwargs.items():
-            if key in go_params:
-                go_params[key]=value
+            if key in detector_go_params:
+                detector_go_params[key]=value
             else:
                 print("'",key,"' not contained in gwemopt 'params' dict...")
                 print_reminder = True
         # Now initiate config struct for this telescope
         if "ConfigFileName" in kwargs.keys():
-            config_struct = gwemopt.utils.readParamsFromFile(kwargs["ConfigFileName"])
-            config_struct["telescope"] = go_params["telescopes"]
+            detector_config_struct = gwemopt.utils.readParamsFromFile(kwargs["ConfigFileName"])
+            detector_config_struct["telescope"] = detector_go_params["telescopes"]
         else:
             for key,value in kwargs.items():
                 if key in config_struct:
-                    config_struct[key]=value
+                    detector_config_struct[key]=value
                 else:
                     print("'",key,"' not contained in gwemopt 'config_struct' dict...")
                     print_reminder = True
-        # go_params["config"][go_params["telescopes"]]=config_struct
 
-        # Check that file names are all coherent with telescope name
-        go_params, config_struct = SYU.GWEMOPTPathChecks(go_params,config_struct)
+        # Check that file names are all coherent with SYNEX_PATH and telescope name
+        detector_go_params, detector_config_struct = SYU.GWEMOPTPathChecks(detector_go_params,detector_config_struct)
 
-        # Now calculate tesselation for telescope
-        if go_params["doSingleExposure"]:
-            exposuretime = np.array(go_params["exposuretimes"].split(","),dtype=np.float)[0]
+        # Now set class attributes as dicts - then we can integrate these with many classes in utils when running gwemopt
+        self.detector_go_params = detector_go_params
+        self.detector_config_struct = detector_config_struct
 
-            nmag = -2.5*np.log10(np.sqrt(config_struct["exposuretime"]/exposuretime))
-            config_struct["magnitude"] = config_struct["magnitude"] + nmag
-            config_struct["exposuretime"] = exposuretime
-        if "tesselationFile" in config_struct:
-            if not os.path.isfile(config_struct["tesselationFile"]):
-                if config_struct["FOV_type"] == "circle":
-                    gwemopt.tiles.tesselation_spiral(config_struct)
-                elif config_struct["FOV_type"] == "square":
-                    gwemopt.tiles.tesselation_packing(config_struct)
-            if go_params["tilesType"] == "galaxy":
-                config_struct["tesselation"] = np.empty((3,))
+        # Calculate tesselation - seperated for construction many nearly identical classes (e.g. optimization routines)
+        self.ComputTesselation(FORCE_RECOMPUTE=False)
+
+        # Issue reminder of where to find list of gwemopt variables and flags
+        if print_reminder:
+            print("Some keys given at initiatiation of Athena class are not contained in gwemop params - see 'SYNEX/gwemopt_defaults.py' for full list of possible field names.")
+
+    def ComputTesselation(self,FORCE_RECOMPUTE=True):
+        if self.detector_go_params["doSingleExposure"]:
+            exposuretime = np.array(self.detector_go_params["exposuretimes"].split(","),dtype=np.float)[0]
+
+            nmag = -2.5*np.log10(np.sqrt(self.detector_config_struct["exposuretime"]/exposuretime))
+            self.detector_config_struct["magnitude"] = self.detector_config_struct["magnitude"] + nmag
+            self.detector_config_struct["exposuretime"] = exposuretime
+        if "tesselationFile" in self.config_struct:
+            if not os.path.isfile(self.detector_config_struct["tesselationFile"]) or FORCE_RECOMPUTE: # EITHER it doesnt exist yet OR we want to recompute it
+                if self.detector_config_struct["FOV_type"] == "circle":
+                    gwemopt.tiles.tesselation_spiral(self.detector_config_struct)
+                elif self.detector_config_struct["FOV_type"] == "square":
+                    gwemopt.tiles.tesselation_packing(self.detector_config_struct)
+            if self.detector_go_params["tilesType"] == "galaxy":
+                self.detector_config_struct["tesselation"] = np.empty((3,))
             else:
-                config_struct["tesselation"] = np.loadtxt(config_struct["tesselationFile"],usecols=(0,1,2),comments='%')
+                self.detector_config_struct["tesselation"] = np.loadtxt(self.detector_config_struct["tesselationFile"],usecols=(0,1,2),comments='%')
 
-        if "referenceFile" in config_struct:
+        if "referenceFile" in self.detector_config_struct: ### Not sure what this is but we include it to be complete with GWEMOPT
             from astropy import table
             refs = table.unique(table.Table.read(
-                config_struct["referenceFile"],
+                self.detector_config_struct["referenceFile"],
                 format='ascii', data_start=2, data_end=-1)['field', 'fid'])
             reference_images =\
                 {group[0]['field']: group['fid'].astype(int).tolist()
@@ -179,285 +190,11 @@ class Athena:
             for key in reference_images:
                 reference_images[key] = [reference_images_map.get(n, n)
                                          for n in reference_images[key]]
-            config_struct["reference_images"] = reference_images
+            self.detector_config_struct["reference_images"] = reference_images
 
-        location = astropy.coordinates.EarthLocation(config_struct["longitude"],config_struct["latitude"],config_struct["elevation"])
+        location = astropy.coordinates.EarthLocation(self.detector_config_struct["longitude"],self.detector_config_struct["latitude"],self.detector_config_struct["elevation"])
         observer = astroplan.Observer(location=location)
-        config_struct["observer"] = observer
-
-        # Issue reminder of where to find list of gwemopt variables and flags
-        if print_reminder:
-            print("Some keys given at initiatiation of Athena class are not contained in gwemop params - see 'SYNEX/gwemopt_defaults.py' for full list of possible field names.")
-
-        # Now set class attributes as dicts - then we can integrate these with many classes in utils when running gwemopt
-        self.go_params = go_params
-        self.config_struct = go_params
-
-    def TileSkyArea(self,LISAPosteriorDataFile,TilePickleName=None,TileStrat="MaxProb", overlap=0.5, SAVE_SOURCE_EM_PROPERTIES_IN_TILE_JSON=True, go_params=None):
-        """
-        Function to load and tile a posterior sky area, saving a file of sky positions
-        in order of a specification for a given tiling strategy.
-
-        TileStrat : STRING
-            - "MaxProb"
-                Most basic tiling algorithm that selects locations in descending posterior probability.
-                No asumptions (for the time being ) are made about slew rates, dead time, reboot times, etc.
-
-            - "greedy"
-                GWEMOPT tiling strategy named 'greedy'.
-        """
-
-        # Security check on filename - in gwemopt tiling methods this will be checked again... Need to optimize layout of checks.
-        JsonFileLocAndName,H5FileLocAndName=SYU.CompleteLisabetaDataAndJsonFileNames(LISAPosteriorDataFile)
-
-        # Choose strategy for tiling
-        if TileStrat=="MaxProbOld":
-            """
-            Most basic way to tile - find the max prob sky location, and start there.
-            """
-            # Params for run time
-            extent = np.sqrt(self.FoView) # in radians to match lisabeta units - side length of FoV
-            BreakFlag = False
-            TileNo = 0 # start at 0 to comply with gwemopt convention
-
-            # Get data
-            _, _, _, X, _, Y, _, Z = SYU.PlotInferenceLambdaBeta(H5FileLocAndName, bins=50, SkyProjection=False, SaveFig=False, return_data=True)
-            betas = Y.flatten()
-
-            # Repeat binning to ensure you can get the right points for overlap
-            if betas[-1]-betas[0]>extent*overlap:
-                bins = 2*int((betas[-1]-betas[0])/(extent*overlap))
-                _, _, _, X, _, Y, _, Z = SYU.PlotInferenceLambdaBeta(H5FileLocAndName, bins=bins, SkyProjection=False, SaveFig=False, return_data=True)
-            Post_probs = Z.flatten()
-            lambdas = X.flatten()
-            betas = Y.flatten()
-            plt.close('all')
-
-            # Output dictionary of tile properties
-            TileDict = {"Tile Strat": TileStrat, "overlap": overlap, "tile_structs":{self.telesope:{}}, "LISA Data File":H5FileLocAndName}
-
-            # Run through the space of confidence area, extracting tile properties and reducing the list of total tiles
-            while BreakFlag == False:
-                tile_prob = np.max(Post_probs)
-                arg_max = np.argmax(Post_probs)
-                if not isinstance(arg_max,np.int64):
-                    arg_max = arg_max[0]
-                tile_beta = betas[arg_max]
-                tile_lambda = lambdas[arg_max]
-
-                # Put in the tile to the tile dictionary
-                lambda_range=[tile_lambda-extent/2.,tile_lambda+extent/2.]
-                beta_range=[tile_beta-extent/2.,tile_beta+extent/2.]
-                ra_range=[np.rad2deg(lambda_range[0]+np.pi),np.rad2deg(lambda_range[1]+np.pi)]
-                dec_range=[np.rad2deg(beta_range[0]),np.rad2deg(beta_range[1])]
-                corners=np.array([[ra_range[0],dec_range[0]], ## Following convention of gwemopt ordering
-                         [ra_range[1],dec_range[0]],
-                         [ra_range[0],dec_range[1]],
-                         [ra_range[1],dec_range[1]]])
-                Tile = {"ra":np.rad2deg(tile_lambda+np.pi), ## gwemopt dict fields -- 'ra', 'dec', 'ipix', 'corners', 'patch', 'area', 'segmentlist'
-                        "dec":np.rad2deg(tile_beta),
-                        "ipix":[], ## this is a number but I'm not sure what it is yet...
-                        "corners":corners,
-                        "patch":[], ## this is a matplotlib 'path' thing but I'm not sure what it is yet...
-                        "area":self.FoView*(180./np.pi)**2,
-                        "segmentlist":[],
-                        "lambda":tile_lambda, ## lisabeta dict fields
-                        "beta":tile_beta,
-                        "lambda_range":lambda_range,
-                        "beta_range":beta_range,
-                        "Center post prob": tile_prob}
-                TileDict["tile_structs"][self.telescope][TileNo] = Tile
-
-                # Delete coordinates of mode that's done minus some overlap
-                mask = [np.all([betas[ii]<tile_beta+overlap*extent, betas[ii]>tile_beta-overlap*extent, lambdas[ii]<tile_lambda+overlap*extent, lambdas[ii]>tile_lambda-overlap*extent]) for ii in range(len(lambdas))]
-                betas = np.delete(betas, mask, axis=0)
-                lambdas = np.delete(lambdas, mask, axis=0)
-                Post_probs = np.delete(Post_probs, mask, axis=0)
-
-                # exit loop if the remaining data is
-                if len(Post_probs) <= 100 or TileNo>100:
-                    BreakFlag = True
-                TileNo+=1
-
-        elif any([TileStrat=="MaxProb", TileStrat=="moc" , TileStrat=="greedy" , TileStrat=="hierarchical" , TileStrat=="ranked" , TileStrat=="galaxy"]):
-            """
-            "MaxProb" is the same as "MaxProbOld", but using gwemopt features...
-            """
-            import gwemopt.tiles as gots
-            from gwemopt import utils as gou
-
-            # check if go_params given and create if not -- this will later be integrated into the athena init function...
-            if go_params==None:
-                go_params={
-                            "nside":16,
-                            "TileStrat":TileStrat, # Since we want to keep the SYNEX call and gwemopt calls different for added strats in SYNEX
-                            "tilesType":TileStrat,
-                            "exposuretimes":np.array([self.T_lat]), # This has the same length as number of filters.... Need to look at this for Athena.
-                            "Ntiles":10, # set 200, 10 for debugging, total tiles for now and later we cut ones we dont need. this helps if we only change things like latency times later...
-                            "iterativeOverlap":overlap,   #### WHAT IS THIS USED FOR?
-                            "maximumOverlap":1.0          #### WHAT IS THIS USED FOR?
-                            }
-            if len(go_params["exposuretimes"])==1:
-                go_params["doSingleExposure"]=True
-            else:
-                go_params["doSingleExposure"]=False
-            go_params["iterativeOverlap"]=overlap
-
-            # Make tile dict, which contains gwemopt 'tile_structs' object, plus some stuff for SYNEX and lisabeta combatability
-            if TileStrat=="MaxProb":
-                # Adjust gwemopt params for requested tiling strat -- this will later be integrated into the athena init function...
-                go_params["tilesType"]="moc"
-                go_params["timeallocationType"] = "powerlaw"
-                go_params["powerlaw_n"]=1
-                if "powerlaw_cl" not in go_params: # i.e. if this is not already specified at input..
-                    go_params["powerlaw_cl"]=0.9
-                go_params["powerlaw_dist_exp"]=0
-                go_params["doMinimalTiling"]=True ## Can we ignore this later or somehow 'sense' if it's True or False?
-
-                # Run checker to complete gwemopt fields
-                go_params = SYU.gou_params_checker(go_params,detector=self)
-                # Create sky_map dictionary
-                go_params,map_struct = SYU.CreateSkyMapStruct(go_params,LisabetaFileName=H5FileLocAndName)
-
-                # Get tiling structs
-                moc_structs = gwemopt.moc.create_moc(go_params, map_struct=map_struct)
-                tile_structs = gots.moc(go_params,map_struct,moc_structs)
-            elif TileStrat=="moc":
-                # Adjust gwemopt params for requested tiling strat -- this will later be integrated into the athena init function...
-                go_params["timeallocationType"] = "powerlaw"
-
-                # Run checker to ensure dict is complete according to gwemopt definitions
-                go_params = SYU.gou_params_checker(go_params,detector=self)
-                # Create the necessary sky_map dictionary
-                go_params,map_struct = SYU.CreateSkyMapStruct(go_params,LisabetaFileName=H5FileLocAndName)
-
-                # Get tiling structs
-                moc_structs = gwemopt.moc.create_moc(go_params, map_struct=map_struct)
-                tile_structs = gots.moc(go_params,map_struct,moc_structs)
-            elif TileStrat=="greedy":
-                # Adjust gwemopt params for requested tiling strat -- this will later be integrated into the athena init function...
-                go_params["timeallocationType"] = "powerlaw"
-
-                # Run checker to ensure dict is complete according to gwemopt definitions
-                go_params = SYU.gou_params_checker(go_params,detector=self)
-                # Create the necessary sky_map dictionary
-                go_params,map_struct = SYU.CreateSkyMapStruct(go_params,LisabetaFileName=H5FileLocAndName)
-
-                # Get tiling structs
-                tile_structs = gots.greedy(go_params,map_struct)
-                for telescope in go_params["telescopes"]:
-                    go_params["config"][telescope]["tesselation"] = np.empty((0,3))
-                    tiles_struct = tile_structs[telescope]
-                    for index in tiles_struct.keys():
-                        ra, dec = tiles_struct[index]["ra"], tiles_struct[index]["dec"]
-                        go_params["config"][telescope]["tesselation"] = np.append(go_params["config"][telescope]["tesselation"],[[index,ra,dec]],axis=0)
-            elif TileStrat=="hierarchical":
-                # Adjust gwemopt params for requested tiling strat -- this will later be integrated into the athena init function...
-                go_params["timeallocationType"] = "powerlaw"
-
-                # Run checker to ensure dict is complete according to gwemopt definitions
-                go_params = SYU.gou_params_checker(go_params,detector=self)
-                # Create the necessary sky_map dictionary
-                go_params,map_struct = SYU.CreateSkyMapStruct(go_params,LisabetaFileName=H5FileLocAndName)
-
-                # Get tiling structs
-                tile_structs = gots.hierarchical(go_params,map_struct)
-                go_params["Ntiles"] = []
-                for telescope in go_params["telescopes"]:
-                    go_params["config"][telescope]["tesselation"] = np.empty((0,3))
-                    tiles_struct = tile_structs[telescope]
-                    for index in tiles_struct.keys():
-                        ra, dec = tiles_struct[index]["ra"], tiles_struct[index]["dec"]
-                        go_params["config"][telescope]["tesselation"] = np.append(go_params["config"][telescope]["tesselation"],[[index,ra,dec]],axis=0)
-                    go_params["Ntiles"].append(len(tiles_struct.keys()))
-            elif TileStrat=="ranked":
-                # Adjust gwemopt params for requested tiling strat -- this will later be integrated into the athena init function...
-                go_params["timeallocationType"] = "powerlaw"
-
-                # Run checker to ensure dict is complete according to gwemopt definitions
-                go_params = SYU.gou_params_checker(go_params,detector=self)
-                # Create the necessary sky_map dictionary
-                go_params,map_struct = SYU.CreateSkyMapStruct(go_params,LisabetaFileName=H5FileLocAndName)
-
-                # Get tiling structs
-                go_params["doMinimalTiling"]=True ###### ADDED THIS IN CASE THS HELPS THE CAUSE -- NEED TO VERIFY THAT THIS SAVES THE ROUTINE FROM BREAKING
-                moc_structs = gwemopt.rankedTilesGenerator.create_ranked(go_params,map_struct)
-                tile_structs = gots.moc(go_params,map_struct,moc_structs)
-            elif TileStrat=="galaxy":
-                # Adjust gwemopt params for requested tiling strat -- this will later be integrated into the athena init function...
-                go_params["timeallocationType"] = "powerlaw"
-
-                # Run checker to ensure dict is complete according to gwemopt definitions
-                go_params = SYU.gou_params_checker(go_params,detector=self)
-                # Create the necessary sky_map dictionary
-                go_params,map_struct = SYU.CreateSkyMapStruct(go_params,LisabetaFileName=H5FileLocAndName)
-
-                # Get tiling structs
-                map_struct, catalog_struct = gwemopt.catalog.get_catalog(go_params, map_struct)
-                tile_structs = gots.galaxy(go_params,map_struct,catalog_struct)
-                for telescope in go_params["telescopes"]:
-                    go_params["config"][telescope]["tesselation"] = np.empty((0,3))
-                    tiles_struct = tile_structs[telescope]
-                    for index in tiles_struct.keys():
-                        ra, dec = tiles_struct[index]["ra"], tiles_struct[index]["dec"]
-                        go_params["config"][telescope]["tesselation"] = np.append(go_params["config"][telescope]["tesselation"],[[index,ra,dec]],axis=0)
-
-            # # Plot tiles using gwemopt directly...
-            # gwemopt.plotting.tiles(go_params, map_struct, tile_structs)
-
-            # Keeping the sub-dict used by gwemopt just in case (for now), insert some value conversions for SYNEX compatibility -- might get rid of this later and stick to gwemopt conventions...
-            tile_structs[self.telescope]["Tile Strat"] = TileStrat
-            for tileID in range(len(tile_structs[self.telescope].keys())):
-                corners=tile_structs[self.telescope][tileID]['corners']
-                lambda_range=[np.deg2rad(corners[0][0]),np.deg2rad(corners[1][0])]
-                beta_range=[np.deg2rad(corners[0][1]),np.deg2rad(corners[1][1])]
-                tile_structs[self.telescope][tileID]["lambda"]=np.deg2rad(tile_structs[self.telescope][tileID]['ra'])-np.pi
-                tile_structs[self.telescope][tileID]["beta"]=np.deg2rad(tile_structs[self.telescope][tileID]['dec'])
-                tile_structs[self.telescope][tileID]["lambda_range"]=lambda_range
-                tile_structs[self.telescope][tileID]["beta_range"]=beta_range
-                tile_structs[self.telescope][tileID]["Center post prob"]=tile_structs[self.telescope][tileID]['prob']
-
-            # Output dictionary of tile properties
-            TileDict = {"LISA Data File": H5FileLocAndName,
-                        "tile_structs": tile_structs,
-                        "go_params": go_params,
-                        "map_struct": map_struct}
-
-        # Add source properties to dictionary for faster kuiper step if requested
-        if SAVE_SOURCE_EM_PROPERTIES_IN_TILE_JSON:
-            # grab source parameters from corresponding json file
-            source = SYU.GetSourceFromInferenceData(JsonFileLocAndName)
-
-            # Recreate the EM flux and CTR - fime name and gamma hard coded for now... Maybe shoul dbe given at entry line to this function for continuity?
-            source.GenerateEMFlux(self)
-            ARF_file_loc_name = 'XIFU_CC_BASELINECONF_2018_10_10.arf'
-            source.GenerateCTR(ARF_file_loc_name=ARF_file_loc_name,gamma=1.7)
-
-            # Add to tile dict
-            TileDict["source_EM_properties"]={
-            "xray_flux" : source.xray_flux,
-            "xray_time" : source.xray_time,
-            "phi" : source.GW_phi,
-            "Omega" : source.GW_Omega,
-            "r" : source.r,
-            "xray_gamma" : source.xray_gamma,
-            "xray_phi_0" : source.xray_phi_0,
-            "CTR" : source.CTR,
-            "GW_freqs" : source.GW_freqs
-            }
-
-        # Make output file name if not specified - this will put the file in folder where user is executing their top most script
-        if TilePickleName==None:
-            TilePickleName = H5FileLocAndName.split("inference_data")[0] + "Tile_files" + go_params["skymap"].split("Skymap_files")[-1]
-            TilePickleName = TilePickleName[:-3] + "_" + TileStrat + ".dat"
-            print(TilePickleName)
-
-        # Write to file
-        with open(TilePickleName, 'wb+') as f:
-            pickle.dump(TileDict, f)
-
-        # Write the name of the file to the detector object
-        self.TilePickleName = TilePickleName ### Pickle or dat files? Not sure which is better here...
+        self.detector_config_struct["observer"] = observer
 
     def GetKuiper(self, TilePickleFile, source=None):
         # Check first that the necessary steps have been done for the source and detector

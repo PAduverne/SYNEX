@@ -133,7 +133,6 @@ go_params_default["telescopes"] = "Athena_test"
 # BE TURNED INTO A TIME VARYING LAT/LONG/ELEVATION IF THIS WORKS INSIDE GWEMOPT
 # FUNCTIONS BUT NEED TO CHECK THIS...
 config_struct_default = {
-"telescope" : "Athena_test",
 "filt" : "c",
 "magnitude" : 18.7,
 "exposuretime" : np.array([10000.]), # 10^4 s... Does gwemopt require this in seconds or hours or what?
@@ -144,7 +143,7 @@ config_struct_default = {
 "FOV" : 1., # In deg^2
 "FOV_coverage_type" : "square",
 "FOV_type" : "square",
-"tesselationFile" : SYNEX_PATH+"/gwemopt_tess_files/Athena_test.tess",
+"tesselationFile" : None,
 "slew_rate" : 1., # in s/deg
 "readout" : 6,
 "horizon" : 30,       ### this could be a problem... Need to understand how gwemopt uses horizon...

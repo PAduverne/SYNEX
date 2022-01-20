@@ -1,9 +1,11 @@
 import astropy.units as u
 import numpy as np
+import healpy as hp
 from astropy.cosmology import WMAP9 as cosmo
 from astropy.cosmology import Planck13, z_at_value # needed only to convert a given distance to redshift at initialization
 import astropy.units as u
 import warnings
+import os
 
 import SYNEX.SYNEX_Utils as SYU
 
@@ -141,7 +143,7 @@ class SMBH_Merger:
                 self.DeltatL_cut = value
             elif key == 'Lframe':
                 self.Lframe = value
-            elif key=='DataFile':
+            elif key=='lisabetaFile':
                 JsonFileLocAndName,H5FileLocAndName=SYU.CompleteLisabetaDataAndJsonFileNames(value)
                 if os.path.isfile(JsonFileLocAndName) and os.path.isfile(H5FileLocAndName):
                     self.H5File=H5FileLocAndName
@@ -154,10 +156,12 @@ class SMBH_Merger:
                     print("Warning: no h5 data file found- setting json and h5 filenames to None...")
                     self.H5File=None
                     self.JsonFile=None
-                else :
+                else:
                     print("Warning: no json or h5 data file found- setting json and h5 filenames to None...")
                     self.H5File=None
                     self.JsonFile=None
+            elif key=='sky_map':
+                self.sky_map=value
 
         # Make sure m1>m2 and q>1
         if hasattr(self,"m1") and hasattr(self,"m2"):
@@ -316,6 +320,101 @@ class SMBH_Merger:
                 self.H5File=None
         if not hasattr(self,"JsonFile"):
                 self.JsonFile=None
+        if not hasattr(self,"sky_map"):
+                self.sky_map=None
+
+        # Extra useful params
+        self.true_ra = np.rad2deg(self.lamda+np.pi)   ## In deg
+        self.true_dec = np.rad2deg(self.beta)         ## In deg
+        self.true_distance = self.dist                ## in Mpc
+
+        # Now check if sky_map needs creating or reading -- adaptation for 3D case needed here...
+        if self.sky_map!=None and os.path.isfile(self.sky_map):
+            self.LoadSkymap()
+        elif self.sky_map!=None and not os.path.isfile(self.sky_map):
+            self.CreateSkyMapStruct()
+        elif self.sky_map==None and self.H5File!=None:
+            # Default name
+            self.sky_map = self.H5File.split("inference_data")[0] + 'Skymap_files' + self.H5File.split("inference_data")[-1]
+            self.sky_map = self.sky_map[:-3] + '.fits'
+            if os.path.isfile(self.sky_map):
+                self.LoadSkymap()
+            else:
+                self.CreateSkyMapStruct()
+
+    def LoadSkymap(self):
+        """
+        Read a skymap in -- Check that parameters match? Not sure it's needed...
+        Most basic sky map here. Need to add 3d option...
+        """
+        self.map_struct={}
+        prob_data, header = hp.read_map(self.sky_map, field=0, verbose=False,h=True)
+        prob_data = prob_data / np.sum(prob_data)
+
+        self.map_struct["prob"] = prob_data
+        map_nside = hp.pixelfunc.get_nside(self.map_struct["prob"])
+        npix = hp.nside2npix(nside)
+        theta, phi = hp.pix2ang(nside, np.arange(npix))
+        ra = np.rad2deg(phi)
+        dec = np.rad2deg(0.5*np.pi - theta)
+
+        self.map_struct["ra"] = ra
+        self.map_struct["dec"] = dec
+
+    def CreateSkyMapStruct(self,nside=None,SkyMapFileName=None):
+        # default pixelation if no nside given
+        if nside==None:
+            nside=128 # 1024
+
+        # if SkyMapFileName given; then preferentially save to this filename.
+        # This is checked in SYU.WriteSkymapToFile just before writing to file.
+        if SkyMapFileName!=None:
+            self.sky_map = SkyMapFileName
+
+        # Read in data from file
+        [infer_params, _, _, _] = SYU.read_h5py_file(self.H5File)
+        labels = ["lambda","beta"]
+        if np.size(infer_params[labels[0]][0])>1:
+            nsamples = len(infer_params["lambda"][0])
+        else:
+            nsamples = len(infer_params["lambda"])
+
+        # Get pixel locations from healpy params
+        npix = hp.nside2npix(nside)
+        pix_thetas, pix_phis = hp.pix2ang(nside, np.arange(npix))
+        pix_ras = np.rad2deg(pix_phis) # Ra and Dec for pix are stored in map_struct in degrees NOT radians
+        pix_decs = np.rad2deg(0.5*np.pi - pix_thetas)
+        pixels_numbers=hp.ang2pix(nside, pix_thetas, pix_phis)
+
+        # Convert post angles to theta,phi
+        post_phis = infer_params["lambda"]+np.pi
+        post_thetas = np.pi/2.-infer_params["beta"]
+        post_pix = hp.ang2pix(nside,post_thetas,post_phis)
+
+        # Probabilities of pixels
+        probs,bin_edges = np.histogram(post_pix, bins=np.arange(npix+1), density=True)
+
+        # Make the dictionary
+        map_struct = {"prob":probs,
+                      "ra":pix_ras,
+                      "dec":pix_decs}
+
+        # Get additional data required by GWEMOPT
+        sort_idx = np.argsort(map_struct["prob"])[::-1]
+        csm = np.empty(len(map_struct["prob"]))
+        csm[sort_idx] = np.cumsum(map_struct["prob"][sort_idx])
+        map_struct["cumprob"] = csm
+        map_struct["ipix_keep"] = np.where(csm <= 1.)[0] # params["iterativeOverlap"])[0]
+        pixarea = hp.nside2pixarea(nside)
+        pixarea_deg2 = hp.nside2pixarea(nside, degrees=True)
+        map_struct["pixarea"] = pixarea
+        map_struct["pixarea_deg2"] = pixarea_deg2
+
+        # create class attribute
+        self.map_struct=map_struct
+
+        # Save to file
+        SYU.WriteSkymapToFile(self.map_struct,self.sky_map,None)
 
     def GenerateEMFlux(self,detector,fstart22=1e-4,**EM_kwargs):
         # Empty LALParams dict

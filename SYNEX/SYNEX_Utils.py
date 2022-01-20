@@ -1,22 +1,32 @@
+"""
+TO DO:
+-Do we always want to match filenames?
+-Do we want to restructure outputs so they are all in one output directory and labeled under event?
+Might get tricky if we are e.g. running randomized sources... For the moment keep outputs seperated.
+"""
+# Import stuff
+import sys
+import os
+import pathlib
+# Set the path to root SYNEX directory so file reading and writing is easier -- NOTE: NO TRAILING SLASH
+SYNEX_PATH=str(pathlib.Path(__file__).parent.resolve()).split("SYNEX")[0]+"SYNEX"
 import astropy.constants as const
 import astropy.units as u
 import numpy as np
 import healpy as hp
 import gwemopt
 from gwemopt import utils as gou
+from gwemopt.plotting import add_edges
 import astropy, astroplan
 from astropy.cosmology import WMAP9 as cosmo
 from astropy.cosmology import Planck13, z_at_value
 import astropy.units as u
 import copy
 from ast import literal_eval
-import os
-import sys
 import statistics
 from scipy import stats
 import time
 import json, h5py
-import pathlib
 
 # Import lisebeta stuff
 import lisabeta
@@ -42,6 +52,11 @@ import SYNEX.SYNEX_Detectors as SYDs
 import matplotlib.pyplot as plt
 import matplotlib as mpl
 import matplotlib.pylab as pylab
+try:
+    import ligo.skymap.plot
+    cmap = "cylon"
+except:
+    cmap = 'PuBuGn'
 pylab_params = {'legend.fontsize': 8, # 'x-large',
          'axes.labelsize': 8, # 'x-large',
          'xtick.labelsize': 4, # 'x-large',
@@ -60,9 +75,6 @@ try:
 except ModuleNotFoundError:
     MPI = None
 
-# Set the path to root SYNEX directory so file reading and writing is easier -- NOTE: NO TRAILING SLASH
-SYNEX_PATH=os.path.dirname(os.path.realpath(__file__)).split("SYNEX")[0]+"SYNEX"
-
 # global variable for histogram plots and mode calculations
 hist_n_bins=1000
 
@@ -77,102 +89,7 @@ hist_n_bins=1000
 #                     #                               #
 #                     #################################
 
-def PlotLikeRatioFoMFromJson(FoMJsonFileAndPath, BF_lim=20., SaveFig=False):
-    """
-    Function to eventually replace the base plot functions in other plot util.
-    Return an axis and figure handle that has the base colour plot for the
-    lambda and beta sky mode replection using log(bayes factor) calculations only.
-
-    NB: This function has hard coded paths in it and will likely be removed wince we have moved on from needing it
-    """
-
-    with open(FoMJsonFileAndPath) as f:
-        FoMOverRange = json.load(f)
-    f.close()
-
-    # Set the Bayes limit
-    # For inc vs maxf: beta BF_lim=31, lambda BF_lim=15.5
-    # For inc vs beta: beta BF_lim=15.5, lambda BF_lim= anything less than 11,000
-    # For M vs z: beta BF_lim= between 10.5 and 31, lambda BF_lim= between 50 and several 1000
-
-    # Get the variables
-    Vars = FoMOverRange["LoopVariables"]
-
-    # Check that you loaded a grided FoMOverRange file
-    if not FoMOverRange["IsGrid"]:
-        raise ValueError("Must be a full grid FoMOverRange file, otherwise this code does not work.")
-    else:
-
-        ################### PLOT THE MAIN DATA ###################
-
-        X,Y = np.meshgrid(FoMOverRange[Vars[0]+"_xs"], FoMOverRange[Vars[1]+"_xs"])
-
-        if Vars[0] == "T_obs_end_to_merger":
-            X = X/(60.*60.)
-        if Vars[1] == "T_obs_end_to_merger":
-            Y = Y/(60.*60.)
-
-        if FoMOverRange["FoM"] == "SkyModeLikelihoodsBETA" or FoMOverRange["FoM"] == "SkyModeLikelihoodsLAMBDA":
-            Z = np.log10(abs(np.array(FoMOverRange["grid_ys"])+BF_lim))
-        else:
-            Z = np.log10(FoMOverRange["grid_ys"])
-
-        # Master figure and axes
-        fig, ax = plt.subplots(constrained_layout=True)
-        im = ax.pcolormesh(X, Y, Z, shading='gouraud', vmin=Z.min(), vmax=Z.max())
-        cbar = fig.colorbar(im, ax=ax)
-
-        if Vars[0] == "M":
-            ax.set_xscale('log')
-            plt.xlabel(r'M$_{\mathrm{tot}} \; (M_{\odot})$')
-        elif Vars[0] == "inc":
-            ax.set_xlim([0.,np.pi])
-            plt.xlabel(r'$\iota \; (\mathrm{rad.})$')
-        elif Vars[0] == "maxf":
-            ax.set_xscale('log')
-            plt.xlabel(r'$\mathrm{f}_{\mathrm{max}} \; (\mathrm{Hz})$')
-        elif Vars[0] == "beta":
-            plt.xlabel(r'$\beta_{SSB} \; (\mathrm{rad.})$')
-        elif Vars[0] == "z":
-            plt.xlabel(r'z')
-        elif Vars[0] == "T_obs_end_to_merger":
-            ax.set_xscale('log')
-            plt.xlabel(r'T$_{obstm} \; (\mathrm{hr})$')
-
-        if Vars[1] == "M":
-            ax.set_yscale('log')
-            ax.set_ylabel(r'M$_{\mathrm{tot}} \; (M_{\odot})$')
-        elif Vars[1] == "inc":
-            ax.set_ylabel(r'$\iota \; (\mathrm{rad.})$')
-        elif Vars[1] == "maxf":
-            ax.set_yscale('log')
-            ax.set_ylabel(r'$\mathrm{f}_{\mathrm{max}} \; (\mathrm{Hz})$')
-        elif Vars[1] == "beta":
-            ax.set_ylabel(r'$\beta_{SSB} \; (\mathrm{rad.})$')
-        elif Vars[1] == "z":
-            ax.set_ylabel(r'z')
-        elif Vars[1] == "T_obs_end_to_merger":
-            ax.set_yscale('log')
-            plt.ylabel(r'T$_{obstm} \; (\mathrm{hr})$')
-
-        if FoMOverRange["FoM"] == "SkyModeLikelihoodsBETA":
-            cbar.set_label(r'$\log_{10}(|\mathcal{B}_{\beta}|)$') # (r'$\log_{10}(|\Sigma_{b=0}^{3}\log_e(L_{(-1,b)}) - \log_e(L_{(1,b)})+20|)$')
-        elif FoMOverRange["FoM"] == "SkyModeLikelihoodsLAMBDA":
-            cbar.set_label(r'$\log_{10}(|\mathcal{B}_{\lambda}|)$') # r'$\log_{10}(|\Sigma_{a=1,-1}\log_e(L_{(a,1)}) + \log_e(L_{(a,2)}) + \log_e(L_{(a,3)}) - \log_e(L_{(a,0)})+20|)$')
-        else:
-            cbar.set_label(r'$\log_{10}(\Delta \Omega \; (\mathrm{sq. deg.}))$')
-
-    # Save?
-    if SaveFig:
-        if FoMOverRange["FoM"] == "SkyModeLikelihoodsLAMBDA":
-            plt.savefig("/Users/jonathonbaird/Documents/LabEx_PostDoc/Figs/lnL_skymodes_LambdaReflections_" + Vars[0] + "_" + Vars[1] + "_BF_" + str(BF_lim) + ".png", facecolor='w', transparent=False)
-        elif FoMOverRange["FoM"] == "SkyModeLikelihoodsBETA":
-            plt.savefig("/Users/jonathonbaird/Documents/LabEx_PostDoc/Figs/lnL_skymodes_BetaReflections_" + Vars[0] + "_" + Vars[1] + "_BF_" + str(BF_lim) + ".png", facecolor='w', transparent=False)
-        plt.show()
-    else:
-        return fig, ax
-
-def ClassesToParams(source, detector, CollectionMethod="Inference",**kwargs): # "Fisher"
+def ClassesToParams(source, detector, CollectionMethod="Inference",**kwargs):
     """ Function to change parameters embedded in the classes and handed to functions
     in dictionaries, to dictionaries and parameter lists for function calls in lisabeta.
 
@@ -356,16 +273,42 @@ def ClassesToParams(source, detector, CollectionMethod="Inference",**kwargs): # 
 
     return param_dict, waveform_params, extra_params
 
-def ParamsToClasses(input_params,CollectionMethod="Inference",**kwargs): # "Fisher"
-    """ Function to change parameters embedded in a json saved file of input param files
-    to a source class.
+def ParamsToClasses(input_params,CollectionMethod="Inference",**kwargs):
+    """ Function to return SYNEX classes from dictionary of parameters.
 
     Parameters
-    ---------
-    input_params : A dictionary loaded from a SYNEX generated input param file (json format).
+    ----------
+    input_params : Dictionary
+            Params to give to lisabeta inference methods. Usually saved by SYNEX
+            in Json format in file SYNEX/inference_param_files/...
 
-    TO DO -- update this to include a return of detector. Needs to probe the params within
-    to see if its a LISA-interacted source or ATHENA-interacted source or other.
+    CollectionMethod : String
+            Method of formatting dictionaries depending on what 'input_params' was
+            used for. Options are 'Inference' or 'Fisher' depending on if the
+            output from the lisabeta launch was a Fisher localization estimate
+            or a full MCMC inference (with ptemcee inside lisabeta).
+
+    kwargs : Dictionary
+            Optional dictionary of values to adjust the input params. This can be
+            useful if we want many copies of the same objects with a subset of
+            parameters changed. In this case we would call this function many times
+            with the same input parameters but with **kwargs containing the adjusted
+            param value at each call iteration.
+
+
+    Return
+    ----------
+    Source : SYNEX source class
+            Source class object created wth attributed given in input_params and
+            modified by anything in kwargs, using formatting according to 'CollectionMethod'.
+
+
+    TO DO
+    ----------
+        -Include detector class in return
+        -Include EM classes like Athena by adding options to 'CollectionMethod'
+        -Include EM variables in kwargs and input_params
+        -Create file with default source and detector params like with gwemopt but for lisabeta objects
     """
     # Form the three sub dictionaries
     run_params = input_params["run_params"]
@@ -373,7 +316,7 @@ def ParamsToClasses(input_params,CollectionMethod="Inference",**kwargs): # "Fish
     prior_params = input_params["prior_params"]
     param_dict = input_params["source_params"]
 
-    # Take out any modification, to these parameters in tge kwargs dict
+    # Implement changes to basic source parameters
     for key, value in kwargs.items():
         if key in param_dict:
             param_dict[key] = value
@@ -403,56 +346,10 @@ def ParamsToClasses(input_params,CollectionMethod="Inference",**kwargs): # "Fish
         param_dict["m1"] = kwargs["M"]*source.q/(1.+source.q)
         param_dict["m2"] = kwargs["M"]/(1.+source.q)
 
-    # Unwrap the positional arguments and override the source and detector values set
-    # source params
-    if "timetomerger_max" in kwargs:
-        waveform_params["timetomerger_max"] = kwargs["timetomerger_max"]
-    if "minf" in kwargs:
-        waveform_params["minf"] = kwargs["minf"]
-    if "maxf" in kwargs:
-        waveform_params["maxf"] = kwargs["maxf"]
-    if "t0" in kwargs:
-        waveform_params["t0"] = kwargs["t0"]
-    if "tref" in kwargs:
-        waveform_params["tref"] = kwargs["tref"]
-    if "phiref" in kwargs:
-        waveform_params["phiref"] = kwargs["phiref"]
-    if "fref_for_phiref" in kwargs:
-        waveform_params["fref_for_phiref"] = kwargs["fref_for_phiref"]
-    if "fref_for_tref" in kwargs:
-        waveform_params["fref_for_tref"] = kwargs["fref_for_tref"]
-    if "force_phiref_fref" in kwargs:
-        waveform_params["force_phiref_fref"] = kwargs["force_phiref_fref"]
-    if "toffset" in kwargs:
-        waveform_params["toffset"] = kwargs["toffset"]
-    if "modes" in kwargs:
-        waveform_params["modes"] = kwargs["modes"]
-    if "acc" in kwargs:
-        waveform_params["acc"] = kwargs["acc"]
-    if "approximant" in kwargs:
-        waveform_params["approximant"] = kwargs["approximant"]
-    if "DeltatL_cut" in kwargs:
-        waveform_params["DeltatL_cut"] = kwargs["DeltatL_cut"]
-    # detector params
-    if "tmin" in kwargs:
-        waveform_params["tmin"] = kwargs["tmin"]
-    if "tmax" in kwargs:
-        waveform_params["tmax"] = kwargs["tmax"]
-    if "TDI" in kwargs:
-        waveform_params["TDI"] = kwargs["TDI"]
-    if "order_fresnel_stencil" in kwargs:
-        waveform_params["order_fresnel_stencil"] = kwargs["order_fresnel_stencil"]
-    if "LISAconst" in kwargs:
-        waveform_params["LISAconst"] = kwargs["LISAconst"]
-    if "responseapprox" in kwargs:
-        waveform_params["responseapprox"] = kwargs["responseapprox"]
-    if "frozenLISA" in kwargs:
-        waveform_params["frozenLISA"] = kwargs["frozenLISA"]
-    if "TDIrescaled" in kwargs:
-        waveform_params["TDIrescaled"] = kwargs["TDIrescaled"]
-    if "LISAnoise" in kwargs:
-        waveform_params["LISAnoise"] = kwargs["LISAnoise"]
-
+    # Implement changes to basic waveform parameters
+    for key, value in kwargs.items():
+        if key in waveform_params:
+            waveform_params[key] = value
 
     # Optional parameters that depend on what method is being called
     # Need to understand if these are important differences...
@@ -469,15 +366,19 @@ def ParamsToClasses(input_params,CollectionMethod="Inference",**kwargs): # "Fish
         if "gridfreq" in kwargs:
             waveform_params["gridfreq"] = kwargs["gridfreq"]
 
-    # Create a dummy source object
+    # Create a dummy source object from base properties
     source_dummy = SYSs.SMBH_Merger(**param_dict)
 
-    # Now update waveform params
-    for field in waveform_params:
-        if hasattr(source_dummy,field):
-            param_dict[field] = waveform_params[field]
+    # Now update all attributes with waveform params
+    for key, value in waveform_params.items():
+        if hasattr(source_dummy,key):
+            param_dict[key] = value
 
-    # Now create the real source object to return
+    # Now add lisabetaFile to dict - checks for completion and existence are already in source init func
+    lisabetaFile = run_params["out_dir"] + run_params["out_name"] + ".h5"
+    param_dict["lisabetaFile"]=lisabetaFile
+
+    # Now create the real source object to be returned
     source = SYSs.SMBH_Merger(**param_dict)
 
     return source
@@ -577,12 +478,12 @@ def GWEMOPTPathChecks(go_params, config_struct):
         if len(config_struct[FileVar].split("."))==1:
             config_struct[FileVar] = config_struct[FileVar] + ".tess"
         elif config_struct[FileVar].split(".")[-1]!="tess":
-            config_struct[FileVar] = config_struct[FileVar].split(".")[0] + ".tess"
+            config_struct[FileVar] = ".".join(config_struct[FileVar].split(".")[:-1]) + ".tess"
         # Check if it exists
         PathOnly = "/".join(config_struct[FileVar].split("/")[:-1])
         pathlib.Path(PathOnly).mkdir(parents=True, exist_ok=True)
 
-    return go_params_default, config_struct
+    return go_params, config_struct
 
 
 
@@ -772,131 +673,6 @@ def GetPosteriorStats(FileName, ModeJumpLimit=None, LogLikeJumpLimit=None): # 0.
                          } # Note inj value is npfloat64,like all other variables except FWHMs which is not list. This is json serializable.
     return PosteriorStats
 
-def PlotInferenceLambdaBeta(FileName, bins=50, SkyProjection=False, SaveFig=False, return_data=False):
-    """
-    Plotting function to output corner plots of inference data.
-    Need to add the post-processing stuff from Sylvain's example online?
-    """
-    # Unpack the data
-    [infer_params, inj_param_vals, static_params, meta_data] = read_h5py_file(FileName)
-    ndim = len(infer_params.keys())
-    labels = list(infer_params.keys())
-    if np.size(infer_params[labels[0]][0])>1:
-        nsamples = len(infer_params[labels[0]][0])
-    else:
-        nsamples = len(infer_params[labels[0]])
-    print("Posterior sample length: " + str(nsamples) + ", number of infered parameters: " + str(ndim))
-    # Grab data for infered parameters
-    data = np.empty([ndim,nsamples])
-    SampleModes = []
-    for ii in range(ndim):
-        if np.size(infer_params[labels[0]][0])>1:
-            data[ii][:] = infer_params[labels[ii]][0]
-        else:
-            data[ii][:] = infer_params[labels[ii]]
-        histn,histbins = np.histogram(data[ii,:], bins=hist_n_bins)
-        histbins = histbins[:-1] + 0.5*(histbins[2]-histbins[1]) # change from left bins edges to middle of bins
-        mode = histbins[histn==max(histn)]
-        if len(mode)>1:
-            mode = mode[1] # Doe now take the first on the list, but if there are several we need to work out what to do there...
-        SampleModes.append(mode)
-    data = np.transpose(np.array(data)) # should have shape [nsamples, ndim]
-
-    # Get injected values
-    InjParam_InjVals = []
-    for key in infer_params.keys():
-        InjParam_InjVals.append(inj_param_vals["source_params_Lframe"][key][0]) # Lframe is right.
-
-    # Scatter plot of labmda and beta posterior chains, marginalized over all other params
-    fig = plt.figure()
-    ax = plt.gca()
-    if SkyProjection:
-        plt.subplot(111, projection="aitoff")
-
-    # Get 2D hitogram data
-    levels = [1.-0.997, 1.-0.95, 1.-0.9, 1.-0.68] # Plot contours for 1 sigma, 90% confidence, 2 sigma, and 3 sigma
-
-    # Manually do 2D histogram because I don't trust the ones I found online
-    # data to hist = [data[:,0], data[:,5]] = beta, lambda. Beta is y data since it is declination.
-    hist2D_pops = np.empty([bins,bins])
-    areas = np.empty([bins,bins])
-    bin_max = max(max(data[:,5]),SampleModes[5]+np.pi/10000.)
-    bin_min = min(min(data[:,5]),SampleModes[5]-np.pi/10000.)
-    if bin_max>np.pi:
-        bin_max=np.pi
-    if bin_min<-np.pi:
-        bin_max=-np.pi
-    if isinstance(bin_min,np.ndarray):
-        bin_min = bin_min[0]
-    if isinstance(bin_max,np.ndarray):
-        bin_max = bin_max[0]
-    lambda_bins = np.linspace(bin_min, bin_max, bins+1) # np.linspace(np.min(data[:,5]), np.max(data[:,5]), bins+1)
-    bin_max = max(max(data[:,0]),SampleModes[0]+np.pi/20000.)
-    bin_min = min(min(data[:,0]),SampleModes[0]-np.pi/20000.)
-    if bin_max>np.pi/2.:
-        bin_max=np.pi/2.
-    if bin_min<-np.pi/2.:
-        bin_max=-np.pi/2.
-    if isinstance(bin_min,np.ndarray):
-        bin_min = bin_min[0]
-    if isinstance(bin_max,np.ndarray):
-        bin_max = bin_max[0]
-    beta_bins = np.linspace(bin_min, bin_max, bins+1) # np.linspace(np.min(data[:,0]), np.max(data[:,0]), bins+1)
-    lambda_BinW = np.diff(lambda_bins)
-    beta_BinW = np.diff(beta_bins)
-    for xii in range(bins):
-        list_len = list(range(len(data[:,5])))
-        if xii == 0:
-            values_ii = [valii for valii in list_len if (lambda_bins[xii]<=data[valii,5]<=lambda_bins[xii+1])]
-        else:
-            values_ii = [valii for valii in list_len if (lambda_bins[xii]<=data[valii,5]<lambda_bins[xii+1])]
-        beta_pops, beta_bins = np.histogram(data[values_ii,0], bins=beta_bins) # beta_bins
-        for yii in range(bins):
-            hist2D_pops[yii,xii] = beta_pops[yii] # hist2D_pops[xii,yii] = beta_pops[yii]
-            areas[yii,xii] = beta_BinW[yii]*lambda_BinW[xii]
-
-    # Define bins information
-    lambda_bins = lambda_bins[0:-1] + (lambda_bins[2]-lambda_bins[1] )*0.5
-    beta_bins = beta_bins[0:-1] + (beta_bins[2]-beta_bins[1] )*0.5
-    X,Y = np.meshgrid(lambda_bins, beta_bins)
-
-    # Rescale bin populations to probabilities
-    Z = hist2D_pops/areas
-    Z = Z/bins # Z/np.max(Z)
-    levels = [l*np.max(Z) for l in levels]
-
-    # Plot contour
-    contour = plt.contour(X, Y, Z, levels) ###### Maybe this would be better as just a colour plot to render to populations, and cut everything below 1 sigma?
-    plt.clabel(contour, colors = 'k', fmt = '%1.3f', fontsize=12)
-    # ax = plt.gca()
-
-    # Add injected and mode vertical and horizontal lines
-    if not SkyProjection:
-        ax.axhline(InjParam_InjVals[0], color="r", linestyle=":")
-        ax.axhline(SampleModes[0], color="b", linestyle=":")
-        ax.axvline(InjParam_InjVals[5], color="r", linestyle=":")
-        ax.axvline(SampleModes[5], color="b", linestyle=":")
-
-    # Add points at injected and mode values
-    ax.plot(InjParam_InjVals[5], InjParam_InjVals[0], "sr")
-    ax.plot(SampleModes[5], SampleModes[0], "sb")
-
-    # Labels
-    if not SkyProjection:
-        plt.xlabel(labels[5]) # Lambda
-        plt.ylabel(labels[0]) # beta
-
-    # show now or return?
-    if not return_data:
-        plt.show()
-        plt.grid()
-
-        # save the figure if asked
-        if SaveFig:
-            plt.savefig(FileNameAndPath[:-3]+'.png')
-    else:
-        return fig, InjParam_InjVals, SampleModes, X, lambda_bins, Y, beta_bins, Z
-
 def GetTotSkyAreaFromPostData(FileName,ConfLevel=0.9):
     """
     Counting function to give the total sky area for a confidence level given some
@@ -1004,156 +780,6 @@ def hist_lam_bet(data,lambda_bins,beta_bins):
             areas[xii,yii] = lambda_BinW[xii]*beta_BinW[yii]
     return hist2D_pops, areas
 
-def PlotHistsLambdaBeta(FileName, SaveFig=False, ParamToPlot="beta"): # "lambda" # ["beta", "lambda"]
-    """
-    Plotting function to output corner plots of inference data.
-    Need to add the post-processing stuff from Sylvain's example online?
-    """
-    # Convert the requested params to a list if it's not already one
-    if not type(ParamToPlot) == list:
-        ParamToPlot = [ParamToPlot]
-
-    # Unpack the data
-    [infer_params, inj_param_vals, static_params, meta_data] = read_h5py_file(FileName)
-    if not inj_param_vals: # Raw files at first didn't record this, so make sure it's there...
-        # Get the inj values from the processed data file instead
-        DataFileLocAndName_NotRaw = DataFileLocAndName[:-7] + ".h5"
-        [_,inj_param_vals,_,_] = read_h5py_file(DataFileLocAndName_NotRaw)
-    ndim = len(infer_params.keys())
-    labels = list(infer_params.keys())
-    if np.size(infer_params[labels[0]][0])>1:
-        nsamples = len(infer_params[labels[0]][0])
-    else:
-        nsamples = len(infer_params[labels[0]])
-    print("Posterior sample length: " + str(nsamples) + ", number of infered parameters: " + str(ndim))
-    # Grab data for infered parameters
-    data = np.empty([ndim,nsamples])
-    SampleModes = []
-    for ii in range(ndim):
-        if np.size(infer_params[labels[0]][0])>1:
-            data[ii][:] = infer_params[labels[ii]][0]
-        else:
-            data[ii][:] = infer_params[labels[ii]]
-        histn,histbins = np.histogram(data[ii,:], bins=hist_n_bins)
-        histbins = histbins[:-1] + 0.5*(histbins[2]-histbins[1]) # change from left bins edges to middle of bins
-        mode = histbins[histn==max(histn)]
-        if len(mode)>1:
-            mode = mode[1] # Doe now take the first on the list, but if there are several we need to work out what to do there...
-        SampleModes.append(mode)
-    data = np.transpose(np.array(data)) # should have shape [nsamples, ndim]
-
-    # Get injected values
-    InjParam_InjVals = []
-    for key in infer_params.keys():
-        InjParam_InjVals.append(inj_param_vals["source_params_Lframe"][key][0]) # Lframe is right.
-
-    # Sctter plot of labmda and beta posterior chains, marginalized over all other params
-    for PlotParam in ParamToPlot:
-        print(PlotParam)
-        if PlotParam == "beta":
-            iiParam = 0
-        elif PlotParam == "lambda":
-            iiParam = 5
-        fig = plt.figure()
-        ax = plt.gca()
-        plt.hist(data[:,iiParam], 50)
-        ax = plt.gca()
-
-        # Add injected and mode vertical lines
-        ax.axvline(InjParam_InjVals[iiParam], color="g", linestyle=":")
-        ax.axvline(SampleModes[iiParam], color="r", linestyle=":")
-
-        # Labels
-        if PlotParam == "beta":
-            plt.xlabel(r"$\beta$")
-        elif PlotParam == "lambda":
-            plt.xlabel(r"$\lambda$")
-
-        # save the figure if asked
-        if SaveFig:
-            plt.savefig(FileNameAndPath[:-3]+'.png')
-
-        plt.show()
-
-def PlotInferenceData(FileName, SaveFig=False):
-    """
-    Plotting function to output corner plots of inference data.
-    Need to add the post-processing stuff from Sylvain's example online?
-    """
-    import corner
-
-    # Check filenames
-    JsonFileLocAndName,H5FileLocAndName = CompleteLisabetaDataAndJsonFileNames(FileName)
-
-    # Unpack the data
-    [infer_params, inj_param_vals, static_params, meta_data] = read_h5py_file(DataFileLocAndName)
-    if not inj_param_vals: # Raw files at first didn't record this, so make sure it's there...
-        # Get the inj values from the processed data file instead
-        DataFileLocAndName_NotRaw = DataFileLocAndName[:-7] + ".h5"
-        [_,inj_param_vals,_,_] = read_h5py_file(DataFileLocAndName_NotRaw)
-    ndim = len(infer_params.keys())
-    labels = list(infer_params.keys())
-    if np.size(infer_params[labels[0]][0])>1:
-        nsamples = len(infer_params[labels[0]][0])
-    else:
-        nsamples = len(infer_params[labels[0]])
-    print("Posterior sample length: " + str(nsamples) + ", number of infered parameters: " + str(ndim))
-    # Grab data for infered parameters
-    data = np.empty([ndim,nsamples])
-    SampleModes = []
-    for ii in range(ndim):
-        if np.size(infer_params[labels[0]][0])>1:
-            data[ii][:] = infer_params[labels[ii]][0]
-        else:
-            data[ii][:] = infer_params[labels[ii]]
-        histn,histbins = np.histogram(data[ii,:], bins=hist_n_bins)
-        histbins = histbins[:-1] + 0.5*(histbins[2]-histbins[1]) # change from left bins edges to middle of bins
-        mode = histbins[histn==max(histn)]
-        if len(mode)>1:
-            mode = mode[1] # Doe now take the first on the list, but if there are several we need to work out what to do there...
-        SampleModes.append(mode)
-    data = np.transpose(np.array(data)) # should have shape [nsamples, ndim]
-
-    # Get injected values
-    InjParam_InjVals = []
-    for key in infer_params.keys():
-        InjParam_InjVals.append(inj_param_vals["source_params_Lframe"][key][0]) # Lframe is right.
-
-    # Corner plot of posteriors
-    figure = corner.corner(data, labels=labels,
-                           quantiles=[0.16, 0.5, 0.84],
-                           show_titles=True)
-
-    # Extract the axes
-    axes = np.array(figure.axes).reshape((ndim, ndim))
-
-    # Loop over the diagonal
-    for i in range(ndim):
-        ax = axes[i, i]
-        ax.axvline(InjParam_InjVals[i], color="g")
-        ax.axvline(SampleModes[i], color="r")
-
-    # Loop over the histograms
-    for yi in range(ndim):
-        for xi in range(yi):
-            ax = axes[yi, xi]
-            ax.axvline(InjParam_InjVals[xi], color="g")
-            ax.axvline(SampleModes[xi], color="r")
-            ax.axhline(InjParam_InjVals[yi], color="g")
-            ax.axhline(SampleModes[yi], color="r")
-            ax.plot(InjParam_InjVals[xi], InjParam_InjVals[yi], "sg")
-            ax.plot(SampleModes[xi], SampleModes[yi], "sr")
-
-    # save the figure if asked
-    if SaveFig:
-        # Put in folder for all lisabeta-related plots
-        SaveFile = H5FileLocAndName[:-3]+'.png'
-        pathlib.Path(SYNEX_PATH + "/lisabeta_figs/").mkdir(parents=True, exist_ok=True)
-        SaveFile = SYNEX_PATH + "/lisabeta_figs/" + SaveFile.split("/")[-1]
-        plt.savefig(SaveFile)
-
-    plt.show()
-
 def GetOctantLikeRatioAndPostProb(FileName,source=None,detector=None):
     # To do
     # Change the betas to lisa frame
@@ -1253,17 +879,9 @@ def read_h5py_file(FileName):
     # f.close()
     return [infer_params, inj_param_vals, static_params, meta_data]
 
-def RunInference(source=None, detector=None, inference_params=None, Plots=False, JsonOrOutFile=None,**RunTimekwargs):
+def RunInference(source, detector, inference_params, PlotInference=False,PlotSkyMap=False,**RunTimekwargs):
     """
     Function to handle lisabeta inference.
-
-    1. If no input then default detector, default source, and default json name are used
-
-    2. If JsonOrOutFile given, but doesn't exist then parameters are written to the file for
-       given source and detector objects or default objects if missing.
-
-    3. If no JsonOrOutFile given but source and / or detector given, then checks for
-       source.JsonFile. If this exists, then runs, if it doesn't, writes to this file.
     """
     # Using MPI or not
     use_mpi=False
@@ -1283,35 +901,31 @@ def RunInference(source=None, detector=None, inference_params=None, Plots=False,
             is_master = True
             mapper = map
 
-    # Create defaults for whatever is missing
-    if source==None: # create default -- this is a dummy class if JsonOrOutFile is specified and already exists
-        source=SYSs.SMBH_Merger()
-    if detector==None: # create default -- this is a dummy class if JsonOrOutFile is specified and already exists
-        detector=SYDs.LISA()
-
-    # Choose what to use
-    if JsonOrOutFile!=None:
-        JsonFile,H5File=CompleteLisabetaDataAndJsonFileNames(JsonOrOutFile)
-        if source.JsonFile==None:
-            source.JsonFile=JsonFile
-            source.H5File=H5File
-        elif source.JsonFile!=None and JsonFile!=source.JsonFile:
-            print("Given json filepath is different to saved json filepath in source object... Preferentially using given json filepath.")
-            source.JsonFile=JsonFile
-            source.H5File=H5File
-
     # Write the file if it doesn't exist yet.
     if source.JsonFile!=None and not os.path.isfile(source.JsonFile):
-        print("Json file doesn't exist... Creating file now.")
+        print("Creating json file...")
+        [JsonFileLocAndName, OutFileLoc, OutFileName] = WriteParamsToJson(source,detector,inference_params,is_master,**RunTimekwargs)
+    elif source.JsonFile==None:
+        print("Creating json file...")
         [JsonFileLocAndName, OutFileLoc, OutFileName] = WriteParamsToJson(source,detector,inference_params,is_master,**RunTimekwargs)
 
     # Start the run. Data will be saved to the 'inference_data' folder by default
     # All processes must execute the run together. mapper (inside ptemcee) will handle coordination between p's.
     SYP.RunPTEMCEE(source.JsonFile)
-    # Call plotter if asked for
 
-    if is_master and Plots:
-        PlotInferenceData(source.H5File,SaveFig=True) # Automatically save the fig if called within inference.
+    # Create sky_map struct in source object
+    source.sky_map = source.H5File.split("inference_data")[0] + 'Skymap_files' + source.H5File.split("inference_data")[-1]
+    source.sky_map = source.sky_map[:-3] + '.fits'
+    print("Saving lisabeta posteriors as sky_map",source.sky_map)
+    source.CreateSkyMapStruct()
+
+    # Call plotter if asked for
+    if is_master and PlotInference:
+        # Automatically save the fig if called within inference.
+        PlotInferenceData(source.H5File,SaveFig=True)
+    if is_master and PlotSkyMap:
+        # Automatically save the fig if called within inference.
+        PlotSkyMapData(source.sky_map,SaveFig=True)
 
 def WriteParamsToJson(source, detector, inference_params, IsMaster=True, **RunTimekwargs):
     """
@@ -1319,8 +933,8 @@ def WriteParamsToJson(source, detector, inference_params, IsMaster=True, **RunTi
     using the saved jsoon file name in source class.
     """
 
-    ### Create default name
-    if source.JsonFile==None:
+    # double check names and paths are ok
+    if source.JsonFile==None and source.H5File==None:
         from datetime import date
         today = date.today()
         d = today.strftime("%d_%m_%Y")
@@ -1328,7 +942,19 @@ def WriteParamsToJson(source, detector, inference_params, IsMaster=True, **RunTi
         JsonFile,H5File=CompleteLisabetaDataAndJsonFileNames(JsonOrOutFile)
         source.JsonFile=JsonFile
         source.H5File=H5File
-        print("Saved to default json name:",JsonFile)
+        print("Creating default json name:",JsonFile)
+    elif source.JsonFile==None and source.H5File!=None:
+        JsonFile,H5File=CompleteLisabetaDataAndJsonFileNames(source.H5File)
+        source.JsonFile=JsonFile
+        source.H5File=H5File
+    elif source.JsonFile!=None and source.H5File==None:
+        JsonFile,H5File=CompleteLisabetaDataAndJsonFileNames(source.JsonFile)
+        source.JsonFile=JsonFile
+        source.H5File=H5File
+    elif source.JsonFile!=None and source.H5File!=None:
+        JsonFile,H5File=CompleteLisabetaDataAndJsonFileNames(source.JsonFile)
+        if source.H5File!=H5File:
+            print("Json and H5 filenames are not matched... There is currently no check that the paths are ok here so make sure to pass the entire path if doing this.")
 
     # import some default parameters defined the ptemcee handler script
     from SYNEX.SYNEX_PTMC import run_params_default # , waveform_params_default
@@ -1377,6 +1003,7 @@ def WriteParamsToJson(source, detector, inference_params, IsMaster=True, **RunTi
 
     # Write the json file only if master node or not mpi
     if IsMaster:
+        print("Writting params to",source.JsonFile)
         with open(source.JsonFile, 'w') as f:
             json.dump(json_default_dict, f, indent=2)
         f.close()
@@ -2018,7 +1645,7 @@ def fmaxFromTimeToMerger(source, detector, T_obs_end_to_merger=4.*60.*60., Retur
         # Else modify the stored fmax in source class directly
         source.maxf = F
 
-def GetSourceFromInferenceData(FileName):
+def GetSourceFromLisabetaData(FileName):
 
     # Check filenames
     JsonFileLocAndName,H5FileLocAndName=CompleteLisabetaDataAndJsonFileNames(FileName)
@@ -2028,7 +1655,554 @@ def GetSourceFromInferenceData(FileName):
         input_params = json.load(f)
     f.close()
 
+    # check if it was run on a different system, e.g. the cluster, so paths are wrong
+    check_path = input_params["run_params"]["out_dir"].split("SYNEX")[-1]
+    check_path_true = H5FileLocAndName.split("SYNEX")[-1]
+    if check_path!=check_path_true:
+        input_params["run_params"]["out_dir"] = "/".join(H5FileLocAndName.split("/")[:-1])+"/" # Needs trailing slash...
+    # For now we do not re-write the file because this might break stuff...
+    # print("Re-writting params to",JsonFileLocAndName)
+    # with open(source.JsonFile, 'w') as f:
+    #     json.dump(input_params, f, indent=2)
+    # f.close()
+
     return ParamsToClasses(input_params,CollectionMethod="Inference")
+
+
+
+
+
+
+#                 ##########################################
+#                 #                                        #
+#                 #   SYNEX -- GWEMOPT Utility functions   #
+#                 #                                        #
+#                 ##########################################
+
+#
+# def TileSkyArea(detectors,source=None,FileName=None,TileFileName=None, **kwargs):
+#     """
+#     'FileName' : either a lisabeta posteriors file, or a skymap file
+#
+#     Need to include
+#     """
+#     if FileName!=None:
+#         if FileName[-3:]=".h5":
+#             lisabeta_FileName = FileName
+#             sky_map_FileName = None
+#         elif FileName[-5:]=".fits":
+#             lisabeta_FileName = None
+#             sky_map_FileName = FileName
+#
+#     # Check posterior file exists
+#     if source.H5File==None and FileName==None:
+#         print("Setting FileName to default lisabeta posterior file IdeaPaperSystem_9d.h5")
+#         lisabeta_FileName = SYNEX_PATH+"/inference_data/IdeaPaperSystem_9d.h5"
+#         sky_map_FileName = None
+#     elif source.H5File!=None and FileName==None:
+#         if not os.path.isfile(source.H5File):
+#             print("Invalid source.H5File value...")
+#             exit(0)
+#     elif source.H5File==None and FileName!=None:
+#         if not os.path.isfile(source.H5File):
+#             print("Invalid source.H5File value...")
+#             exit(0)
+#     elif source.H5File!=None and FileName!=None:
+#
+#     # Initiate gwemopt params from list of detector(s)
+#     go_params = InitGWEMOPTParamsFromDetectors(detectors)
+#
+#     # Choose strategy for tiling - modify
+#     if TileStrat=="MaxProbOld":
+#         """
+#         Most basic way to tile - find the max prob sky location, and start there.
+#         """
+#         # Params for run time
+#         extent = np.sqrt(self.FoV) # in radians to match lisabeta units - side length of FoV
+#         BreakFlag = False
+#         TileNo = 0 # start at 0 to comply with gwemopt convention
+#
+#         # Get data
+#         _, _, _, X, _, Y, _, Z = SYU.PlotInferenceLambdaBeta(H5FileLocAndName, bins=50, SkyProjection=False, SaveFig=False, return_data=True)
+#         betas = Y.flatten()
+#
+#         # Repeat binning to ensure you can get the right points for overlap
+#         if betas[-1]-betas[0]>extent*overlap:
+#             bins = 2*int((betas[-1]-betas[0])/(extent*overlap))
+#             _, _, _, X, _, Y, _, Z = SYU.PlotInferenceLambdaBeta(H5FileLocAndName, bins=bins, SkyProjection=False, SaveFig=False, return_data=True)
+#         Post_probs = Z.flatten()
+#         lambdas = X.flatten()
+#         betas = Y.flatten()
+#         plt.close('all')
+#
+#         # Output dictionary of tile properties
+#         TileDict = {"Tile Strat": TileStrat, "overlap": overlap, "tile_structs":{self.telesope:{}}, "LISA Data File":H5FileLocAndName}
+#
+#         # Run through the space of confidence area, extracting tile properties and reducing the list of total tiles
+#         while BreakFlag == False:
+#             tile_prob = np.max(Post_probs)
+#             arg_max = np.argmax(Post_probs)
+#             if not isinstance(arg_max,np.int64):
+#                 arg_max = arg_max[0]
+#             tile_beta = betas[arg_max]
+#             tile_lambda = lambdas[arg_max]
+#
+#             # Put in the tile to the tile dictionary
+#             lambda_range=[tile_lambda-extent/2.,tile_lambda+extent/2.]
+#             beta_range=[tile_beta-extent/2.,tile_beta+extent/2.]
+#             ra_range=[np.rad2deg(lambda_range[0]+np.pi),np.rad2deg(lambda_range[1]+np.pi)]
+#             dec_range=[np.rad2deg(beta_range[0]),np.rad2deg(beta_range[1])]
+#             corners=np.array([[ra_range[0],dec_range[0]], ## Following convention of gwemopt ordering
+#                      [ra_range[1],dec_range[0]],
+#                      [ra_range[0],dec_range[1]],
+#                      [ra_range[1],dec_range[1]]])
+#             Tile = {"ra":np.rad2deg(tile_lambda+np.pi), ## gwemopt dict fields -- 'ra', 'dec', 'ipix', 'corners', 'patch', 'area', 'segmentlist'
+#                     "dec":np.rad2deg(tile_beta),
+#                     "ipix":[], ## this is a number but I'm not sure what it is yet...
+#                     "corners":corners,
+#                     "patch":[], ## this is a matplotlib 'path' thing but I'm not sure what it is yet...
+#                     "area":self.FoView*(180./np.pi)**2,
+#                     "segmentlist":[],
+#                     "lambda":tile_lambda, ## lisabeta dict fields
+#                     "beta":tile_beta,
+#                     "lambda_range":lambda_range,
+#                     "beta_range":beta_range,
+#                     "Center post prob": tile_prob}
+#             TileDict["tile_structs"][self.telescope][TileNo] = Tile
+#
+#             # Delete coordinates of mode that's done minus some overlap
+#             mask = [np.all([betas[ii]<tile_beta+overlap*extent, betas[ii]>tile_beta-overlap*extent, lambdas[ii]<tile_lambda+overlap*extent, lambdas[ii]>tile_lambda-overlap*extent]) for ii in range(len(lambdas))]
+#             betas = np.delete(betas, mask, axis=0)
+#             lambdas = np.delete(lambdas, mask, axis=0)
+#             Post_probs = np.delete(Post_probs, mask, axis=0)
+#
+#             # exit loop if the remaining data is
+#             if len(Post_probs) <= 100 or TileNo>100:
+#                 BreakFlag = True
+#             TileNo+=1
+#
+#     elif any([TileStrat=="MaxProb", TileStrat=="moc" , TileStrat=="greedy" , TileStrat=="hierarchical" , TileStrat=="ranked" , TileStrat=="galaxy"]):
+#         """
+#         "MaxProb" is the same as "MaxProbOld", but using gwemopt features...
+#         """
+#         import gwemopt.tiles as gots
+#         from gwemopt import utils as gou
+#
+#         # Make tile dict
+#         if TileStrat=="MaxProb":
+#             # Run checker to complete gwemopt fields
+#             go_params = GetGWEMOPTStructsFromDetectors(detectors=self)
+#             # Create sky_map dictionary
+#             go_params,map_struct = CreateSkyMapStruct(go_params,LisabetaFileName=H5FileLocAndName)
+#
+#             # Get tiling structs
+#             moc_structs = gwemopt.moc.create_moc(go_params, map_struct=map_struct)
+#             tile_structs = gots.moc(go_params,map_struct,moc_structs)
+#         elif TileStrat=="moc":
+#             # Adjust gwemopt params for requested tiling strat -- this will later be integrated into the athena init function...
+#             go_params["timeallocationType"] = "powerlaw"
+#
+#             # Run checker to ensure dict is complete according to gwemopt definitions
+#             go_params = SYU.gou_params_checker(go_params,detector=self)
+#             # Create the necessary sky_map dictionary
+#             go_params,map_struct = SYU.CreateSkyMapStruct(go_params,LisabetaFileName=H5FileLocAndName)
+#
+#             # Get tiling structs
+#             moc_structs = gwemopt.moc.create_moc(go_params, map_struct=map_struct)
+#             tile_structs = gots.moc(go_params,map_struct,moc_structs)
+#         elif TileStrat=="greedy":
+#             # Adjust gwemopt params for requested tiling strat -- this will later be integrated into the athena init function...
+#             go_params["timeallocationType"] = "powerlaw"
+#
+#             # Run checker to ensure dict is complete according to gwemopt definitions
+#             go_params = SYU.gou_params_checker(go_params,detector=self)
+#             # Create the necessary sky_map dictionary
+#             go_params,map_struct = SYU.CreateSkyMapStruct(go_params,LisabetaFileName=H5FileLocAndName)
+#
+#             # Get tiling structs
+#             tile_structs = gots.greedy(go_params,map_struct)
+#             for telescope in go_params["telescopes"]:
+#                 go_params["config"][telescope]["tesselation"] = np.empty((0,3))
+#                 tiles_struct = tile_structs[telescope]
+#                 for index in tiles_struct.keys():
+#                     ra, dec = tiles_struct[index]["ra"], tiles_struct[index]["dec"]
+#                     go_params["config"][telescope]["tesselation"] = np.append(go_params["config"][telescope]["tesselation"],[[index,ra,dec]],axis=0)
+#         elif TileStrat=="hierarchical":
+#             # Adjust gwemopt params for requested tiling strat -- this will later be integrated into the athena init function...
+#             go_params["timeallocationType"] = "powerlaw"
+#
+#             # Run checker to ensure dict is complete according to gwemopt definitions
+#             go_params = SYU.gou_params_checker(go_params,detector=self)
+#             # Create the necessary sky_map dictionary
+#             go_params,map_struct = SYU.CreateSkyMapStruct(go_params,LisabetaFileName=H5FileLocAndName)
+#
+#             # Get tiling structs
+#             tile_structs = gots.hierarchical(go_params,map_struct)
+#             go_params["Ntiles"] = []
+#             for telescope in go_params["telescopes"]:
+#                 go_params["config"][telescope]["tesselation"] = np.empty((0,3))
+#                 tiles_struct = tile_structs[telescope]
+#                 for index in tiles_struct.keys():
+#                     ra, dec = tiles_struct[index]["ra"], tiles_struct[index]["dec"]
+#                     go_params["config"][telescope]["tesselation"] = np.append(go_params["config"][telescope]["tesselation"],[[index,ra,dec]],axis=0)
+#                 go_params["Ntiles"].append(len(tiles_struct.keys()))
+#         elif TileStrat=="ranked":
+#             # Adjust gwemopt params for requested tiling strat -- this will later be integrated into the athena init function...
+#             go_params["timeallocationType"] = "powerlaw"
+#
+#             # Run checker to ensure dict is complete according to gwemopt definitions
+#             go_params = SYU.gou_params_checker(go_params,detector=self)
+#             # Create the necessary sky_map dictionary
+#             go_params,map_struct = SYU.CreateSkyMapStruct(go_params,LisabetaFileName=H5FileLocAndName)
+#
+#             # Get tiling structs
+#             go_params["doMinimalTiling"]=True ###### ADDED THIS IN CASE THS HELPS THE CAUSE -- NEED TO VERIFY THAT THIS SAVES THE ROUTINE FROM BREAKING
+#             moc_structs = gwemopt.rankedTilesGenerator.create_ranked(go_params,map_struct)
+#             tile_structs = gots.moc(go_params,map_struct,moc_structs)
+#         elif TileStrat=="galaxy":
+#             # Adjust gwemopt params for requested tiling strat -- this will later be integrated into the athena init function...
+#             go_params["timeallocationType"] = "powerlaw"
+#
+#             # Run checker to ensure dict is complete according to gwemopt definitions
+#             go_params = SYU.gou_params_checker(go_params,detector=self)
+#             # Create the necessary sky_map dictionary
+#             go_params,map_struct = SYU.CreateSkyMapStruct(go_params,LisabetaFileName=H5FileLocAndName)
+#
+#             # Get tiling structs
+#             map_struct, catalog_struct = gwemopt.catalog.get_catalog(go_params, map_struct)
+#             tile_structs = gots.galaxy(go_params,map_struct,catalog_struct)
+#             for telescope in go_params["telescopes"]:
+#                 go_params["config"][telescope]["tesselation"] = np.empty((0,3))
+#                 tiles_struct = tile_structs[telescope]
+#                 for index in tiles_struct.keys():
+#                     ra, dec = tiles_struct[index]["ra"], tiles_struct[index]["dec"]
+#                     go_params["config"][telescope]["tesselation"] = np.append(go_params["config"][telescope]["tesselation"],[[index,ra,dec]],axis=0)
+#
+#         # # Plot tiles using gwemopt directly...
+#         # gwemopt.plotting.tiles(go_params, map_struct, tile_structs)
+#
+#         # Keeping the sub-dict used by gwemopt just in case (for now), insert some value conversions for SYNEX compatibility -- might get rid of this later and stick to gwemopt conventions...
+#         tile_structs[self.telescope]["Tile Strat"] = TileStrat
+#         for tileID in range(len(tile_structs[self.telescope].keys())):
+#             corners=tile_structs[self.telescope][tileID]['corners']
+#             lambda_range=[np.deg2rad(corners[0][0]),np.deg2rad(corners[1][0])]
+#             beta_range=[np.deg2rad(corners[0][1]),np.deg2rad(corners[1][1])]
+#             tile_structs[self.telescope][tileID]["lambda"]=np.deg2rad(tile_structs[self.telescope][tileID]['ra'])-np.pi
+#             tile_structs[self.telescope][tileID]["beta"]=np.deg2rad(tile_structs[self.telescope][tileID]['dec'])
+#             tile_structs[self.telescope][tileID]["lambda_range"]=lambda_range
+#             tile_structs[self.telescope][tileID]["beta_range"]=beta_range
+#             tile_structs[self.telescope][tileID]["Center post prob"]=tile_structs[self.telescope][tileID]['prob']
+#
+#         # Output dictionary of tile properties
+#         TileDict = {"LISA Data File": H5FileLocAndName,
+#                     "tile_structs": tile_structs,
+#                     "go_params": go_params,
+#                     "map_struct": map_struct}
+#
+#     # Add source properties to dictionary for faster kuiper step if requested
+#     if SAVE_SOURCE_EM_PROPERTIES_IN_TILE_JSON:
+#         # grab source parameters from corresponding json file
+#         source = GetSourceFromLisabetaData(JsonFileLocAndName)
+#
+#         # Recreate the EM flux and CTR - fime name and gamma hard coded for now... Maybe shoul dbe given at entry line to this function for continuity?
+#         source.GenerateEMFlux(self)
+#         ARF_file_loc_name = 'XIFU_CC_BASELINECONF_2018_10_10.arf'
+#         source.GenerateCTR(ARF_file_loc_name=ARF_file_loc_name,gamma=1.7)
+#
+#         # Add to tile dict
+#         TileDict["source_EM_properties"]={
+#         "xray_flux" : source.xray_flux,
+#         "xray_time" : source.xray_time,
+#         "phi" : source.GW_phi,
+#         "Omega" : source.GW_Omega,
+#         "r" : source.r,
+#         "xray_gamma" : source.xray_gamma,
+#         "xray_phi_0" : source.xray_phi_0,
+#         "CTR" : source.CTR,
+#         "GW_freqs" : source.GW_freqs
+#         }
+#
+#     # Make output file name if not specified - this will put the file in folder where user is executing their top most script
+#     if TileFileName==None:
+#         TileFileName = H5FileLocAndName.split("inference_data")[0] + "Tile_files" + self.go_params["skymap"].split("Skymap_files")[-1]
+#         TileFileName = TileFileName[:-3] + "_" + TileStrat + ".dat"
+#         print(TileFileName)
+#
+#     # Write to file
+#     with open(TileFileName, 'wb+') as f:
+#         pickle.dump(TileDict, f)
+#
+#     # Write the name of the file to the detector object
+#     self.TileFileName = TileFileName
+#
+def InitGWEMOPTParamsFromDetectors(detectors=None):
+    """
+    Iterate over all detectors handed to function to create gwemopt-usable dictionaries
+    """
+    if detectors==None:
+        # Create default Athena detector
+        detectors = SYDs.Athena()
+    if not isinstance(detectors, list):
+        # turn into list if not one already
+        detectors = list([detectors])
+
+    # Get first set of go_params
+    go_params = detectors[0].detector_go_params
+    go_params_keys = list(go_params.keys()).remove("telescopes") # They might be identical names?
+    go_params["telescopes"] = np.array([detector.telescopes for detector in detectors])
+    go_params["config"]={}
+
+    # Loop over each detector
+    for detector in detectors:
+        go_params["config"][detector.telescopes] = detector.detector_config_struct
+
+    # Sense which parameters are changing between detectors, taking care that some detectors might hold attributes while otehrs change them
+    for key in go_params_keys:
+        try:
+            attr_list = [getattr(detector, key) for detector in detectors]
+            uniqueness_count = set(attr_list)
+        except: # in case of np.array
+            attr_list = [list(getattr(detector, key)) for detector in detectors]
+            uniqueness_count = set(attr_list)
+        if len(uniqueness_count)>1:
+            go_params[key] = np.array(attr_list)
+
+    # Get segments... Not sure why
+    # go_params=gwemopt.segments.get_telescope_segments(go_params)
+
+    return go_params
+
+def CreateSkyMapStruct(go_params,SkymapFileName=None,LisabetaFileName=None):
+    """
+    Create a sky_map dictionary either from a lisabeta h5 file, or from
+    a saved skymap file (in .fits file containing an astropy table of pixel probs only).
+
+    This function is used to prepare go_params and a skymap for injection into GWEMOPT.
+
+    Will include later 3D option where we save distances too but need to figure out
+    tabulation first.
+    """
+    # Check we can actually do something...
+    if SkymapFileName==None and LisabetaFileName==None and go_params["skymap"]==None:
+        print("No SkymapFileName or LisabetaFileName given... setting to default: LisabetaFileName='IdeaPaperSystem_9d_raw.h5'")
+        LisabetaFileName="IdeaPaperSystem_9d_raw.h5"
+
+    # Case where SkymapFileName is specified either in go_params or seperately (in order to overwrite what's in go_params)
+    if go_params["skymap"]!=None and SkymapFileName==None:
+        SkymapFileName=go_params["skymap"]
+        map_struct=None
+    elif go_params["skymap"]==None and SkymapFileName!=None:
+        go_params["skymap"]=SkymapFileName
+        map_struct=None
+
+    # Create map_struct
+    if LisabetaFileName!=None: # preferentially create map_struct from lisabeta posteriors. Otherwise it will be loaded from go_params["skymap"]
+        go_params,map_struct=CreateSkyMapStructFromLisabetaPosteriors(LisabetaFileName,go_params)
+
+    # Run through the GWEMOPT checker for compataboility between go_params and sky_map. Can apply rotations and other things here - TO INCLUDE LATER
+    map_struct=gou.read_skymap(go_params,is3D=False,map_struct=map_struct)
+
+    return go_params,map_struct
+#
+# def CreateSkyMapStruct(self,go_params=None,SkyMapFileName=None):
+#     # default pixelation if no params given
+#     if go_params==None:
+#         go_params={"nside":1024}
+#         UpdateGoParams = False
+#     else:
+#         UpdateGoParams = True
+#
+#     # if SkyMapFileName given; then preferentially save to this filename.
+#     # RThis is checked in SYU.WriteSkymapToFile just before writing to file.
+#     if SkyMapFileName!=None:
+#         self.sky_map = SkyMapFileName
+#
+#     # Read in data from file
+#     [infer_params, _, _, _] = SYU.read_h5py_file(self.H5File)
+#     labels = ["lambda","beta"]
+#     if np.size(infer_params[labels[0]][0])>1:
+#         nsamples = len(infer_params["lambda"][0])
+#     else:
+#         nsamples = len(infer_params["lambda"])
+#
+#     # Get pixel locations from healpy params
+#     npix = hp.nside2npix(go_params["nside"])
+#     pix_thetas, pix_phis = hp.pix2ang(go_params["nside"], np.arange(npix))
+#     pix_ras = np.rad2deg(pix_phis) # Ra and Dec for pix are stored in map_struct in degrees NOT radians
+#     pix_decs = np.rad2deg(0.5*np.pi - pix_thetas)
+#     pixels_numbers=hp.ang2pix(go_params["nside"], pix_thetas, pix_phis)
+#
+#     # Convert post angles to theta,phi
+#     post_phis = infer_params["lambda"]+np.pi
+#     post_thetas = np.pi/2.-infer_params["beta"]
+#     post_pix = hp.ang2pix(go_params["nside"],post_thetas,post_phis)
+#
+#     # Probabilities of pixels
+#     probs,bin_edges = np.histogram(post_pix, bins=np.arange(npix+1), density=True)
+#
+#     # Make the dictionary
+#     map_struct = {"prob":probs,
+#                   "ra":pix_ras,
+#                   "dec":pix_decs}
+#
+#     # Get additional data required by GWEMOPT
+#     sort_idx = np.argsort(map_struct["prob"])[::-1]
+#     csm = np.empty(len(map_struct["prob"]))
+#     csm[sort_idx] = np.cumsum(map_struct["prob"][sort_idx])
+#     map_struct["cumprob"] = csm
+#     map_struct["ipix_keep"] = np.where(csm <= 1.)[0] # params["iterativeOverlap"])[0]
+#     pixarea = hp.nside2pixarea(go_params["nside"])
+#     pixarea_deg2 = hp.nside2pixarea(go_params["nside"], degrees=True)
+#     map_struct["pixarea"] = pixarea
+#     map_struct["pixarea_deg2"] = pixarea_deg2
+#
+#     # Assign parameters linked to source if needded
+#     if UpdateGoParams:
+#         with open(JsonFile) as f:
+#             Jsondata = json.load(f)
+#         f.close()
+#         source_params = Jsondata["source_params"]
+#         waveform_params = Jsondata["waveform_params"]
+#         go_params["Tobs"] = -1.*waveform_params["DeltatL_cut"]                 ## In seconds... BUT: I can find where this is used in gwemopt. It might be important so set anyway.
+#         go_params["true_ra"] = np.rad2deg(source_params["lambda"]+np.pi)       ## In deg
+#         go_params["true_dec"] = np.rad2deg(source_params["beta"])              ## In deg
+#         go_params["true_distance"] = source_params["dist"]                     ## in Mpc
+#         # go_params["phi"]     ##### WHAT IS THIS? IT DOES NOT CORRESPOND TO THEIR DEFAULT VALUE OF "true_ra"
+#         # go_params["theta"]   ##### WHAT IS THIS? IT DOES NOT CORRESPOND TO THEIR DEFAULT VALUE OF "true_dec"
+#
+#     # Save to file
+#     if UpdateGoParams:
+#         go_params,map_struct=SYU.WriteSkymapToFile(map_struct,self.sky_map,go_params)
+#         return go_params,map_struct
+#     else:
+#         return SYU.WriteSkymapToFile(map_struct,self.sky_map,None)
+
+def WriteSkymapToFile(map_struct,SkyMapFileName,go_params=None):
+    """
+    So far have not included case where this is 3D. This will be updated soon - we have
+    distance posteriors... Just need to understand how GWEMOPT expects this to be tabulated.
+
+    Note: filename is JUST the name without the path- the path is calculated in situ.
+    """
+    from ligo.skymap.io.hdf5 import write_samples
+    from astropy.table import Table, Column
+    import os.path
+    table = Table([
+        Column(map_struct["prob"], name='prob'), # , meta={'vary': FIXED}),
+        ])
+
+    # get path and check filename...
+    # TO DO: add this to a helper function to check paths of data directories are congruent.... Can also do this for tile functions in the same function but different to lisabeta function, but this function reference lisabeta one to harmonize the architectures..
+    if len(SkyMapFileName.split("Skymap_files"))==1 and len(SkyMapFileName.split("SYNEX"))>1:
+        raise ValueError("Sorry but for continuity across functions please direct skymap directories to be within './SYNEX/Skymap_files/...'")
+    elif len(SkyMapFileName.split("Skymap_files"))>1 and len(SkyMapFileName.split("SYNEX"))==1:
+        print("Directing given filename to './SYNEX/Skymap_files/...'")
+        SkyMapFileName = SYNEX_PATH + "/Skymap_files" + SkyMapFileName.split("Skymap_files")[-1]
+    elif len(SkyMapFileName.split("Skymap_files"))==1 and len(SkyMapFileName.split("SYNEX"))==1:
+        print("WARNING: Adding ./SYNEX/Skymap_files/ to filename provided...")
+        SkyMapFileName = SYNEX_PATH + "/Skymap_files/" + SkyMapFileName
+    if SkyMapFileName[-5:]!='.fits':
+        SkyMapFileName = SkyMapFileName+'.fits'
+
+    # Check if directory exists and create if it doesnt
+    SkyMapFilePath = "/".join(SkyMapFileName.split("/")[:-1])
+    pathlib.Path(SkyMapFilePath).mkdir(parents=True, exist_ok=True)
+
+    # Write to fits file
+    kwargs={}
+    write_samples(table, SkyMapFileName, metadata=None, overwrite=True, **kwargs)
+
+    if go_params!=None:
+        # update the filename stored in go_params
+        go_params["skymap"] = SkyMapFileName
+        return go_params,map_struct
+    else:
+        return SkyMapFileName,map_struct
+
+
+
+
+
+
+#                      ##########################
+#                      #                        #
+#                      #   Plotting functions   #
+#                      #                        #
+#                      ##########################
+
+##### Need to irganize these better and rename #####
+
+def PlotSkyMapData(source,SaveFig=False,plotName=None):
+    """
+    Plotting tool to either take a filename or a source object and plot the skyap associated
+    """
+    unit='Gravitational-wave probability'
+    cbar=False
+
+    lons = np.arange(-150.0,180,30.0)
+    lats = np.zeros(lons.shape)
+
+    if np.percentile(source.map_struct["prob"],99) > 0:
+        hp.mollview(source.map_struct["prob"],title='',unit=unit,cbar=cbar,min=np.percentile(source.map_struct["prob"],1),max=np.percentile(source.map_struct["prob"],99),cmap=cmap)
+    else:
+        hp.mollview(source.map_struct["prob"],title='',unit=unit,cbar=cbar,min=np.percentile(source.map_struct["prob"],1),cmap=cmap)
+
+    hp.projplot(source.true_ra, source.true_dec, lonlat=True, coord='G', marker='D', c='blue', linestyle='None', label='true location')
+    plt.legend()
+
+    add_edges()
+    if SaveFig:
+        # Default save name
+        if plotName==None:
+            plotName = SYNEX_PATH+"/Plots"+source.sky_map.split("Skymap_files")[-1]
+            plotName = plotName[:-5]+".pdf"
+        # Check extension is there - move this to a general function please
+        if plotName[-5:]!=".pdf":
+            plotName = plotName + ".pdf"
+        plt.savefig(plotName,dpi=200)
+    else:
+        plt.show()
+    plt.close('all')
+
+def PlotTilesArea_old(TileFileName,n_tiles=10):
+    """
+    Function to plot a sample of tiles from a saved dictionary of tiles
+    """
+    # Load Tile dictionary
+    with open(TileFileName, 'rb') as f:
+        TileDict = pickle.load(f)
+    from matplotlib.patches import Rectangle
+
+    # Set the default color cycle
+    TileColor=["#1f77b4", "#ff7f0e", "#2ca02c", "#d62728", "#9467bd", "#8c564b", "#e377c2", "#7f7f7f", "#bcbd22", "#17becf"]
+    n_tile_colours = 10
+
+    # Get background data for liklihoods
+    fig, InjParam_InjVals, SampleModes, X, lambda_bins, Y, beta_bins, Z = PlotInferenceLambdaBeta(TileDict["LISA Data File"], bins=50, SkyProjection=False, SaveFig=False, return_data=True)
+    # fig = PlotInferenceLambdaBeta(TileDict["LISA Data File"], bins=50, SkyProjection=False, SaveFig=False, return_data=True)
+    ax = plt.gca()
+
+    # Add n_tiles tiles
+    for ii in range(1,n_tiles+1):
+        x_lower = TileDict[str(ii)]["lambda_range"][0]
+        y_lower = TileDict[str(ii)]["beta_range"][0]
+        x_upper = TileDict[str(ii)]["lambda_range"][1]
+        y_upper = TileDict[str(ii)]["beta_range"][1]
+        width = x_upper-x_lower
+        height = y_upper-y_lower
+        if ii<n_tile_colours:
+            ax.add_patch(Rectangle((x_lower, y_lower), width, height, linewidth=1,
+                             facecolor="none", edgecolor=TileColor[ii]))
+        else:
+            ax.add_patch(Rectangle((x_lower, y_lower), width, height, linewidth=1,
+                             facecolor="none", edgecolor=TileColor[ii%n_tile_colours]))
+
+    # Formatting stuff
+    plt.xlabel("RA [rad]")
+    plt.ylabel("Dec [rad]")
+    plt.xlim([-np.pi,np.pi])
+    plt.ylim([-np.pi/2.,np.pi/2.])
+    plt.show()
 
 def PlotLikeRatioFoMFromJsonWithInferenceInlays(FoMJsonFileAndPath, BF_lim=20., SaveFig=False, InlayType="histogram"):
     """
@@ -2612,479 +2786,377 @@ def PlotLikeRatioFoMFromJsonWithAllInferencePoints(FoMJsonFileAndPath, BF_lim=20
             plt.savefig("/Users/jonathonbaird/Documents/LabEx_PostDoc/Figs/lnL_skymodes_BetaReflections_" + VarStringForSaveFile + "_Points_BF_" + str(BF_lim) + ".png", facecolor='w', transparent=False)
     plt.show()
 
-
-
-
-
-
-#                 ##########################################
-#                 #                                        #
-#                 #   SYNEX -- GWEMOPT Utility functions   #
-#                 #                                        #
-#                 ##########################################
-
-
-def TileSkyArea(detectors,source==None,FileName==None,TileFileName=None, **kwargs):
+def PlotHistsLambdaBeta(FileName, SaveFig=False, ParamToPlot="beta"): # "lambda" # ["beta", "lambda"]
     """
-    'FileName' : either a lisabeta posteriors file, or a skymap file
-
-    Need to include
+    Plotting function to output corner plots of inference data.
+    Need to add the post-processing stuff from Sylvain's example online?
     """
-    if FileName!=None:
-        if FileName[-3:]=".h5":
-            lisabeta_FileName = FileName
-            sky_map_FileName = None
-        elif FileName[-5:]=".fits":
-            lisabeta_FileName = None
-            sky_map_FileName = FileName
+    # Convert the requested params to a list if it's not already one
+    if not type(ParamToPlot) == list:
+        ParamToPlot = [ParamToPlot]
 
-    # Check posterior file exists
-    if source.H5File==None and FileName==None:
-        print("Setting FileName to default lisabeta posterior file IdeaPaperSystem_9d.h5")
-        lisabeta_FileName = SYNEX_PATH+"/inference_data/IdeaPaperSystem_9d.h5"
-        sky_map_FileName = None
-    elif source.H5File!=None and FileName==None:
-        if not os.path.isfile(source.H5File):
-            print("Invalid source.H5File value...")
-            exit(0)
-    elif source.H5File==None and FileName!=None:
-        if not os.path.isfile(source.H5File):
-            print("Invalid source.H5File value...")
-            exit(0)
-    elif source.H5File!=None and FileName!=None:
-
-    # Initiate gwemopt params from list of detector(s)
-    go_params = InitGWEMOPTParamsFromDetectors(detectors)
-
-    # Choose strategy for tiling - modify
-    if TileStrat=="MaxProbOld":
-        """
-        Most basic way to tile - find the max prob sky location, and start there.
-        """
-        # Params for run time
-        extent = np.sqrt(self.FoV) # in radians to match lisabeta units - side length of FoV
-        BreakFlag = False
-        TileNo = 0 # start at 0 to comply with gwemopt convention
-
-        # Get data
-        _, _, _, X, _, Y, _, Z = SYU.PlotInferenceLambdaBeta(H5FileLocAndName, bins=50, SkyProjection=False, SaveFig=False, return_data=True)
-        betas = Y.flatten()
-
-        # Repeat binning to ensure you can get the right points for overlap
-        if betas[-1]-betas[0]>extent*overlap:
-            bins = 2*int((betas[-1]-betas[0])/(extent*overlap))
-            _, _, _, X, _, Y, _, Z = SYU.PlotInferenceLambdaBeta(H5FileLocAndName, bins=bins, SkyProjection=False, SaveFig=False, return_data=True)
-        Post_probs = Z.flatten()
-        lambdas = X.flatten()
-        betas = Y.flatten()
-        plt.close('all')
-
-        # Output dictionary of tile properties
-        TileDict = {"Tile Strat": TileStrat, "overlap": overlap, "tile_structs":{self.telesope:{}}, "LISA Data File":H5FileLocAndName}
-
-        # Run through the space of confidence area, extracting tile properties and reducing the list of total tiles
-        while BreakFlag == False:
-            tile_prob = np.max(Post_probs)
-            arg_max = np.argmax(Post_probs)
-            if not isinstance(arg_max,np.int64):
-                arg_max = arg_max[0]
-            tile_beta = betas[arg_max]
-            tile_lambda = lambdas[arg_max]
-
-            # Put in the tile to the tile dictionary
-            lambda_range=[tile_lambda-extent/2.,tile_lambda+extent/2.]
-            beta_range=[tile_beta-extent/2.,tile_beta+extent/2.]
-            ra_range=[np.rad2deg(lambda_range[0]+np.pi),np.rad2deg(lambda_range[1]+np.pi)]
-            dec_range=[np.rad2deg(beta_range[0]),np.rad2deg(beta_range[1])]
-            corners=np.array([[ra_range[0],dec_range[0]], ## Following convention of gwemopt ordering
-                     [ra_range[1],dec_range[0]],
-                     [ra_range[0],dec_range[1]],
-                     [ra_range[1],dec_range[1]]])
-            Tile = {"ra":np.rad2deg(tile_lambda+np.pi), ## gwemopt dict fields -- 'ra', 'dec', 'ipix', 'corners', 'patch', 'area', 'segmentlist'
-                    "dec":np.rad2deg(tile_beta),
-                    "ipix":[], ## this is a number but I'm not sure what it is yet...
-                    "corners":corners,
-                    "patch":[], ## this is a matplotlib 'path' thing but I'm not sure what it is yet...
-                    "area":self.FoView*(180./np.pi)**2,
-                    "segmentlist":[],
-                    "lambda":tile_lambda, ## lisabeta dict fields
-                    "beta":tile_beta,
-                    "lambda_range":lambda_range,
-                    "beta_range":beta_range,
-                    "Center post prob": tile_prob}
-            TileDict["tile_structs"][self.telescope][TileNo] = Tile
-
-            # Delete coordinates of mode that's done minus some overlap
-            mask = [np.all([betas[ii]<tile_beta+overlap*extent, betas[ii]>tile_beta-overlap*extent, lambdas[ii]<tile_lambda+overlap*extent, lambdas[ii]>tile_lambda-overlap*extent]) for ii in range(len(lambdas))]
-            betas = np.delete(betas, mask, axis=0)
-            lambdas = np.delete(lambdas, mask, axis=0)
-            Post_probs = np.delete(Post_probs, mask, axis=0)
-
-            # exit loop if the remaining data is
-            if len(Post_probs) <= 100 or TileNo>100:
-                BreakFlag = True
-            TileNo+=1
-
-    elif any([TileStrat=="MaxProb", TileStrat=="moc" , TileStrat=="greedy" , TileStrat=="hierarchical" , TileStrat=="ranked" , TileStrat=="galaxy"]):
-        """
-        "MaxProb" is the same as "MaxProbOld", but using gwemopt features...
-        """
-        import gwemopt.tiles as gots
-        from gwemopt import utils as gou
-
-        # Make tile dict
-        if TileStrat=="MaxProb":
-            # Run checker to complete gwemopt fields
-            go_params = GetGWEMOPTStructsFromDetectors(detectors=self)
-            # Create sky_map dictionary
-            go_params,map_struct = CreateSkyMapStruct(go_params,LisabetaFileName=H5FileLocAndName)
-
-            # Get tiling structs
-            moc_structs = gwemopt.moc.create_moc(go_params, map_struct=map_struct)
-            tile_structs = gots.moc(go_params,map_struct,moc_structs)
-        elif TileStrat=="moc":
-            # Adjust gwemopt params for requested tiling strat -- this will later be integrated into the athena init function...
-            go_params["timeallocationType"] = "powerlaw"
-
-            # Run checker to ensure dict is complete according to gwemopt definitions
-            go_params = SYU.gou_params_checker(go_params,detector=self)
-            # Create the necessary sky_map dictionary
-            go_params,map_struct = SYU.CreateSkyMapStruct(go_params,LisabetaFileName=H5FileLocAndName)
-
-            # Get tiling structs
-            moc_structs = gwemopt.moc.create_moc(go_params, map_struct=map_struct)
-            tile_structs = gots.moc(go_params,map_struct,moc_structs)
-        elif TileStrat=="greedy":
-            # Adjust gwemopt params for requested tiling strat -- this will later be integrated into the athena init function...
-            go_params["timeallocationType"] = "powerlaw"
-
-            # Run checker to ensure dict is complete according to gwemopt definitions
-            go_params = SYU.gou_params_checker(go_params,detector=self)
-            # Create the necessary sky_map dictionary
-            go_params,map_struct = SYU.CreateSkyMapStruct(go_params,LisabetaFileName=H5FileLocAndName)
-
-            # Get tiling structs
-            tile_structs = gots.greedy(go_params,map_struct)
-            for telescope in go_params["telescopes"]:
-                go_params["config"][telescope]["tesselation"] = np.empty((0,3))
-                tiles_struct = tile_structs[telescope]
-                for index in tiles_struct.keys():
-                    ra, dec = tiles_struct[index]["ra"], tiles_struct[index]["dec"]
-                    go_params["config"][telescope]["tesselation"] = np.append(go_params["config"][telescope]["tesselation"],[[index,ra,dec]],axis=0)
-        elif TileStrat=="hierarchical":
-            # Adjust gwemopt params for requested tiling strat -- this will later be integrated into the athena init function...
-            go_params["timeallocationType"] = "powerlaw"
-
-            # Run checker to ensure dict is complete according to gwemopt definitions
-            go_params = SYU.gou_params_checker(go_params,detector=self)
-            # Create the necessary sky_map dictionary
-            go_params,map_struct = SYU.CreateSkyMapStruct(go_params,LisabetaFileName=H5FileLocAndName)
-
-            # Get tiling structs
-            tile_structs = gots.hierarchical(go_params,map_struct)
-            go_params["Ntiles"] = []
-            for telescope in go_params["telescopes"]:
-                go_params["config"][telescope]["tesselation"] = np.empty((0,3))
-                tiles_struct = tile_structs[telescope]
-                for index in tiles_struct.keys():
-                    ra, dec = tiles_struct[index]["ra"], tiles_struct[index]["dec"]
-                    go_params["config"][telescope]["tesselation"] = np.append(go_params["config"][telescope]["tesselation"],[[index,ra,dec]],axis=0)
-                go_params["Ntiles"].append(len(tiles_struct.keys()))
-        elif TileStrat=="ranked":
-            # Adjust gwemopt params for requested tiling strat -- this will later be integrated into the athena init function...
-            go_params["timeallocationType"] = "powerlaw"
-
-            # Run checker to ensure dict is complete according to gwemopt definitions
-            go_params = SYU.gou_params_checker(go_params,detector=self)
-            # Create the necessary sky_map dictionary
-            go_params,map_struct = SYU.CreateSkyMapStruct(go_params,LisabetaFileName=H5FileLocAndName)
-
-            # Get tiling structs
-            go_params["doMinimalTiling"]=True ###### ADDED THIS IN CASE THS HELPS THE CAUSE -- NEED TO VERIFY THAT THIS SAVES THE ROUTINE FROM BREAKING
-            moc_structs = gwemopt.rankedTilesGenerator.create_ranked(go_params,map_struct)
-            tile_structs = gots.moc(go_params,map_struct,moc_structs)
-        elif TileStrat=="galaxy":
-            # Adjust gwemopt params for requested tiling strat -- this will later be integrated into the athena init function...
-            go_params["timeallocationType"] = "powerlaw"
-
-            # Run checker to ensure dict is complete according to gwemopt definitions
-            go_params = SYU.gou_params_checker(go_params,detector=self)
-            # Create the necessary sky_map dictionary
-            go_params,map_struct = SYU.CreateSkyMapStruct(go_params,LisabetaFileName=H5FileLocAndName)
-
-            # Get tiling structs
-            map_struct, catalog_struct = gwemopt.catalog.get_catalog(go_params, map_struct)
-            tile_structs = gots.galaxy(go_params,map_struct,catalog_struct)
-            for telescope in go_params["telescopes"]:
-                go_params["config"][telescope]["tesselation"] = np.empty((0,3))
-                tiles_struct = tile_structs[telescope]
-                for index in tiles_struct.keys():
-                    ra, dec = tiles_struct[index]["ra"], tiles_struct[index]["dec"]
-                    go_params["config"][telescope]["tesselation"] = np.append(go_params["config"][telescope]["tesselation"],[[index,ra,dec]],axis=0)
-
-        # # Plot tiles using gwemopt directly...
-        # gwemopt.plotting.tiles(go_params, map_struct, tile_structs)
-
-        # Keeping the sub-dict used by gwemopt just in case (for now), insert some value conversions for SYNEX compatibility -- might get rid of this later and stick to gwemopt conventions...
-        tile_structs[self.telescope]["Tile Strat"] = TileStrat
-        for tileID in range(len(tile_structs[self.telescope].keys())):
-            corners=tile_structs[self.telescope][tileID]['corners']
-            lambda_range=[np.deg2rad(corners[0][0]),np.deg2rad(corners[1][0])]
-            beta_range=[np.deg2rad(corners[0][1]),np.deg2rad(corners[1][1])]
-            tile_structs[self.telescope][tileID]["lambda"]=np.deg2rad(tile_structs[self.telescope][tileID]['ra'])-np.pi
-            tile_structs[self.telescope][tileID]["beta"]=np.deg2rad(tile_structs[self.telescope][tileID]['dec'])
-            tile_structs[self.telescope][tileID]["lambda_range"]=lambda_range
-            tile_structs[self.telescope][tileID]["beta_range"]=beta_range
-            tile_structs[self.telescope][tileID]["Center post prob"]=tile_structs[self.telescope][tileID]['prob']
-
-        # Output dictionary of tile properties
-        TileDict = {"LISA Data File": H5FileLocAndName,
-                    "tile_structs": tile_structs,
-                    "go_params": go_params,
-                    "map_struct": map_struct}
-
-    # Add source properties to dictionary for faster kuiper step if requested
-    if SAVE_SOURCE_EM_PROPERTIES_IN_TILE_JSON:
-        # grab source parameters from corresponding json file
-        source = SYU.GetSourceFromInferenceData(JsonFileLocAndName)
-
-        # Recreate the EM flux and CTR - fime name and gamma hard coded for now... Maybe shoul dbe given at entry line to this function for continuity?
-        source.GenerateEMFlux(self)
-        ARF_file_loc_name = 'XIFU_CC_BASELINECONF_2018_10_10.arf'
-        source.GenerateCTR(ARF_file_loc_name=ARF_file_loc_name,gamma=1.7)
-
-        # Add to tile dict
-        TileDict["source_EM_properties"]={
-        "xray_flux" : source.xray_flux,
-        "xray_time" : source.xray_time,
-        "phi" : source.GW_phi,
-        "Omega" : source.GW_Omega,
-        "r" : source.r,
-        "xray_gamma" : source.xray_gamma,
-        "xray_phi_0" : source.xray_phi_0,
-        "CTR" : source.CTR,
-        "GW_freqs" : source.GW_freqs
-        }
-
-    # Make output file name if not specified - this will put the file in folder where user is executing their top most script
-    if TileFileName==None:
-        TileFileName = H5FileLocAndName.split("inference_data")[0] + "Tile_files" + self.go_params["skymap"].split("Skymap_files")[-1]
-        TileFileName = TileFileName[:-3] + "_" + TileStrat + ".dat"
-        print(TileFileName)
-
-    # Write to file
-    with open(TileFileName, 'wb+') as f:
-        pickle.dump(TileDict, f)
-
-    # Write the name of the file to the detector object
-    self.TileFileName = TileFileName
-
-def PlotTilesArea_old(TileFileName,n_tiles=10):
-    """
-    Function to plot a sample of tiles from a saved dictionary of tiles
-    """
-    # Load Tile dictionary
-    with open(TileFileName, 'rb') as f:
-        TileDict = pickle.load(f)
-    from matplotlib.patches import Rectangle
-
-    # Set the default color cycle
-    TileColor=["#1f77b4", "#ff7f0e", "#2ca02c", "#d62728", "#9467bd", "#8c564b", "#e377c2", "#7f7f7f", "#bcbd22", "#17becf"]
-    n_tile_colours = 10
-
-    # Get background data for liklihoods
-    fig, InjParam_InjVals, SampleModes, X, lambda_bins, Y, beta_bins, Z = PlotInferenceLambdaBeta(TileDict["LISA Data File"], bins=50, SkyProjection=False, SaveFig=False, return_data=True)
-    # fig = PlotInferenceLambdaBeta(TileDict["LISA Data File"], bins=50, SkyProjection=False, SaveFig=False, return_data=True)
-    ax = plt.gca()
-
-    # Add n_tiles tiles
-    for ii in range(1,n_tiles+1):
-        x_lower = TileDict[str(ii)]["lambda_range"][0]
-        y_lower = TileDict[str(ii)]["beta_range"][0]
-        x_upper = TileDict[str(ii)]["lambda_range"][1]
-        y_upper = TileDict[str(ii)]["beta_range"][1]
-        width = x_upper-x_lower
-        height = y_upper-y_lower
-        if ii<n_tile_colours:
-            ax.add_patch(Rectangle((x_lower, y_lower), width, height, linewidth=1,
-                             facecolor="none", edgecolor=TileColor[ii]))
+    # Unpack the data
+    [infer_params, inj_param_vals, static_params, meta_data] = read_h5py_file(FileName)
+    if not inj_param_vals: # Raw files at first didn't record this, so make sure it's there...
+        # Get the inj values from the processed data file instead
+        DataFileLocAndName_NotRaw = DataFileLocAndName[:-7] + ".h5"
+        [_,inj_param_vals,_,_] = read_h5py_file(DataFileLocAndName_NotRaw)
+    ndim = len(infer_params.keys())
+    labels = list(infer_params.keys())
+    if np.size(infer_params[labels[0]][0])>1:
+        nsamples = len(infer_params[labels[0]][0])
+    else:
+        nsamples = len(infer_params[labels[0]])
+    print("Posterior sample length: " + str(nsamples) + ", number of infered parameters: " + str(ndim))
+    # Grab data for infered parameters
+    data = np.empty([ndim,nsamples])
+    SampleModes = []
+    for ii in range(ndim):
+        if np.size(infer_params[labels[0]][0])>1:
+            data[ii][:] = infer_params[labels[ii]][0]
         else:
-            ax.add_patch(Rectangle((x_lower, y_lower), width, height, linewidth=1,
-                             facecolor="none", edgecolor=TileColor[ii%n_tile_colours]))
+            data[ii][:] = infer_params[labels[ii]]
+        histn,histbins = np.histogram(data[ii,:], bins=hist_n_bins)
+        histbins = histbins[:-1] + 0.5*(histbins[2]-histbins[1]) # change from left bins edges to middle of bins
+        mode = histbins[histn==max(histn)]
+        if len(mode)>1:
+            mode = mode[1] # Doe now take the first on the list, but if there are several we need to work out what to do there...
+        SampleModes.append(mode)
+    data = np.transpose(np.array(data)) # should have shape [nsamples, ndim]
 
-    # Formatting stuff
-    plt.xlabel("RA [rad]")
-    plt.ylabel("Dec [rad]")
-    plt.xlim([-np.pi,np.pi])
-    plt.ylim([-np.pi/2.,np.pi/2.])
+    # Get injected values
+    InjParam_InjVals = []
+    for key in infer_params.keys():
+        InjParam_InjVals.append(inj_param_vals["source_params_Lframe"][key][0]) # Lframe is right.
+
+    # Sctter plot of labmda and beta posterior chains, marginalized over all other params
+    for PlotParam in ParamToPlot:
+        print(PlotParam)
+        if PlotParam == "beta":
+            iiParam = 0
+        elif PlotParam == "lambda":
+            iiParam = 5
+        fig = plt.figure()
+        ax = plt.gca()
+        plt.hist(data[:,iiParam], 50)
+        ax = plt.gca()
+
+        # Add injected and mode vertical lines
+        ax.axvline(InjParam_InjVals[iiParam], color="g", linestyle=":")
+        ax.axvline(SampleModes[iiParam], color="r", linestyle=":")
+
+        # Labels
+        if PlotParam == "beta":
+            plt.xlabel(r"$\beta$")
+        elif PlotParam == "lambda":
+            plt.xlabel(r"$\lambda$")
+
+        # save the figure if asked
+        if SaveFig:
+            plt.savefig(FileNameAndPath[:-3]+'.png')
+
+        plt.show()
+
+def PlotInferenceData(FileName, SaveFig=False):
+    """
+    Plotting function to output corner plots of inference data.
+    Need to add the post-processing stuff from Sylvain's example online?
+    """
+    import corner
+
+    # Check filenames
+    JsonFileLocAndName,H5FileLocAndName = CompleteLisabetaDataAndJsonFileNames(FileName)
+
+    # Unpack the data
+    [infer_params, inj_param_vals, static_params, meta_data] = read_h5py_file(DataFileLocAndName)
+    if not inj_param_vals: # Raw files at first didn't record this, so make sure it's there...
+        # Get the inj values from the processed data file instead
+        DataFileLocAndName_NotRaw = DataFileLocAndName[:-7] + ".h5"
+        [_,inj_param_vals,_,_] = read_h5py_file(DataFileLocAndName_NotRaw)
+    ndim = len(infer_params.keys())
+    labels = list(infer_params.keys())
+    if np.size(infer_params[labels[0]][0])>1:
+        nsamples = len(infer_params[labels[0]][0])
+    else:
+        nsamples = len(infer_params[labels[0]])
+    print("Posterior sample length: " + str(nsamples) + ", number of infered parameters: " + str(ndim))
+    # Grab data for infered parameters
+    data = np.empty([ndim,nsamples])
+    SampleModes = []
+    for ii in range(ndim):
+        if np.size(infer_params[labels[0]][0])>1:
+            data[ii][:] = infer_params[labels[ii]][0]
+        else:
+            data[ii][:] = infer_params[labels[ii]]
+        histn,histbins = np.histogram(data[ii,:], bins=hist_n_bins)
+        histbins = histbins[:-1] + 0.5*(histbins[2]-histbins[1]) # change from left bins edges to middle of bins
+        mode = histbins[histn==max(histn)]
+        if len(mode)>1:
+            mode = mode[1] # Doe now take the first on the list, but if there are several we need to work out what to do there...
+        SampleModes.append(mode)
+    data = np.transpose(np.array(data)) # should have shape [nsamples, ndim]
+
+    # Get injected values
+    InjParam_InjVals = []
+    for key in infer_params.keys():
+        InjParam_InjVals.append(inj_param_vals["source_params_Lframe"][key][0]) # Lframe is right.
+
+    # Corner plot of posteriors
+    figure = corner.corner(data, labels=labels,
+                           quantiles=[0.16, 0.5, 0.84],
+                           show_titles=True)
+
+    # Extract the axes
+    axes = np.array(figure.axes).reshape((ndim, ndim))
+
+    # Loop over the diagonal
+    for i in range(ndim):
+        ax = axes[i, i]
+        ax.axvline(InjParam_InjVals[i], color="g")
+        ax.axvline(SampleModes[i], color="r")
+
+    # Loop over the histograms
+    for yi in range(ndim):
+        for xi in range(yi):
+            ax = axes[yi, xi]
+            ax.axvline(InjParam_InjVals[xi], color="g")
+            ax.axvline(SampleModes[xi], color="r")
+            ax.axhline(InjParam_InjVals[yi], color="g")
+            ax.axhline(SampleModes[yi], color="r")
+            ax.plot(InjParam_InjVals[xi], InjParam_InjVals[yi], "sg")
+            ax.plot(SampleModes[xi], SampleModes[yi], "sr")
+
+    # save the figure if asked
+    if SaveFig:
+        # Put in folder for all lisabeta-related plots
+        SaveFile = H5FileLocAndName[:-3]+'.png'
+        pathlib.Path(SYNEX_PATH + "/lisabeta_figs/").mkdir(parents=True, exist_ok=True)
+        SaveFile = SYNEX_PATH + "/lisabeta_figs/" + SaveFile.split("/")[-1]
+        plt.savefig(SaveFile)
+
     plt.show()
 
-def InitGWEMOPTParamsFromDetectors(detectors=None):
+def PlotInferenceLambdaBeta(FileName, bins=50, SkyProjection=False, SaveFig=False, return_data=False):
     """
-    Iterate over all detectors handed to function to create gwemopt-usable dictionaries
+    Plotting function to output corner plots of inference data.
+    Need to add the post-processing stuff from Sylvain's example online?
     """
-    if detectors==None:
-        # Create default Athena detector
-        detectors = SYDs.Athena()
-    if not isinstance(detectors, list):
-        # turn into list if not one already
-        detectors = list([detectors])
-
-    # Get first set of go_params
-    go_params = detectors[0].detector_go_params
-    go_params_keys = list(go_params.keys()).remove("telescopes") # They might be identical names?
-    go_params["telescopes"] = np.array([detector.telescopes for detector in detectors])
-    go_params["config"]={}
-
-    # Loop over each detector
-    for detector in detectors:
-        go_params["config"][detector.telescopes] = detector.detector_config_struct
-
-    # Sense which parameters are changing between detectors, taking care that some detectors might hold attributes while otehrs change them
-    for key in go_params_keys:
-        try:
-            attr_list = [getattr(detector, key) for detector in detectors]
-            uniqueness_count = set(attr_list)
-        except: # in case of np.array
-            attr_list = [list(getattr(detector, key)) for detector in detectors]
-            uniqueness_count = set(attr_list)
-        if len(uniqueness_count)>1:
-            go_params[key] = np.array(attr_list)
-
-    # Get segments... Not sure why
-    # go_params=gwemopt.segments.get_telescope_segments(go_params)
-
-    return go_params
-
-def CreateSkyMapStruct(go_params,SkymapFileName=None,LisabetaFileName=None):
-    """
-    Create a sky_map dictionary either from a lisabeta h5 file, or from
-    a saved skymap file (in .fits file containing an astropy table of pixel probs only)
-    """
-    # Check we can actually do something...
-    if SkymapFileName==None and LisabetaFileName==None and go_params["skymap"]==None:
-        print("No SkymapFileName or LisabetaFileName given... setting to default: LisabetaFileName='IdeaPaperSystem_9d_raw.h5'")
-        LisabetaFileName="IdeaPaperSystem_9d_raw.h5"
-
-    # Case where SkymapFileName is specified either in go_params or seperately (in order to overwrite what's in go_params)
-    if go_params["skymap"]!=None and SkymapFileName==None:
-        SkymapFileName=go_params["skymap"]
-        map_struct=None
-    elif go_params["skymap"]==None and SkymapFileName!=None:
-        go_params["skymap"]=SkymapFileName
-        map_struct=None
-
-    # Create map_struct
-    if LisabetaFileName!=None: # preferentially create map_struct from lisabeta posteriors.
-        go_params,map_struct=CreateSkyMapStructFromLisabetaPosteriors(LisabetaFileName,go_params)
-
-    # Run through the GWEMOPT checker for compataboility between go_params and sky_map. Can apply rotations and other things here - TO INCLUDE LATER
-    map_struct=gou.read_skymap(go_params,is3D=False,map_struct=map_struct)
-
-    return go_params,map_struct
-
-def CreateSkyMapStructFromLisabetaPosteriors(FileName,go_params):
-    # Get the data filename
-    JsonFile,H5File = CompleteLisabetaDataAndJsonFileNames(FileName)
-
-    # Read in data from file
-    [infer_params, _, _, _] = read_h5py_file(H5File)
-    labels = ["lambda","beta"]
+    # Unpack the data
+    [infer_params, inj_param_vals, static_params, meta_data] = read_h5py_file(FileName)
+    ndim = len(infer_params.keys())
+    labels = list(infer_params.keys())
     if np.size(infer_params[labels[0]][0])>1:
-        nsamples = len(infer_params["lambda"][0])
+        nsamples = len(infer_params[labels[0]][0])
     else:
-        nsamples = len(infer_params["lambda"])
+        nsamples = len(infer_params[labels[0]])
+    print("Posterior sample length: " + str(nsamples) + ", number of infered parameters: " + str(ndim))
+    # Grab data for infered parameters
+    data = np.empty([ndim,nsamples])
+    SampleModes = []
+    for ii in range(ndim):
+        if np.size(infer_params[labels[0]][0])>1:
+            data[ii][:] = infer_params[labels[ii]][0]
+        else:
+            data[ii][:] = infer_params[labels[ii]]
+        histn,histbins = np.histogram(data[ii,:], bins=hist_n_bins)
+        histbins = histbins[:-1] + 0.5*(histbins[2]-histbins[1]) # change from left bins edges to middle of bins
+        mode = histbins[histn==max(histn)]
+        if len(mode)>1:
+            mode = mode[1] # Doe now take the first on the list, but if there are several we need to work out what to do there...
+        SampleModes.append(mode)
+    data = np.transpose(np.array(data)) # should have shape [nsamples, ndim]
 
-    # Get pixel locations from healpy params
-    npix = hp.nside2npix(go_params["nside"])
-    pix_thetas, pix_phis = hp.pix2ang(go_params["nside"], np.arange(npix))
-    pix_ras = np.rad2deg(pix_phis) # Ra and Dec for pix are stored in map_struct in degrees NOT radians
-    pix_decs = np.rad2deg(0.5*np.pi - pix_thetas)
-    pixels_numbers=hp.ang2pix(go_params["nside"], pix_thetas, pix_phis)
+    # Get injected values
+    InjParam_InjVals = []
+    for key in infer_params.keys():
+        InjParam_InjVals.append(inj_param_vals["source_params_Lframe"][key][0]) # Lframe is right.
 
-    # Convert post angles to theta,phi
-    post_phis = infer_params["lambda"]+np.pi
-    post_thetas = np.pi/2.-infer_params["beta"]
-    post_pix = hp.ang2pix(go_params["nside"],post_thetas,post_phis)
+    # Scatter plot of labmda and beta posterior chains, marginalized over all other params
+    fig = plt.figure()
+    ax = plt.gca()
+    if SkyProjection:
+        plt.subplot(111, projection="aitoff")
 
-    # Probabilities of pixels
-    probs,bin_edges = np.histogram(post_pix, bins=np.arange(npix+1), density=True)
+    # Get 2D hitogram data
+    levels = [1.-0.997, 1.-0.95, 1.-0.9, 1.-0.68] # Plot contours for 1 sigma, 90% confidence, 2 sigma, and 3 sigma
 
-    # Make the dictionary
-    map_struct = {"prob":probs,
-                  "ra":pix_ras,
-                  "dec":pix_decs}
+    # Manually do 2D histogram because I don't trust the ones I found online
+    # data to hist = [data[:,0], data[:,5]] = beta, lambda. Beta is y data since it is declination.
+    hist2D_pops = np.empty([bins,bins])
+    areas = np.empty([bins,bins])
+    bin_max = max(max(data[:,5]),SampleModes[5]+np.pi/10000.)
+    bin_min = min(min(data[:,5]),SampleModes[5]-np.pi/10000.)
+    if bin_max>np.pi:
+        bin_max=np.pi
+    if bin_min<-np.pi:
+        bin_max=-np.pi
+    if isinstance(bin_min,np.ndarray):
+        bin_min = bin_min[0]
+    if isinstance(bin_max,np.ndarray):
+        bin_max = bin_max[0]
+    lambda_bins = np.linspace(bin_min, bin_max, bins+1) # np.linspace(np.min(data[:,5]), np.max(data[:,5]), bins+1)
+    bin_max = max(max(data[:,0]),SampleModes[0]+np.pi/20000.)
+    bin_min = min(min(data[:,0]),SampleModes[0]-np.pi/20000.)
+    if bin_max>np.pi/2.:
+        bin_max=np.pi/2.
+    if bin_min<-np.pi/2.:
+        bin_max=-np.pi/2.
+    if isinstance(bin_min,np.ndarray):
+        bin_min = bin_min[0]
+    if isinstance(bin_max,np.ndarray):
+        bin_max = bin_max[0]
+    beta_bins = np.linspace(bin_min, bin_max, bins+1) # np.linspace(np.min(data[:,0]), np.max(data[:,0]), bins+1)
+    lambda_BinW = np.diff(lambda_bins)
+    beta_BinW = np.diff(beta_bins)
+    for xii in range(bins):
+        list_len = list(range(len(data[:,5])))
+        if xii == 0:
+            values_ii = [valii for valii in list_len if (lambda_bins[xii]<=data[valii,5]<=lambda_bins[xii+1])]
+        else:
+            values_ii = [valii for valii in list_len if (lambda_bins[xii]<=data[valii,5]<lambda_bins[xii+1])]
+        beta_pops, beta_bins = np.histogram(data[values_ii,0], bins=beta_bins) # beta_bins
+        for yii in range(bins):
+            hist2D_pops[yii,xii] = beta_pops[yii] # hist2D_pops[xii,yii] = beta_pops[yii]
+            areas[yii,xii] = beta_BinW[yii]*lambda_BinW[xii]
 
-    # Get additional data required by GWEMOPT
-    sort_idx = np.argsort(map_struct["prob"])[::-1]
-    csm = np.empty(len(map_struct["prob"]))
-    csm[sort_idx] = np.cumsum(map_struct["prob"][sort_idx])
-    map_struct["cumprob"] = csm
-    map_struct["ipix_keep"] = np.where(csm <= 1.)[0] # params["iterativeOverlap"])[0]
-    pixarea = hp.nside2pixarea(go_params["nside"])
-    pixarea_deg2 = hp.nside2pixarea(go_params["nside"], degrees=True)
-    map_struct["pixarea"] = pixarea
-    map_struct["pixarea_deg2"] = pixarea_deg2
+    # Define bins information
+    lambda_bins = lambda_bins[0:-1] + (lambda_bins[2]-lambda_bins[1] )*0.5
+    beta_bins = beta_bins[0:-1] + (beta_bins[2]-beta_bins[1] )*0.5
+    X,Y = np.meshgrid(lambda_bins, beta_bins)
 
-    # Assign parameters linked to source
-    with open(JsonFile) as f:
-        Jsondata = json.load(f)
+    # Rescale bin populations to probabilities
+    Z = hist2D_pops/areas
+    Z = Z/bins # Z/np.max(Z)
+    levels = [l*np.max(Z) for l in levels]
+
+    # Plot contour
+    contour = plt.contour(X, Y, Z, levels) ###### Maybe this would be better as just a colour plot to render to populations, and cut everything below 1 sigma?
+    plt.clabel(contour, colors = 'k', fmt = '%1.3f', fontsize=12)
+    # ax = plt.gca()
+
+    # Add injected and mode vertical and horizontal lines
+    if not SkyProjection:
+        ax.axhline(InjParam_InjVals[0], color="r", linestyle=":")
+        ax.axhline(SampleModes[0], color="b", linestyle=":")
+        ax.axvline(InjParam_InjVals[5], color="r", linestyle=":")
+        ax.axvline(SampleModes[5], color="b", linestyle=":")
+
+    # Add points at injected and mode values
+    ax.plot(InjParam_InjVals[5], InjParam_InjVals[0], "sr")
+    ax.plot(SampleModes[5], SampleModes[0], "sb")
+
+    # Labels
+    if not SkyProjection:
+        plt.xlabel(labels[5]) # Lambda
+        plt.ylabel(labels[0]) # beta
+
+    # show now or return?
+    if not return_data:
+        plt.show()
+        plt.grid()
+
+        # save the figure if asked
+        if SaveFig:
+            plt.savefig(FileNameAndPath[:-3]+'.png')
+    else:
+        return fig, InjParam_InjVals, SampleModes, X, lambda_bins, Y, beta_bins, Z
+
+def PlotLikeRatioFoMFromJson(FoMJsonFileAndPath, BF_lim=20., SaveFig=False):
+    """
+    Function to eventually replace the base plot functions in other plot util.
+    Return an axis and figure handle that has the base colour plot for the
+    lambda and beta sky mode replection using log(bayes factor) calculations only.
+
+    NB: This function has hard coded paths in it and will likely be removed wince we have moved on from needing it
+    """
+
+    with open(FoMJsonFileAndPath) as f:
+        FoMOverRange = json.load(f)
     f.close()
-    source_params = Jsondata["source_params"]
-    waveform_params = Jsondata["waveform_params"]
-    go_params["Tobs"] = -1.*waveform_params["DeltatL_cut"]                 ## In seconds... BUT: I can find where this is used in gwemopt. It might be important so set anyway.
-    go_params["true_ra"] = np.rad2deg(source_params["lambda"]+np.pi)       ## In deg
-    go_params["true_dec"] = np.rad2deg(source_params["beta"])              ## In deg
-    go_params["true_distance"] = source_params["dist"]                     ## in Mpc
-    # go_params["phi"]     ##### WHAT IS THIS? IT DOES NOT CORRESPOND TO THEIR DEFAULT VALUE OF "true_ra"
-    # go_params["theta"]   ##### WHAT IS THIS? IT DOES NOT CORRESPOND TO THEIR DEFAULT VALUE OF "true_dec"
 
-    # Save to file
-    SkyMapFileName = H5File.split("inference_data")[0] + 'Skymap_files' + H5File.split("inference_data")[-1]
-    SkyMapFileName = SkyMapFileName[:-3] + '.fits'
-    go_params,map_struct = WriteSkymapToFile(go_params,map_struct,SkyMapFileName)
+    # Set the Bayes limit
+    # For inc vs maxf: beta BF_lim=31, lambda BF_lim=15.5
+    # For inc vs beta: beta BF_lim=15.5, lambda BF_lim= anything less than 11,000
+    # For M vs z: beta BF_lim= between 10.5 and 31, lambda BF_lim= between 50 and several 1000
 
-    return go_params,map_struct
+    # Get the variables
+    Vars = FoMOverRange["LoopVariables"]
 
-def WriteSkymapToFile(go_params,map_struct,SkyMapFileName):
-    """
-    So far have not included case where this is 3D. This will be updated soon - we have
-    distance posteriors... Just need to understand how GWEMOPT expects this to be tabulated.
+    # Check that you loaded a grided FoMOverRange file
+    if not FoMOverRange["IsGrid"]:
+        raise ValueError("Must be a full grid FoMOverRange file, otherwise this code does not work.")
+    else:
 
-    Note: filename is JUST the name without the path- the path is calculated in situ.
-    """
-    from ligo.skymap.io.hdf5 import write_samples
-    from astropy.table import Table, Column
-    import os.path
-    table = Table([
-        Column(map_struct["prob"], name='prob'), # , meta={'vary': FIXED}),
-        ])
+        ################### PLOT THE MAIN DATA ###################
 
-    # get path and check filename...
-    # TO DO: add this to a helper function to check paths of data directories are congruent.... Can also do this for tile functions in the same function but different to lisabeta function, but this function reference lisabeta one to harmonize the architectures..
-    if len(SkyMapFileName.split("Skymap_files"))==1 and len(SkyMapFileName.split("SYNEX"))>1:
-        raise ValueError("Sorry but for continuity across functions please direct skymap directories to be within './SYNEX/Skymap_files/...'")
-    elif len(SkyMapFileName.split("Skymap_files"))>1 and len(SkyMapFileName.split("SYNEX"))==1:
-        print("Directing given filename to './SYNEX/Skymap_files/...'")
-        SkyMapFileName = SYNEX_PATH + "/Skymap_files" + SkyMapFileName.split("Skymap_files")[-1]
-    elif len(SkyMapFileName.split("Skymap_files"))==1 and len(SkyMapFileName.split("SYNEX"))==1:
-        print("WARNING: Adding ./SYNEX/Skymap_files/ to filename provided...")
-        SkyMapFileName = SYNEX_PATH + "/Skymap_files/" + SkyMapFileName
-    if SkyMapFileName[-5:]!='.fits':
-        SkyMapFileName = SkyMapFileName+'.fits'
+        X,Y = np.meshgrid(FoMOverRange[Vars[0]+"_xs"], FoMOverRange[Vars[1]+"_xs"])
 
-    # Check if directory exists and create if it doesnt
-    SkyMapFilePath = "/".join(SkyMapFileName.split("/")[:-1])
-    pathlib.Path(SkyMapFilePath).mkdir(parents=True, exist_ok=True)
+        if Vars[0] == "T_obs_end_to_merger":
+            X = X/(60.*60.)
+        if Vars[1] == "T_obs_end_to_merger":
+            Y = Y/(60.*60.)
 
-    # Write to fits file
-    kwargs={}
-    write_samples(table, SkyMapFileName, metadata=None, overwrite=True, **kwargs)
+        if FoMOverRange["FoM"] == "SkyModeLikelihoodsBETA" or FoMOverRange["FoM"] == "SkyModeLikelihoodsLAMBDA":
+            Z = np.log10(abs(np.array(FoMOverRange["grid_ys"])+BF_lim))
+        else:
+            Z = np.log10(FoMOverRange["grid_ys"])
 
-    # update the filename stored in go_params
-    go_params["skymap"] = SkyMapFileName
+        # Master figure and axes
+        fig, ax = plt.subplots(constrained_layout=True)
+        im = ax.pcolormesh(X, Y, Z, shading='gouraud', vmin=Z.min(), vmax=Z.max())
+        cbar = fig.colorbar(im, ax=ax)
 
-    return go_params,map_struct
+        if Vars[0] == "M":
+            ax.set_xscale('log')
+            plt.xlabel(r'M$_{\mathrm{tot}} \; (M_{\odot})$')
+        elif Vars[0] == "inc":
+            ax.set_xlim([0.,np.pi])
+            plt.xlabel(r'$\iota \; (\mathrm{rad.})$')
+        elif Vars[0] == "maxf":
+            ax.set_xscale('log')
+            plt.xlabel(r'$\mathrm{f}_{\mathrm{max}} \; (\mathrm{Hz})$')
+        elif Vars[0] == "beta":
+            plt.xlabel(r'$\beta_{SSB} \; (\mathrm{rad.})$')
+        elif Vars[0] == "z":
+            plt.xlabel(r'z')
+        elif Vars[0] == "T_obs_end_to_merger":
+            ax.set_xscale('log')
+            plt.xlabel(r'T$_{obstm} \; (\mathrm{hr})$')
+
+        if Vars[1] == "M":
+            ax.set_yscale('log')
+            ax.set_ylabel(r'M$_{\mathrm{tot}} \; (M_{\odot})$')
+        elif Vars[1] == "inc":
+            ax.set_ylabel(r'$\iota \; (\mathrm{rad.})$')
+        elif Vars[1] == "maxf":
+            ax.set_yscale('log')
+            ax.set_ylabel(r'$\mathrm{f}_{\mathrm{max}} \; (\mathrm{Hz})$')
+        elif Vars[1] == "beta":
+            ax.set_ylabel(r'$\beta_{SSB} \; (\mathrm{rad.})$')
+        elif Vars[1] == "z":
+            ax.set_ylabel(r'z')
+        elif Vars[1] == "T_obs_end_to_merger":
+            ax.set_yscale('log')
+            plt.ylabel(r'T$_{obstm} \; (\mathrm{hr})$')
+
+        if FoMOverRange["FoM"] == "SkyModeLikelihoodsBETA":
+            cbar.set_label(r'$\log_{10}(|\mathcal{B}_{\beta}|)$') # (r'$\log_{10}(|\Sigma_{b=0}^{3}\log_e(L_{(-1,b)}) - \log_e(L_{(1,b)})+20|)$')
+        elif FoMOverRange["FoM"] == "SkyModeLikelihoodsLAMBDA":
+            cbar.set_label(r'$\log_{10}(|\mathcal{B}_{\lambda}|)$') # r'$\log_{10}(|\Sigma_{a=1,-1}\log_e(L_{(a,1)}) + \log_e(L_{(a,2)}) + \log_e(L_{(a,3)}) - \log_e(L_{(a,0)})+20|)$')
+        else:
+            cbar.set_label(r'$\log_{10}(\Delta \Omega \; (\mathrm{sq. deg.}))$')
+
+    # Save?
+    if SaveFig:
+        if FoMOverRange["FoM"] == "SkyModeLikelihoodsLAMBDA":
+            plt.savefig("/Users/jonathonbaird/Documents/LabEx_PostDoc/Figs/lnL_skymodes_LambdaReflections_" + Vars[0] + "_" + Vars[1] + "_BF_" + str(BF_lim) + ".png", facecolor='w', transparent=False)
+        elif FoMOverRange["FoM"] == "SkyModeLikelihoodsBETA":
+            plt.savefig("/Users/jonathonbaird/Documents/LabEx_PostDoc/Figs/lnL_skymodes_BetaReflections_" + Vars[0] + "_" + Vars[1] + "_BF_" + str(BF_lim) + ".png", facecolor='w', transparent=False)
+        plt.show()
+    else:
+        return fig, ax
+
+
 
 
 

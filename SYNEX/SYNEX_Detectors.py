@@ -3,6 +3,7 @@ import astropy.stats as astat
 import astropy, astroplan
 import numpy as np
 import SYNEX.SYNEX_Utils as SYU
+from SYNEX.SYNEX_Utils import SYNEX_PATH
 import gwemopt
 import json
 import pickle
@@ -146,28 +147,34 @@ class Athena:
                     print("'",key,"' not contained in gwemopt 'config_struct' dict...")
                     print_reminder = True
 
+        # check if tesselation file was set
+        if detector_config_struct["tesselationFile"]==None:
+            detector_config_struct["tesselationFile"]=SYNEX_PATH+"/gwemopt_tess_files/" + detector_go_params["telescopes"] + ".tess"
+
+        # Set config struct telescope name
+        detector_config_struct["telescope"]=detector_go_params["telescopes"] # For now there is only one here
+
         # Check that file names are all coherent with SYNEX_PATH and telescope name
         detector_go_params, detector_config_struct = SYU.GWEMOPTPathChecks(detector_go_params,detector_config_struct)
 
-        # Now set class attributes as dicts - then we can integrate these with many classes in utils when running gwemopt
+        # Set as class attributes
         self.detector_go_params = detector_go_params
         self.detector_config_struct = detector_config_struct
 
-        # Calculate tesselation - seperated for construction many nearly identical classes (e.g. optimization routines)
-        self.ComputTesselation(FORCE_RECOMPUTE=False)
+        # Calculate tesselation
+        self.ComputeTesselation(FORCE_RECOMPUTE=False)
 
         # Issue reminder of where to find list of gwemopt variables and flags
         if print_reminder:
             print("Some keys given at initiatiation of Athena class are not contained in gwemop params - see 'SYNEX/gwemopt_defaults.py' for full list of possible field names.")
 
-    def ComputTesselation(self,FORCE_RECOMPUTE=True):
+    def ComputeTesselation(self,FORCE_RECOMPUTE=True):
         if self.detector_go_params["doSingleExposure"]:
             exposuretime = np.array(self.detector_go_params["exposuretimes"].split(","),dtype=np.float)[0]
-
             nmag = -2.5*np.log10(np.sqrt(self.detector_config_struct["exposuretime"]/exposuretime))
             self.detector_config_struct["magnitude"] = self.detector_config_struct["magnitude"] + nmag
             self.detector_config_struct["exposuretime"] = exposuretime
-        if "tesselationFile" in self.config_struct:
+        if "tesselationFile" in self.detector_config_struct:
             if not os.path.isfile(self.detector_config_struct["tesselationFile"]) or FORCE_RECOMPUTE: # EITHER it doesnt exist yet OR we want to recompute it
                 if self.detector_config_struct["FOV_type"] == "circle":
                     gwemopt.tiles.tesselation_spiral(self.detector_config_struct)

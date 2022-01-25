@@ -107,24 +107,57 @@ class Athena:
 
     Parameters
     ----------
-    FoView : Float
-        Field of view of a hypothetical Athena
+    detector_go_params : (gwemopt compatible) dict
+        See './SYNEX/gwemopt_defaults.py' all possible flags.
 
-    T_lat : Float
-        Latency time of the tile for each move
+    detector_config_struct : (gwemopt compatible) dict
+        See './SYNEX/gwemopt_defaults.py' all possible flags.
 
-    T_repos : Float
-        Time to re-orient between each latency time
+    ExistentialFileName : Path or string
+        Path and file name of file loadable by 'pickle'. Contents are a
+        dictionary containing all the kwargs of a saved 'Athena' class object.
+        If ExistentialFileName is specified but the file oesn't exist, then it
+        will be automatically created so that the class can be loaded again later.
+        Automatic save points through SYNEX routines will update this savefile
 
-    T_init : Float
-        Time to initialize Athena. E.g. if prior to the GW alert it was pointing
-        elsewhere in the sky or in the middle of commissioning/calibration runs
-        then this time gives the delay before tiling can begin.
+    NB: GWEMOPT uses serialized dictionaries 'go_params' and 'config_struct'.
+        These are constructed with one or more 'detector_go_params' or
+        'detector_config_struct' under key values given by the 'telescope' name.
+        You might experience errors if you try passing 'detector_go_params' or
+        'detector_config_struct' directly to GWEMOPT. You will need to pass classes
+        through interface routines like SYNEX_Utils.InitGWEMOPTParamsFromDetectors.py
+        to prepare the dictionaries for use in GWEMOPT.
     """
 
     def __init__(self, **kwargs):
         # Import default gwemopt dict
         from SYNEX.gwemopt_defaults import go_params_default, config_struct_default as detector_go_params, detector_config_struct
+
+        # Default is not to recompute tesselation if the saved '.tess' file exists
+        MUTATED=False
+
+        # Check if we are resurrecting a class from a save file
+        if "ExistentialFileName" in kwargs.keys():
+            # FUSE THIS WITH CONFIG KEY IN GO_PARAMS... Save in two files so we
+            # respect gwemopt conventions? Seems overkill but 'gwemop.utils.readParamsFromFile(file)'
+            # already exists and can be used for both 'config' and 'params' dictionaries.
+            self.ExistentialFileName=kwargs["ExistentialFileName"]
+
+            # Load saved dictionary
+            with open(self.ExistentialFileName, 'r') as f:
+                SavedDict = pickle.load(f)
+
+            # Use these values as default to modify with remaining keys in '**kwargs'
+            detector_go_params = SavedDict["detector_go_params"]
+            detector_config_struct = SavedDict["detector_config_struct"]
+
+            # Check if we will modify something later
+            if len(kwargs.keys())>1:
+                # more than just 'ExistentialFileName' specified
+                ValueCheck = [value!=SavedDict[key] for key,value in kwargs.items()]
+                if any([ValueCheck]):
+                    # Values are changed so recompute tesselation later even if the '.tess' file already exists
+                    MUTATED=True
 
         # Change all things in go_params that are specified in kwargs,
         # and warn the user if any of the things they set are not used...
@@ -141,18 +174,39 @@ class Athena:
             detector_config_struct["telescope"] = detector_go_params["telescopes"]
         else:
             for key,value in kwargs.items():
-                if key in config_struct:
+                if key in detector_config_struct:
                     detector_config_struct[key]=value
                 else:
                     print("'",key,"' not contained in gwemopt 'config_struct' dict...")
                     print_reminder = True
 
-        # check if tesselation file was set
+        # Check if tesselation file was set
         if detector_config_struct["tesselationFile"]==None:
             detector_config_struct["tesselationFile"]=SYNEX_PATH+"/gwemopt_tess_files/" + detector_go_params["telescopes"] + ".tess"
 
-        # Set config struct telescope name
-        detector_config_struct["telescope"]=detector_go_params["telescopes"] # For now there is only one here
+        # Check if tesselation file exists and if we want to recompute - otherwise if it exists it will be loaded
+        if MUTATED and os.path.isfile(self.detector_config_struct["tesselationFile"]):
+            if "NewtesselationFile" in kwargs:
+                # Take new filename if given
+                self.detector_config_struct["tesselationFile"] = kwargs["NewtesselationFile"]
+            else:
+                # No new filename given- create it. NOTE: file extension is checked in 'SYU.GWEMOPTPathChecks()' step below...
+                try:
+                    # Does it already have an extension number? If so, start there...
+                    TessFileExt=self.detector_config_struct["tesselationFile"].split("_")[-1] # e.g. '3.tess'
+                    TessFileExt = int(TessFileExt.split(".")[0])
+                except:
+                    # If not,start at 1
+                    TessFileExt = 1
+                    self.detector_config_struct["tesselationFile"] = ".".join(self.detector_config_struct["tesselationFile"].split(".")[:-1]) + "_1." + self.detector_config_struct["tesselationFile"].split(".")[-1]
+
+                # Find the first version that doesn't exist yet...
+                while os.path.isfile(self.detector_config_struct["tesselationFile"]):
+                    TessFileExt+=1
+                    self.detector_config_struct["tesselationFile"] = "_".join(self.detector_config_struct["tesselationFile"].split("_")[:-1]) + "_" + str(TessFileExt) + "." + self.detector_config_struct["tesselationFile"].split(".")[-1]
+
+        # Set config struct telescope name - for now there is only one 'telescope' in 'telescopes'
+        detector_config_struct["telescope"]=detector_go_params["telescopes"]
 
         # Check that file names are all coherent with SYNEX_PATH and telescope name
         detector_go_params, detector_config_struct = SYU.GWEMOPTPathChecks(detector_go_params,detector_config_struct)
@@ -161,21 +215,60 @@ class Athena:
         self.detector_go_params = detector_go_params
         self.detector_config_struct = detector_config_struct
 
-        # Calculate tesselation
-        self.ComputeTesselation(FORCE_RECOMPUTE=False)
+        # Set save file name if not already there
+        if not hasattr(self,"ExistentialFileName"):
+            # Default name to include telecope 'name' variable?
+            today = date.today()
+            d = today.strftime("%d_%m_%Y")
+            ExistentialFile = d + "_TelescopeDict.dat"
+            ExistentialFile=SYNEX_PATH+"/Saved_Telescope_Dicts/"+ExistentialFile
+            self.ExistentialFileName=ExistentialFile
+
+        # If we resurrected with mutation, keep a reference to where this class came from
+        if MUTATED:
+            self.MutatedFromDetectorFile = self.ExistentialFileName
+            if "NewExistentialFileName" in kwargs:
+                # Take new filename if given
+                self.ExistentialFileName = kwargs["NewExistentialFileName"]
+            else:
+                # No new filename given- create it. NOTE: file extension left ambiguous
+                try:
+                    # Does it already have an extension number? If so, start there...
+                    ExistentialFileExt=self.ExistentialFileName.split("_")[-1] # e.g. '3.dat' for '4.config'
+                    ExistentialFileExt = int(ExistentialFileExt.split(".")[0])
+                except:
+                    # If not, start at 1
+                    ExistentialFileExt = 1
+                    self.ExistentialFileName = ".".join(self.ExistentialFileName.split(".")[:-1]) + "_1." + self.ExistentialFileName.split(".")[-1]
+
+                # Find the first version that doesn't exist yet...
+                while os.path.isfile(self.ExistentialFileName):
+                    ExistentialFileExt+=1
+                    self.ExistentialFileName = "_".join(self.ExistentialFileName.split("_")[:-1]) + "_" + str(ExistentialFileExt) + "." + self.ExistentialFileName.split(".")[-1]
+            print("Successfully mutated detector:", self.MutatedFromSourceFile)
+            print("New savefile for mutation:", self.ExistentialFileName)
+
+        # Check that file paths exist - in case of subdirectory organizational architectures...
+        # Tesselation path already checked in 'SYU.GWEMOPTPathChecks()'
+        ExistentialPath="/".join(self.ExistentialFileName.split("/")[:-1])
+        pathlib.Path(ExistentialPath).mkdir(parents=True, exist_ok=True)
+
+        # Calculate tesselation - detector is saved at the end of this in case we recompute in other codes
+        # If 'MUTATED' was False then if the '.tess' file exists the tesselation will be loaded.
+        self.ComputeTesselation()
 
         # Issue reminder of where to find list of gwemopt variables and flags
         if print_reminder:
             print("Some keys given at initiatiation of Athena class are not contained in gwemop params - see 'SYNEX/gwemopt_defaults.py' for full list of possible field names.")
 
-    def ComputeTesselation(self,FORCE_RECOMPUTE=True):
+    def ComputeTesselation(self):
         if self.detector_go_params["doSingleExposure"]:
             exposuretime = np.array(self.detector_go_params["exposuretimes"].split(","),dtype=np.float)[0]
             nmag = -2.5*np.log10(np.sqrt(self.detector_config_struct["exposuretime"]/exposuretime))
             self.detector_config_struct["magnitude"] = self.detector_config_struct["magnitude"] + nmag
             self.detector_config_struct["exposuretime"] = exposuretime
         if "tesselationFile" in self.detector_config_struct:
-            if not os.path.isfile(self.detector_config_struct["tesselationFile"]) or FORCE_RECOMPUTE: # EITHER it doesnt exist yet OR we want to recompute it
+            if not os.path.isfile(self.detector_config_struct["tesselationFile"]):
                 if self.detector_config_struct["FOV_type"] == "circle":
                     gwemopt.tiles.tesselation_spiral(self.detector_config_struct)
                 elif self.detector_config_struct["FOV_type"] == "square":
@@ -202,6 +295,9 @@ class Athena:
         location = astropy.coordinates.EarthLocation(self.detector_config_struct["longitude"],self.detector_config_struct["latitude"],self.detector_config_struct["elevation"])
         observer = astroplan.Observer(location=location)
         self.detector_config_struct["observer"] = observer
+
+        # Save it all to file!
+        self.ExistentialCrisis()
 
     def GetKuiper(self, TilePickleFile, source=None):
         # Check first that the necessary steps have been done for the source and detector
@@ -506,3 +602,28 @@ class Athena:
         for i in range(n_times):
             TileDict[str(i)]['beta']
             TileDict[str(i)]['lambda']
+
+    def ExistentialCrisis(self,NewFileName=None):
+        """
+        Function to save all class attributes as a dictionary to file,
+        making sure to overwrite existing files by the same name. This will
+        make source resurrection easier if we do a long analysis run in stages.
+
+        NB: When we get to tiling attributes may not be serializable for json files,
+        so here we opt for pickling to '.dat' files instead.
+        However, we do not check that the new 'FileName' has the right extension
+        or path. Need to do this later.
+        """
+        if NewFileName!=None:
+            # Check new filepath exists...
+            NewFilePath="/".join(NewFileName.split("/")[:-1])
+            pathlib.Path(NewFilePath).mkdir(parents=True, exist_ok=True)
+            # Reset name in class attributes
+            self.ExistentialFileName = NewFileName
+        # Gather attributes to dict
+        MyExistentialDict = self.__dict__
+        # Save to file...
+        print("Saving detector attributes...")
+        with open(self.ExistentialFileName, 'wb') as f:
+            pickle.dump(MyExistentialDict, f)
+        print("Done.")

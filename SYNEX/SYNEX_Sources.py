@@ -6,8 +6,12 @@ from astropy.cosmology import Planck13, z_at_value # needed only to convert a gi
 import astropy.units as u
 import warnings
 import os
+from datetime import date
+import pathlib
+import pickle
 
 import SYNEX.SYNEX_Utils as SYU
+from SYNEX.SYNEX_Utils import SYNEX_PATH
 
 import lal
 import lalsimulation as lalsim
@@ -79,6 +83,32 @@ class SMBH_Merger:
     """
 
     def __init__(self, **kwargs):
+        # Default assume class is not mutated from another saved class
+        MUTATED=False
+
+        # Check if we are resurrecting a class from a save file
+        if "ExistentialFileName" in kwargs.keys() and os.path.isfile(kwargs["ExistentialFileName"]):
+            # FUSE THIS WITH JSON_FILE IN LISABETA? Currently saves in two files so we
+            # respect gwemopt conventions using numpy arrays for some stuff that aren't
+            # serializable to json... Maybe we can file a way to put the two together
+            # and alter SYNEX_PTMC to load from pickle instead?
+            self.ExistentialFileName=kwargs["ExistentialFileName"]
+
+            # Load saved dictionary
+            with open(self.ExistentialFileName, 'rb') as f:
+                SavedDict = pickle.load(f)
+
+            # Check if we will modify something
+            if len(kwargs.keys())>1:
+                # more than just 'ExistentialFileName' specified
+                ValueCheck = [value!=SavedDict[key] for key,value in kwargs.items()]
+                if any([ValueCheck]):
+                    # Values are changed so warn user
+                    print("WARNING: Loaded source from file will be mutated- mutation will be saved to new file...")
+                    MUTATED = True
+
+        # Set variables - Can condense this to setattr(class,val) later but
+        # wanted to see all variables while developing as they might change.
         for key, value in kwargs.items():
             # Base source parameters
             if key == "m1":
@@ -99,9 +129,9 @@ class SMBH_Merger:
             elif key == "Deltat":
                 self.Deltat = value
             elif key == "lambda":
-                self.lamda = value # // RA
+                self.lamda = value # = RA-pi = phi-pi
             elif key == "beta":
-                self.beta = value # // DEC
+                self.beta = value # = DEC = pi/2-theta
             elif key == "inc":
                 self.inc = value
             elif key == "psi":
@@ -162,6 +192,15 @@ class SMBH_Merger:
                     self.JsonFile=None
             elif key=='sky_map':
                 self.sky_map=value
+            elif key=='ExistentialFileName':
+                self.ExistentialFileName=value
+
+        #########
+        ##
+        ## check mass params... can we do 'pytools.complete_mass_params(source_params)' intead? Not sure
+        ## this has the right default behaviour we want...
+        ##
+        #########
 
         # Make sure m1>m2 and q>1
         if hasattr(self,"m1") and hasattr(self,"m2"):
@@ -322,6 +361,45 @@ class SMBH_Merger:
                 self.JsonFile=None
         if not hasattr(self,"sky_map"):
                 self.sky_map=None
+        if not hasattr(self,"ExistentialFileName"):
+                # Default name to include source 'name' variable?
+                today = date.today()
+                d = today.strftime("%d_%m_%Y")
+                ExistentialFile = d + "_SourceDict.dat"
+                ExistentialFile=SYNEX_PATH+"/Saved_Source_Dicts/"+ExistentialFile
+                self.ExistentialFileName=ExistentialFile
+
+        # If we resurrected with mutation, keep a reference to where this class came from
+        if MUTATED:
+            self.MutatedFromSourceFile = self.ExistentialFileName
+            if "NewExistentialFileName" in kwargs:
+                # Take new filename if given
+                self.ExistentialFileName = kwargs["NewExistentialFileName"]
+            else:
+                # No new filename given- create it. NOTE: file extension left ambiguous
+                try:
+                    # Does it already have an extension number? If so, start there...
+                    ExistentialFileExt=self.ExistentialFileName.split("_")[-1] # e.g. '3.dat', '4.config', '10.json'
+                    ExistentialFileExt=int(ExistentialFileExt.split(".")[0])
+                except:
+                    # If not, start at 1
+                    ExistentialFileExt = 1
+                    self.ExistentialFileName = ".".join(self.ExistentialFileName.split(".")[:-1]) + "_1." + self.ExistentialFileName.split(".")[-1]
+
+                # Find the first version that doesn't exist yet...
+                while os.path.isfile(self.ExistentialFileName):
+                    ExistentialFileExt+=1
+                    self.ExistentialFileName = "_".join(self.ExistentialFileName.split("_")[:-1]) + "_" + str(ExistentialFileExt) + "." + self.ExistentialFileName.split(".")[-1]
+            print("Successfully mutated source:", self.MutatedFromSourceFile)
+            print("New savefile for mutation:", self.ExistentialFileName)
+
+        # Check that file paths exist - in case of subdirectory organizational architectures...
+        # Json and H5 file paths already checked when names are completed
+        ExistentialPath="/".join(self.ExistentialFileName.split("/")[:-1])
+        pathlib.Path(ExistentialPath).mkdir(parents=True, exist_ok=True)
+        if self.sky_map!=None:
+            SkyMapPath="/".join(self.sky_map.split("/")[:-1])
+            pathlib.Path(SkyMapPath).mkdir(parents=True, exist_ok=True)
 
         # Extra useful params
         self.true_ra = np.rad2deg(self.lamda+np.pi)   ## In deg
@@ -342,18 +420,21 @@ class SMBH_Merger:
             else:
                 self.CreateSkyMapStruct()
 
+        # Save it all to file!
+        self.ExistentialCrisis()
+
     def LoadSkymap(self):
         """
         Read a skymap in -- Check that parameters match? Not sure it's needed...
         Most basic sky map here. Need to add 3d option...
         """
         self.map_struct={}
-        prob_data, header = hp.read_map(self.sky_map, field=0, verbose=False,h=True)
-        prob_data = prob_data / np.sum(prob_data)
+        prob_data, header = hp.read_map(self.sky_map,field=0,h=True)
+        prob_data = prob_data/np.sum(prob_data)
 
         self.map_struct["prob"] = prob_data
-        map_nside = hp.pixelfunc.get_nside(self.map_struct["prob"])
-        npix = hp.nside2npix(nside)
+        nside = hp.pixelfunc.get_nside(self.map_struct["prob"])
+        npix = len(self.map_struct["prob"]) # hp.nside2npix(nside)
         theta, phi = hp.pix2ang(nside, np.arange(npix))
         ra = np.rad2deg(phi)
         dec = np.rad2deg(0.5*np.pi - theta)
@@ -728,3 +809,28 @@ class SMBH_Merger:
         integral = sum(integrand)/(1.+self.z) # We need another 1/(1+z) here otherwise the photon rate is too high. Maybe this is a redshifting of energy bins?
         # CTR = [integral*self.xray_phi_0[ii] for ii in range(len(self.xray_phi_0))]
         self.CTR = [integral*self.xray_phi_0[ii] for ii in range(len(self.xray_phi_0))] # CTR
+
+    def ExistentialCrisis(self,NewFileName=None):
+        """
+        Function to save all class attributes as a dictionary to file,
+        making sure to overwrite existing files by the same name. This will
+        make source resurrection easier if we do a long analysis run in stages.
+
+        NB: When we get to tiling attributes may not be serializable for json files,
+        so here we opt for pickling to '.dat' files instead.
+        However, we do not check that the new 'FileName' has the right extension
+        or path. Need to do this later.
+        """
+        if NewFileName!=None:
+            # Check new filepath exists...
+            NewFilePath="/".join(NewFileName.split("/")[:-1])
+            pathlib.Path(NewFilePath).mkdir(parents=True, exist_ok=True)
+            # Reset name in class attributes
+            self.ExistentialFileName = NewFileName
+        # Gather attributes to dict
+        MyExistentialDict = dict(self.__dict__)
+        # Save to file...
+        print("Saving source attributes...")
+        with open(self.ExistentialFileName, 'wb') as f:
+            pickle.dump(MyExistentialDict, f)
+        print("Done.")

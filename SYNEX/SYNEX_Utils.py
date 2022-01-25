@@ -321,31 +321,6 @@ def ParamsToClasses(input_params,CollectionMethod="Inference",**kwargs):
         if key in param_dict:
             param_dict[key] = value
 
-    # Sort out case where z is specified in kwargs
-    if "z" in kwargs:
-        param_dict["dist"] = cosmo.luminosity_distance(kwargs["z"]).to("Mpc").value
-
-    # Sort out case where q and/or M are specified in kwargs
-    if "M" in kwargs and "q" in kwargs:
-        param_dict["m1"] = kwargs["M"]*(kwargs["q"](1.+kwargs["q"]))
-        param_dict["m2"] = kwargs["M"]/(1.+kwargs["q"])
-    elif "M" in kwargs and "m1" in kwargs:
-        param_dict["m2"] = kwargs["M"]-kwargs["m1"]
-    elif "M" in kwargs and "m2" in kwargs:
-        param_dict["m1"] = kwargs["M"]-kwargs["m2"]
-    elif "q" in kwargs and "m1" in kwargs:
-        param_dict["m2"] = kwargs["m1"]/kwargs["q"]
-    elif "q" in kwargs and "m2" in kwargs:
-        param_dict["m1"] = kwargs["q"]*kwargs["m2"]
-    elif "q" in kwargs: # Now cases where only one is specified - take other needed values from source
-        # vary q and keep M the same
-        param_dict["m1"] = source.M*(kwargs["q"]/(1.+kwargs["q"]))
-        param_dict["m2"] = source.M/(1.+kwargs["q"])
-    elif "M" in kwargs:
-        # vary M and keep q the same
-        param_dict["m1"] = kwargs["M"]*source.q/(1.+source.q)
-        param_dict["m2"] = kwargs["M"]/(1.+source.q)
-
     # Implement changes to basic waveform parameters
     for key, value in kwargs.items():
         if key in waveform_params:
@@ -366,20 +341,11 @@ def ParamsToClasses(input_params,CollectionMethod="Inference",**kwargs):
         if "gridfreq" in kwargs:
             waveform_params["gridfreq"] = kwargs["gridfreq"]
 
-    # Create a dummy source object from base properties
-    source_dummy = SYSs.SMBH_Merger(**param_dict)
+    # Hand everything to one kwargs dict for source creation - anything not used is left alone.
+    source_kwargs = {**param_dict, "lisabetaFile":run_params["out_dir"] + run_params["out_name"] + ".h5", **waveform_params}
 
-    # Now update all attributes with waveform params
-    for key, value in waveform_params.items():
-        if hasattr(source_dummy,key):
-            param_dict[key] = value
-
-    # Now add lisabetaFile to dict - checks for completion and existence are already in source init func
-    lisabetaFile = run_params["out_dir"] + run_params["out_name"] + ".h5"
-    param_dict["lisabetaFile"]=lisabetaFile
-
-    # Now create the real source object to be returned
-    source = SYSs.SMBH_Merger(**param_dict)
+    # Now create source object
+    source = SYSs.SMBH_Merger(**source_kwargs)
 
     return source
 
@@ -425,7 +391,7 @@ def CompleteLisabetaDataAndJsonFileNames(FileName):
     elif not bool_vec[0] and bool_vec[1]:
         H5FileLocAndName = LisabetaDataPath + H5FileLocAndName.split("inference_param_files")[-1]
 
-    # Now check if the subdirectories exist yet or not for both data and json areas...
+    # Check if the subdirectories exist for both data and json files
     JsonPathOnly="/".join(JsonFileLocAndName.split("/")[:-1])
     DataPathOnly="/".join(H5FileLocAndName.split("/")[:-1])
     pathlib.Path(JsonPathOnly).mkdir(parents=True, exist_ok=True)
@@ -496,7 +462,7 @@ def GWEMOPTPathChecks(go_params, config_struct):
 #                #                                         #
 #                ###########################################
 
-def GetPosteriorStats(FileName, ModeJumpLimit=None, LogLikeJumpLimit=None): # 0.9
+def GetPosteriorStats(FileName, ModeJumpLimit=None, LogLikeJumpLimit=None):
     """
     Function to extract a posterior estimate, with errors, for a list of parameters infered
     using ptemcee.
@@ -918,6 +884,9 @@ def RunInference(source, detector, inference_params, PlotInference=False,PlotSky
     source.sky_map = source.sky_map[:-3] + '.fits'
     print("Saving lisabeta posteriors as sky_map",source.sky_map)
     source.CreateSkyMapStruct()
+
+    # Update saved source data
+    source.ExistentialCrisis()
 
     # Call plotter if asked for
     if is_master and PlotInference:
@@ -1929,7 +1898,7 @@ def GetSourceFromLisabetaData(FileName):
 #         print(TileFileName)
 #
 #     # Write to file
-#     with open(TileFileName, 'wb+') as f:
+#     with open(TileFileName, 'w') as f: # mode was 'wb+' before, but I don't think that 'binary' option is necessary...
 #         pickle.dump(TileDict, f)
 #
 #     # Write the name of the file to the detector object
@@ -2084,12 +2053,12 @@ def WriteSkymapToFile(map_struct,SkyMapFileName,go_params=None):
 
     Note: filename is JUST the name without the path- the path is calculated in situ.
     """
-    from ligo.skymap.io.hdf5 import write_samples
+    # from ligo.skymap.io.hdf5 import write_samples
     from astropy.table import Table, Column
     import os.path
-    table = Table([
-        Column(map_struct["prob"], name='prob'), # , meta={'vary': FIXED}),
-        ])
+    # table = Table([
+    #     Column(map_struct["prob"], name='prob'), # , meta={'vary': FIXED}),
+    #     ])
 
     # get path and check filename...
     # TO DO: add this to a helper function to check paths of data directories are congruent.... Can also do this for tile functions in the same function but different to lisabeta function, but this function reference lisabeta one to harmonize the architectures..
@@ -2110,7 +2079,7 @@ def WriteSkymapToFile(map_struct,SkyMapFileName,go_params=None):
 
     # Write to fits file
     kwargs={}
-    write_samples(table, SkyMapFileName, metadata=None, overwrite=True, **kwargs)
+    hp.write_map(SkyMapFileName, map_struct["prob"], dtype=dtype('float64'), overwrite=True)
 
     if go_params!=None:
         # update the filename stored in go_params
@@ -2130,11 +2099,12 @@ def WriteSkymapToFile(map_struct,SkyMapFileName,go_params=None):
 #                      #                        #
 #                      ##########################
 
-##### Need to irganize these better and rename #####
+##### Need to organize these better and rename #####
 
 def PlotSkyMapData(source,SaveFig=False,plotName=None):
     """
-    Plotting tool to either take a filename or a source object and plot the skyap associated
+    Plotting tool to either take a filename or a source object and plot the skyap associated.
+    Adapted from 'gwemopt.plotting.skymap.py'
     """
     unit='Gravitational-wave probability'
     cbar=False
@@ -2147,7 +2117,10 @@ def PlotSkyMapData(source,SaveFig=False,plotName=None):
     else:
         hp.mollview(source.map_struct["prob"],title='',unit=unit,cbar=cbar,min=np.percentile(source.map_struct["prob"],1),cmap=cmap)
 
+    # hp.projplot(source.true_ra, source.true_dec, lonlat=True, coord='G', marker='D', c='blue', linestyle='None', label='true location')
     hp.projplot(source.true_ra, source.true_dec, lonlat=True, coord='G', marker='D', c='blue', linestyle='None', label='true location')
+    # print(source.true_ra, source.true_dec) ##### These are not correct... I think there is a missing -'ve sign on RA calculations
+    # But gwemopt.plotting.skymap uses (ra,dec) and lonlat=True so not sure if this is right...
     plt.legend()
 
     add_edges()
@@ -2829,7 +2802,7 @@ def PlotHistsLambdaBeta(FileName, SaveFig=False, ParamToPlot="beta"): # "lambda"
     for key in infer_params.keys():
         InjParam_InjVals.append(inj_param_vals["source_params_Lframe"][key][0]) # Lframe is right.
 
-    # Sctter plot of labmda and beta posterior chains, marginalized over all other params
+    # Sctter plot of lambda and beta posterior chains, marginalized over all other params
     for PlotParam in ParamToPlot:
         print(PlotParam)
         if PlotParam == "beta":

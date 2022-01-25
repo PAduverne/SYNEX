@@ -2111,7 +2111,7 @@ def PlotSkyMapData(source,SaveFig=False,plotName=None,DO_CONTOURS=False):
     unit='Gravitational-wave probability'
     cbar=False
 
-    lons = np.arange(-150.0,180,30.0)
+    lons = np.arange(-150.0,180,30.0) #
     lats = np.zeros(lons.shape)
 
     if np.percentile(source.map_struct["prob"],99) > 0:

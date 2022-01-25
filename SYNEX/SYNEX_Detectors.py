@@ -132,6 +132,9 @@ class Athena:
     def __init__(self, **kwargs):
         # Import default gwemopt dict
         from SYNEX.gwemopt_defaults import go_params_default, config_struct_default as detector_go_params, detector_config_struct
+        
+        # Remove keys stored in Source classes
+        del detector_go_params["do3D"]
 
         # Default is not to recompute tesselation if the saved '.tess' file exists
         MUTATED=False

@@ -9,6 +9,8 @@ import os
 from datetime import date
 import pathlib
 import pickle
+# import statistics
+from scipy.stats import norm
 
 import SYNEX.SYNEX_Utils as SYU
 from SYNEX.SYNEX_Utils import SYNEX_PATH
@@ -87,7 +89,10 @@ class SMBH_Merger:
         MUTATED=False
 
         # Check if we are resurrecting a class from a save file
-        if "ExistentialFileName" in kwargs.keys() and os.path.isfile(kwargs["ExistentialFileName"]):
+        if "MUTATED" in kwargs:
+            MUTATED=kwargs["MUTATED"]
+            print("Source mutation set to",MUTATED)
+        elif "ExistentialFileName" in kwargs.keys() and os.path.isfile(kwargs["ExistentialFileName"]):
             # FUSE THIS WITH JSON_FILE IN LISABETA? Currently saves in two files so we
             # respect gwemopt conventions using numpy arrays for some stuff that aren't
             # serializable to json... Maybe we can file a way to put the two together
@@ -194,6 +199,8 @@ class SMBH_Merger:
                 self.sky_map=value
             elif key=='ExistentialFileName':
                 self.ExistentialFileName=value
+            elif key=='do3D':
+                self.do3D=value
 
         #########
         ##
@@ -368,6 +375,8 @@ class SMBH_Merger:
                 ExistentialFile = d + "_SourceDict.dat"
                 ExistentialFile=SYNEX_PATH+"/Saved_Source_Dicts/"+ExistentialFile
                 self.ExistentialFileName=ExistentialFile
+        if not hasattr(self,"do3D"):
+                self.do3D=False
 
         # If we resurrected with mutation, keep a reference to where this class came from
         if MUTATED:
@@ -429,12 +438,28 @@ class SMBH_Merger:
         Most basic sky map here. Need to add 3d option...
         """
         self.map_struct={}
-        prob_data, header = hp.read_map(self.sky_map,field=0,h=True)
-        prob_data = prob_data/np.sum(prob_data)
+        try:
+            # 3D case
+            healpix_data, header = hp.read_map(self.sky_map,field=(0,1,2,3),h=True)
+            distmu_data = healpix_data[1]
+            distsigma_data = healpix_data[2]
+            prob_data = healpix_data[0]
+            norm_data = healpix_data[3]
 
-        self.map_struct["prob"] = prob_data
+            self.map_struct["distmu"] = distmu_data # / params["DScale"]
+            self.map_struct["distsigma"] = distsigma_data # / params["DScale"]
+            self.map_struct["prob"] = prob_data
+            self.map_struct["distnorm"] = norm_data
+            self.do3D = True
+        except:
+            # 1D case
+            prob_data, header = hp.read_map(self.sky_map,field=0,h=True)
+            prob_data = prob_data/np.sum(prob_data)
+            self.map_struct["prob"] = prob_data
+            self.do3D = False
+
         nside = hp.pixelfunc.get_nside(self.map_struct["prob"])
-        npix = len(self.map_struct["prob"]) # hp.nside2npix(nside)
+        npix = hp.nside2npix(nside) # len(self.map_struct["prob"])
         theta, phi = hp.pix2ang(nside, np.arange(npix))
         ra = np.rad2deg(phi)
         dec = np.rad2deg(0.5*np.pi - theta)
@@ -470,15 +495,55 @@ class SMBH_Merger:
         # Convert post angles to theta,phi
         post_phis = infer_params["lambda"]+np.pi
         post_thetas = np.pi/2.-infer_params["beta"]
+
+        # Convert posteriors to corresponding pixel number
         post_pix = hp.ang2pix(nside,post_thetas,post_phis)
 
-        # Probabilities of pixels
-        probs,bin_edges = np.histogram(post_pix, bins=np.arange(npix+1), density=True)
+        # 2D pixel probability according to location
+        bins=np.arange(npix+1)
+        probs,_ = np.histogram(post_pix, bins=bins, density=True)
 
-        # Make the dictionary
+        # Start the dictionary
         map_struct = {"prob":probs,
                       "ra":pix_ras,
                       "dec":pix_decs}
+
+        # Get distance stats per pixel if we want them AND they were included in inference
+        ######## Can we ask for redshift? I think if we infer redshift we also record dist so they are mutually exclusive...
+        if self.do3D:
+            if not "dist" in infer_params:
+                # Check if 'dist' was included in inference
+                print("Distance inference data requested but not found in h5 file... Proceeding with do3D=False.")
+                self.do3D=False
+            else:
+                # Included- bin posteriors according to pixels. Easiest to do with pandas
+                import pandas as pd
+                ZeroProbPixels=np.where(probs==0.)[0]
+                FullPix=np.append(post_pix,ZeroProbPixels)
+                FullDist=np.append(infer_params["dist"],np.array([0.]*len(ZeroProbPixels)))
+                df = pd.DataFrame({"pixel":FullPix,"dist":FullDist})
+                df.sort_values(by=["pixel"],inplace=True)
+                distmu = df.groupby(["pixel"]).mean().to_numpy().reshape((npix,)) # reshape because there is a ghost axis from dataframe
+                distsigma = df.groupby(["pixel"]).std().to_numpy().reshape((npix,)) # reshape because there is a ghost axis from dataframe
+                map_struct["distmu"]=distmu
+                map_struct["distsigma"]=distsigma
+                # Calculate probability weights due to distance...
+                # Gwemopt defines this as N^_i in equation 2 of https://arxiv.org/pdf/1603.07333.pdf -- compare eqn 2 in paper with line 553 of 'gwemopt.utils.py'
+                map_struct["distnorm"]=[]
+                r = np.linspace(0, 36000)
+                for pixID in range(npix):
+                    if distmu[pixID]==0. or distsigma[pixID]==0. or np.isnan(distsigma[pixID]) or np.isnan(distmu[pixID]):
+                        p_i = 0.
+                    else:
+                        print(distmu[pixID], distsigma[pixID])
+                        dp_dr = probs[pixID] * r**2 * norm(distmu[pixID], distsigma[pixID]).pdf(r)
+                        p_i=np.trapz(dp_dr,r)
+                    map_struct["distnorm"].append(p_i)
+                map_struct["distnorm"]=map_struct["distnorm"]/np.sum(map_struct["distnorm"]) # returns ndarray even if we started with a list
+                Zeros = np.where(map_struct["distnorm"]==0.)[0]
+                map_struct["distnorm"][Zeros]=np.nan
+                map_struct["distmu"][Zeros]=np.nan
+                map_struct["distsigma"][Zeros]=np.nan
 
         # Get additional data required by GWEMOPT
         sort_idx = np.argsort(map_struct["prob"])[::-1]

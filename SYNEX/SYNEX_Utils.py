@@ -316,33 +316,30 @@ def ParamsToClasses(input_params,CollectionMethod="Inference",**kwargs):
     prior_params = input_params["prior_params"]
     param_dict = input_params["source_params"]
 
-    # Implement changes to basic source parameters
-    for key, value in kwargs.items():
-        if key in param_dict:
-            param_dict[key] = value
-
-    # Implement changes to basic waveform parameters
-    for key, value in kwargs.items():
-        if key in waveform_params:
-            waveform_params[key] = value
-
-    # Optional parameters that depend on what method is being called
-    # Need to understand if these are important differences...
-    if CollectionMethod=="Inference":
-        if "fend" in kwargs:
-            waveform_params["fend"] = kwargs["fend"]
-    elif CollectionMethod=="Fisher":
-        if "tf_method" in kwargs:
-            waveform_params["tf_method"] = kwargs["tf_method"]
-        if "fstart22" in kwargs:
-            waveform_params["fstart22"] = kwargs["fstart22"]
-        if "fend22" in kwargs:
-            waveform_params["fend22"] = kwargs["fend22"]
-        if "gridfreq" in kwargs:
-            waveform_params["gridfreq"] = kwargs["gridfreq"]
-
-    # Hand everything to one kwargs dict for source creation - anything not used is left alone.
+    # Hand everything useful to one dict - anything not used in class creation is left alone.
     source_kwargs = {**param_dict, "lisabetaFile":run_params["out_dir"] + run_params["out_name"] + ".h5", **waveform_params}
+
+    # Implement changes requested in kwargs
+    if len(kwargs.keys())==0:
+        source_kwargs["MUTATED"]=False
+    else:
+        source_kwargs.update(kwargs)
+        source_kwargs["MUTATED"]=True
+
+    # # Optional parameters that depend on what method is being called
+    # # Need to understand if these are important differences...
+    # if CollectionMethod=="Inference":
+    #     if "fend" in kwargs:
+    #         source_kwargs["fend"] = kwargs["fend"]
+    # elif CollectionMethod=="Fisher":
+    #     if "tf_method" in kwargs:
+    #         source_kwargs["tf_method"] = kwargs["tf_method"]
+    #     if "fstart22" in kwargs:
+    #         source_kwargs["fstart22"] = kwargs["fstart22"]
+    #     if "fend22" in kwargs:
+    #         source_kwargs["fend22"] = kwargs["fend22"]
+    #     if "gridfreq" in kwargs:
+    #         source_kwargs["gridfreq"] = kwargs["gridfreq"]
 
     # Now create source object
     source = SYSs.SMBH_Merger(**source_kwargs)
@@ -1614,7 +1611,7 @@ def fmaxFromTimeToMerger(source, detector, T_obs_end_to_merger=4.*60.*60., Retur
         # Else modify the stored fmax in source class directly
         source.maxf = F
 
-def GetSourceFromLisabetaData(FileName):
+def GetSourceFromLisabetaData(FileName, **kwargs):
 
     # Check filenames
     JsonFileLocAndName,H5FileLocAndName=CompleteLisabetaDataAndJsonFileNames(FileName)
@@ -1635,7 +1632,7 @@ def GetSourceFromLisabetaData(FileName):
     #     json.dump(input_params, f, indent=2)
     # f.close()
 
-    return ParamsToClasses(input_params,CollectionMethod="Inference")
+    return ParamsToClasses(input_params,CollectionMethod="Inference",**kwargs)
 
 
 
@@ -2078,8 +2075,13 @@ def WriteSkymapToFile(map_struct,SkyMapFileName,go_params=None):
     pathlib.Path(SkyMapFilePath).mkdir(parents=True, exist_ok=True)
 
     # Write to fits file
-    kwargs={}
-    hp.write_map(SkyMapFileName, map_struct["prob"], dtype=dtype('float64'), overwrite=True)
+    if "distmu" in map_struct:
+        data_to_save = np.vstack((map_struct["prob"],map_struct["distmu"],map_struct["distsigma"],map_struct["distnorm"]))
+        hp.write_map(SkyMapFileName, data_to_save,overwrite=True) # dtype=np.dtype('float64'))
+        if go_params!=None:
+            go_params["do3D"]=True
+    else:
+        hp.write_map(SkyMapFileName, map_struct["prob"], overwrite=True) # dtype=np.dtype('float64'))
 
     if go_params!=None:
         # update the filename stored in go_params
@@ -2101,7 +2103,7 @@ def WriteSkymapToFile(map_struct,SkyMapFileName,go_params=None):
 
 ##### Need to organize these better and rename #####
 
-def PlotSkyMapData(source,SaveFig=False,plotName=None):
+def PlotSkyMapData(source,SaveFig=False,plotName=None,DO_CONTOURS=False):
     """
     Plotting tool to either take a filename or a source object and plot the skyap associated.
     Adapted from 'gwemopt.plotting.skymap.py'
@@ -2128,14 +2130,42 @@ def PlotSkyMapData(source,SaveFig=False,plotName=None):
         # Default save name
         if plotName==None:
             plotName = SYNEX_PATH+"/Plots"+source.sky_map.split("Skymap_files")[-1]
-            plotName = plotName[:-5]+".pdf"
+            plotName = plotName[:-5]+"_prob.pdf"
         # Check extension is there - move this to a general function please
-        if plotName[-5:]!=".pdf":
+        if plotName[-4:]!=".pdf":
             plotName = plotName + ".pdf"
+        # Check if directory tree exists
+        PlotPath="/".join(plotName.split("/")[:-1])
+        pathlib.Path(PlotPath).mkdir(parents=True, exist_ok=True)
+        # Save
         plt.savefig(plotName,dpi=200)
     else:
         plt.show()
     plt.close('all')
+
+    # Extra plotting for 3D skymaps
+    if "distmu" in source.map_struct:
+        fin = np.copy(source.map_struct["distmu"])
+        fin[~np.isfinite(fin)] = np.nan
+        hp.mollview(source.map_struct["distmu"],unit='Distance [Mpc]',min=np.nanpercentile(fin,10),max=np.nanpercentile(fin,90))
+        add_edges()
+        if SaveFig:
+            plotName = plotName.split("_prob")[0]+'_dist.pdf'
+            plt.savefig(plotName,dpi=200)
+        else:
+            plt.show()
+        plt.close('all')
+    if "distmed" in source.map_struct:
+        fin = np.copy(source.map_struct["distmed"])
+        fin[~np.isfinite(fin)] = np.nan
+        hp.mollview(source.map_struct["distmed"],unit='Distance [Mpc]',min=np.nanpercentile(fin,10),max=np.nanpercentile(fin,90))
+        add_edges()
+        if SaveFig:
+            plotName = plotName.split("_dist")[0]+'_dist_median.pdf'
+            plt.savefig(plotName,dpi=200)
+        else:
+            plt.show()
+        plt.close('all')
 
 def PlotTilesArea_old(TileFileName,n_tiles=10):
     """

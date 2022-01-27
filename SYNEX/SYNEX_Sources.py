@@ -84,33 +84,46 @@ class SMBH_Merger:
     lisabeta waveforms assume aligned spins ``chi1``, ``chi2`` = abs(a/m) <= 0.85 or if ``q`` =1 abs(a/m)<0.98
     """
 
-    def __init__(self, **kwargs):
+    def __init__(self, **kwargs_in):
         # Default assume class is not mutated from another saved class
+        # "MUTATED" = key to force new savefile
         MUTATED=False
 
-        # Check if we are resurrecting a class from a save file
-        if "MUTATED" in kwargs:
-            MUTATED=kwargs["MUTATED"]
+        if "MUTATED" in kwargs_in:
+            # Check if we want to force savefile either way
+            MUTATED=kwargs_in["MUTATED"]
             print("Source mutation set to",MUTATED)
-        elif "ExistentialFileName" in kwargs.keys() and os.path.isfile(kwargs["ExistentialFileName"]):
+            del kwargs_in["MUTATED"]
+            kwargs=kwargs_in
+        elif "ExistentialFileName" in kwargs_in.keys() and os.path.isfile(kwargs_in["ExistentialFileName"]):
+            # Check if we automatically sav to newfile because somthing has changed
+            #
             # FUSE THIS WITH JSON_FILE IN LISABETA? Currently saves in two files so we
             # respect gwemopt conventions using numpy arrays for some stuff that aren't
             # serializable to json... Maybe we can file a way to put the two together
             # and alter SYNEX_PTMC to load from pickle instead?
-            self.ExistentialFileName=kwargs["ExistentialFileName"]
+            self.ExistentialFileName=kwargs_in["ExistentialFileName"]
 
             # Load saved dictionary
             with open(self.ExistentialFileName, 'rb') as f:
-                SavedDict = pickle.load(f)
+                kwargs = pickle.load(f)
 
             # Check if we will modify something
-            if len(kwargs.keys())>1:
+            if "NewExistentialFileName" in kwargs_in:
+                # requesting a new filename so force mutation to save to this name instead
+                MUTATED = True
+            elif len(kwargs_in.keys())>1:
                 # more than just 'ExistentialFileName' specified
-                ValueCheck = [value!=SavedDict[key] for key,value in kwargs.items()]
+                ValueCheck = [value!=kwargs[key] for key,value in kwargs_in.items() if key in kwargs]
                 if any([ValueCheck]):
                     # Values are changed so warn user
-                    print("WARNING: Loaded source from file will be mutated- mutation will be saved to new file...")
+                    print("Loaded source dictionary will be mutated- mutation will be saved to a new file...")
                     MUTATED = True
+
+            # Set loaded dict values to kwargs
+            kwargs.update(kwargs_in)
+        else:
+            kwargs=kwargs_in
 
         # Set variables - Can condense this to setattr(class,val) later but
         # wanted to see all variables while developing as they might change.
@@ -126,7 +139,7 @@ class SMBH_Merger:
                 self.q = value
             elif key == "z":
                 self.z = value
-                self.dist = cosmo.luminosity_distance(self.z).to("Mpc").value
+                self.dist = cosmo.luminosity_distance(value).to("Mpc").value
             elif key == "chi1":
                 self.chi1 = value
             elif key == "chi2":
@@ -146,7 +159,7 @@ class SMBH_Merger:
                     print("Distance already defined by redshift, sticking with the redshift equivalent distance.")
                 else:
                     self.dist = value
-                    self.z = z_at_value(cosmo.luminosity_distance, value*u.Mpc)
+                    self.z = z_at_value(cosmo.luminosity_distance, value*u.Mpc).value
             elif key == "phi":
                 self.phi = value
             # Source parameters for waveform generation
@@ -182,7 +195,7 @@ class SMBH_Merger:
                 JsonFileLocAndName,H5FileLocAndName=SYU.CompleteLisabetaDataAndJsonFileNames(value)
                 if os.path.isfile(JsonFileLocAndName) and os.path.isfile(H5FileLocAndName):
                     self.H5File=H5FileLocAndName
-                    self.JsonFile=H5FileLocAndName
+                    self.JsonFile=JsonFileLocAndName
                 elif not os.path.isfile(JsonFileLocAndName) and os.path.isfile(H5FileLocAndName):
                     print("Warning: no Json file found- setting json and h5 filenames to None...")
                     self.H5File=None
@@ -195,12 +208,20 @@ class SMBH_Merger:
                     print("Warning: no json or h5 data file found- setting json and h5 filenames to None...")
                     self.H5File=None
                     self.JsonFile=None
+            elif key=='H5File': # need checks here, as in key=='lisabetafile', that H5File and JsonFile exist and are coherent?
+                self.H5File=value
+            elif key=='JsonFile':
+                self.JsonFile=value
             elif key=='sky_map':
                 self.sky_map=value
             elif key=='ExistentialFileName':
                 self.ExistentialFileName=value
             elif key=='do3D':
                 self.do3D=value
+            elif key=='EM_Flux_Data':
+                self.EM_Flux_Data=value
+            elif key=='CTR_Data':
+                self.CTR_Data=value
 
         #########
         ##
@@ -223,7 +244,6 @@ class SMBH_Merger:
 
         # Default mass parameters if all four mass params are givien - include a warning
         if all([hasattr(self,"M"), hasattr(self,"q"), hasattr(self,"m1"), hasattr(self,"m2")]):
-            print("You have specified all mass parameters- this is uneeded but I will continue.")
             if self.m1 + self.m2 != self.M or self.m1/self.m2 != self.q:
                 print("The total mass and/or mass ratio does not match the sum of m1 and m2. Redefining based on m1 and m2")
                 self.M = self.m1 + self.m2
@@ -231,7 +251,6 @@ class SMBH_Merger:
 
         # Default mass parameters if three mass params are givien - include a warning
         if all([hasattr(self,"m1"), hasattr(self,"m2"), hasattr(self,"M"), not hasattr(self,"q")]) or all([hasattr(self,"m1"), hasattr(self,"m2"), not hasattr(self,"M"), hasattr(self,"q")]):
-            print("You have specified three mass parameters- this is uneeded but I will continue.")
             if hasattr(self,"M") and self.m1 + self.m2 != self.M:
                     print("The total mass does not match the sum of m1 and m2. Redefining based on m1 and m2")
                     self.M = self.m1 + self.m2
@@ -241,7 +260,6 @@ class SMBH_Merger:
                     self.M = self.m1 + self.m2
                     self.q = self.m1/self.m2
         if all([hasattr(self,"M"), hasattr(self,"q"), hasattr(self,"m1"), not hasattr(self,"m2")]) or all([hasattr(self,"M"), hasattr(self,"q"), not hasattr(self,"m1"), hasattr(self,"m2")]):
-            print("You have specified three mass parameters- this is uneeded but I will continue.")
             if hasattr(self,"m1") and self.m1 != self.M*(self.q/(1.+self.q)):
                     print("The primary mass m1 does not match the total mass and mass ratio. Redefining based on M and q")
                     self.m1 != self.M*(self.q/(1.+self.q))
@@ -429,13 +447,21 @@ class SMBH_Merger:
             else:
                 self.CreateSkyMapStruct()
 
+        # run through gwemopt checker with a dummy params dict
+        # should we do this? If we change things in the real go_params in SYNEX_Utils, will this rework things aass required
+        # when passed again through the checker? Maybe just send through the med / std function...
+        # dummy_go_params={}
+        # self.sky_map=gou.read_skymap(self.sky_map,self.do3D,dummy_go_params)
+
         # Save it all to file!
         self.ExistentialCrisis()
 
     def LoadSkymap(self):
         """
         Read a skymap in -- Check that parameters match? Not sure it's needed...
-        Most basic sky map here. Need to add 3d option...
+
+        Should we take "self.do3D" as a flag to only read in probs? Or should we
+        fix this based on what we find in the skymap file?
         """
         self.map_struct={}
         try:
@@ -470,7 +496,7 @@ class SMBH_Merger:
     def CreateSkyMapStruct(self,nside=None,SkyMapFileName=None):
         # default pixelation if no nside given
         if nside==None:
-            nside=128 # 1024
+            nside=128
 
         # if SkyMapFileName given; then preferentially save to this filename.
         # This is checked in SYU.WriteSkymapToFile just before writing to file.
@@ -711,47 +737,15 @@ class SMBH_Merger:
         elif isinstance(t_end_flux,list):
             t_end_flux=xray_time[-1]
 
-        # # Plot some tests of frequency versus time
-        # # Calculate their frequency - time relation for spinless systems -- ALL IN *SOURCE* frame then convert to *DETECTOR* frame
-        # M_reduced = (self.m1*self.m2/(self.M*(1.+self.z)))*pyconstants.MSUN_SI*(pyconstants.G_SI/(pyconstants.C_SI**3))
-        # eta = M_reduced/(M_tot*pyconstants.MSUN_SI*(pyconstants.G_SI/(pyconstants.C_SI**3)))
-        # M_chirp = (M_reduced**(3/5))*((M_tot*pyconstants.MSUN_SI*(pyconstants.G_SI/(pyconstants.C_SI**3)))**(2/5))
-        # t_of_f_paper = [-((5/256)*M_chirp*(np.pi*M_chirp*f/2)**(-8/3))*(1.+1.33333*(743/336+11*eta/4)*(np.pi*M_chirp*f/2)**(2/3)-(np.pi*M_chirp*f/2)*32*np.pi/5 + 2*(3058673/1016064 + 5429*eta/1008 + 617*eta*eta/144)*(np.pi*M_chirp*f/2)**(4/3)) for f in GW_freqs]
-        # import matplotlib.pyplot as plt
-        # import matplotlib.pylab as pylab
-        # params = {'legend.fontsize': 8, # 'x-large',
-        #          'axes.labelsize': 8, # 'x-large',
-        #          'xtick.labelsize': 4, # 'x-large',
-        #          'ytick.labelsize': 4, # 'x-large'}
-        #          'lines.markersize': 2}
-        # pylab.rcParams.update(params)
-        # times = [time*(1.+self.z)/(24.*60.*60.) for time in xray_time]
-        # freqs_plot = [f/(1.+self.z) for f in GW_freqs]
-        # times_paper = [(1.+self.z)*time*M_tot*pyconstants.MSUN_SI*(pyconstants.G_SI/(pyconstants.C_SI**3))/(24.*60.*60.) for time in t_of_f_paper]
-        # freqs_plot_paper = [f/(1.+self.z) for f in GW_freqs]
-        # t_end_flux_paper = [time for (time,GW_freq) in zip(times_paper,GW_freqs) if GW_freq<ISCO_freq]
-        # if isinstance(t_end_flux_paper,list) and len(t_end_flux_paper)>0:
-        #     t_end_flux_paper = t_end_flux_paper[-1]
-        # elif isinstance(t_end_flux_paper,list):
-        #     t_end_flux_paper=t_end_flux_paper[-1]
-        # t_start_flux_paper = [time_p for (time_p,time) in zip(times_paper,xray_time) if time<t_start_flux][-1]
-        # print("Detector frame test t$_{start}$:",t_start_flux_paper,"Detector frame test t$_{end}$:",t_end_flux_paper)
-        # plt.plot(times, freqs_plot)
-        # plt.plot(times_paper, freqs_plot_paper)
-        # plt.xlabel('Time from Merger [d]')
-        # plt.ylabel('GW Frequency [Hz]')
-        # ax = plt.gca()
-        # ax.set_yscale('log')
-        # plt.grid()
-        # plt.show()
-
         # Set the class variables using the start and end times - convert everything *EXCEPT* xray_flux to *DETECTOR* frame
-        self.xray_flux = [flux for (flux,time) in zip(xray_flux,xray_time) if time>t_start_flux and time<t_end_flux] # if time>t_start_flux and time<t_end_flux else 0. for (flux,time) in zip(xray_flux,xray_time)]
-        self.xray_time = [time*(1.+self.z) for time in xray_time if time>t_start_flux and time<t_end_flux]
-        self.GW_phi = [phi for (phi,time) in zip(GW_phi,xray_time) if time>t_start_flux and time<t_end_flux] # GW_phi
-        self.GW_Omega = [Om/(1.+self.z) for (Om,time) in zip(GW_Omega,xray_time) if time>t_start_flux and time<t_end_flux] # [Om/(1.+self.z) for Om in GW_Omega]
-        self.r = [rad for (rad,time) in zip(r,xray_time) if time>t_start_flux and time<t_end_flux] # r
-        self.GW_freqs = [f/(1.+self.z) for (f,time) in zip(GW_freqs,xray_time) if time>t_start_flux and time<t_end_flux] # [f/(1.+self.z) for f in GW_freqs]
+        EM_Flux_Data={}
+        EM_Flux_Data["xray_flux"] = [flux for (flux,time) in zip(xray_flux,xray_time) if time>t_start_flux and time<t_end_flux] # if time>t_start_flux and time<t_end_flux else 0. for (flux,time) in zip(xray_flux,xray_time)]
+        EM_Flux_Data["xray_time"] = [time*(1.+self.z) for time in xray_time if time>t_start_flux and time<t_end_flux]
+        EM_Flux_Data["GW_phi"] = [phi for (phi,time) in zip(GW_phi,xray_time) if time>t_start_flux and time<t_end_flux] # GW_phi
+        EM_Flux_Data["GW_Omega"] = [Om/(1.+self.z) for (Om,time) in zip(GW_Omega,xray_time) if time>t_start_flux and time<t_end_flux] # [Om/(1.+self.z) for Om in GW_Omega]
+        EM_Flux_Data["r"] = [rad for (rad,time) in zip(r,xray_time) if time>t_start_flux and time<t_end_flux] # r
+        EM_Flux_Data["GW_freqs"] = [f/(1.+self.z) for (f,time) in zip(GW_freqs,xray_time) if time>t_start_flux and time<t_end_flux] # [f/(1.+self.z) for f in GW_freqs]
+        self.EM_Flux_Data = EM_Flux_Data
 
         # Plot cumulative SNR
         PLOT_CUMUL_SNR = False
@@ -785,7 +779,7 @@ class SMBH_Merger:
                      'ytick.labelsize': 4, # 'x-large'}
                      'lines.markersize': 2}
             pylab.rcParams.update(params)
-            times = [time/(24.*60.*60.) for time in self.xray_time]
+            times = [time/(24.*60.*60.) for time in self.EM_Flux_Data["xray_time"]]
             plt.plot(times, self.r)
             ax = plt.gca()
             ax.set_yscale('log')
@@ -805,7 +799,7 @@ class SMBH_Merger:
                      'ytick.labelsize': 4, # 'x-large'}
                      'lines.markersize': 2}
             pylab.rcParams.update(params)
-            times = [time/(24.*60.*60.) for time in self.xray_time]
+            times = [time/(24.*60.*60.) for time in self.EM_Flux_Data["xray_time"]]
             plt.plot(times, self.GW_freqs)
             plt.xlabel('Time from Merger [d]')
             plt.ylabel('GW Frequency [Hz]')
@@ -815,7 +809,7 @@ class SMBH_Merger:
             plt.show()
 
         # Plot x-ray flux and velocity
-        DO_XRAY_PLOT = True
+        DO_XRAY_PLOT = False
         if DO_XRAY_PLOT:
             print("Plotted system parameters:", self.M, self.q, self.z)
             import matplotlib.pyplot as plt
@@ -826,7 +820,7 @@ class SMBH_Merger:
                      'ytick.labelsize': 4, # 'x-large'}
                      'lines.markersize': 2}
             pylab.rcParams.update(params)
-            times = [time/(24.*60.*60.) for time in self.xray_time]
+            times = [time/(24.*60.*60.) for time in self.EM_Flux_Data["xray_time"]]
             plt.plot(times, self.xray_flux)
             plt.xlabel('Time from Merger [d]')
             plt.ylabel('X-ray Flux [erg s$^{-1}$ cm$^-2$]')
@@ -853,12 +847,17 @@ class SMBH_Merger:
             plt.grid()
             plt.show()
 
+        # Save it
+        self.ExistentialCrisis()
+
     def GenerateCTR(self,ARF_file_loc_name,gamma=1.7):
-        self.xray_gamma = gamma
+        CTR_Data={}
+        CTR_Data["xray_gamma"] = gamma
         if not hasattr(self,"xray_flux"):
             raise ValueError("No x-ray flux generated. Need to call GenerateEMFlux with a detector object before running this function.")
 
-        self.xray_phi_0 = [(6.242e8)*self.xray_flux[ii]*(2.-self.xray_gamma)/(10.**(2.-self.xray_gamma)-0.2**(2.-self.xray_gamma)) for ii in range(len(self.xray_flux))]
+        # CTR_Data["xray_phi_0"] = [(6.242e8)*self.EM_Flux_Data["xray_flux"][ii]*(2.-gamma)/(10.**(2.-gamma)-0.2**(2.-gamma)) for ii in range(len(self.EM_Flux_Data["xray_flux"]))]
+        CTR_Data["xray_phi_0"] = [(6.242e8)*flu*(2.-gamma)/(10.**(2.-gamma)-0.2**(2.-gamma)) for flu in self.EM_Flux_Data["xray_flux"]]
         from astropy.io import fits
         hdul = fits.open(ARF_file_loc_name)
         hdul.info()
@@ -870,10 +869,13 @@ class SMBH_Merger:
         dE_bins = np.diff(E_bins)
 
         # Now compute the CTR - photons s^-1
-        integrand = [dE_bins[ii]*ARF_func[ii]*((E_bins[ii]+E_bins[ii+1])/2.)**(-1.*self.xray_gamma) for ii in range(N)]
+        integrand = [dE_bins[ii]*ARF_func[ii]*((E_bins[ii]+E_bins[ii+1])/2.)**(-1.*gamma) for ii in range(N)]
         integral = sum(integrand)/(1.+self.z) # We need another 1/(1+z) here otherwise the photon rate is too high. Maybe this is a redshifting of energy bins?
         # CTR = [integral*self.xray_phi_0[ii] for ii in range(len(self.xray_phi_0))]
-        self.CTR = [integral*self.xray_phi_0[ii] for ii in range(len(self.xray_phi_0))] # CTR
+        CTR_Data["CTR"] = [integral*el for el in CTR_Data["xray_phi_0"]] # CTR
+
+        # Save it
+        self.ExistentialCrisis()
 
     def ExistentialCrisis(self,NewFileName=None):
         """
@@ -892,8 +894,11 @@ class SMBH_Merger:
             pathlib.Path(NewFilePath).mkdir(parents=True, exist_ok=True)
             # Reset name in class attributes
             self.ExistentialFileName = NewFileName
-        # Gather attributes to dict
+        # Gather attributes to dict and take care of "lamda" -> "lambda"
         MyExistentialDict = dict(self.__dict__)
+        MyExistentialDict["lambda"]=self.lamda
+        del MyExistentialDict["lamda"]
+
         # Save to file...
         print("Saving source attributes...")
         with open(self.ExistentialFileName, 'wb') as f:

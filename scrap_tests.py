@@ -2,6 +2,7 @@ import SYNEX.SYNEX_Utils as SYU
 import SYNEX.SYNEX_Detectors as SYDs
 import SYNEX.SYNEX_Sources as SYSs
 import numpy as np
+import os
 import lisabeta.utils.plotutils as plotutils
 import time
 import glob
@@ -19,30 +20,77 @@ pylab.rcParams.update(pylab_params)
 mpl.use('MacOSX')
 
 
-########################### Example - GWEMOPT tiling strategies from within SYNEX ###########################
 
-# Initiate Athena
-Athena_kwargs = {"FoView":1.*(np.pi/180.)**2,"T_lat":10000.,"T_init":0.,"slew_rate":None} # slew_rate=None for no gaps for slew
-Athena = SYDs.Athena(**Athena_kwargs)
 
-# Define datafile
-dataFile = "IdeaPaperSystem_9d.h5"
 
-# Start tiling
-Athena.TileSkyArea(dataFile,TileStrat="greedy",SAVE_SOURCE_EM_PROPERTIES_IN_TILE_JSON=True,go_params=None)
+########################### Example - Get source from file and plot skymap ###########################
 
-# Plot tiles using gwemopt directly...
-# gwemopt.plotting.tiles(params, map_struct, tile_structs)
+# Source file we want to resurract - note we only specify everything afer .../inference_data or .../inference_param_files and don't need to give suffix either
+# FileName = "IdeaPaperSystem_9d"
 
-# Plot tiles using SYNEX... this should break right now.
-SYU.PlotTilesArea(Athena.TilePickleName,n_tiles=50)
+# Merger args
+Merger_kwargs = {"ExistentialFileName":"/Users/baird/Documents/LabEx_PostDoc/SYNEX/Saved_Source_Dicts/IdeaPaperSystem_9d_base.dat",
+                 "NewExistentialFileName":"/Users/baird/Documents/LabEx_PostDoc/SYNEX/Saved_Source_Dicts/IdeaPaperSystem_9d_dev.dat"}
+# Merger_kwargs = {"ExistentialFileName":"/Users/baird/Documents/LabEx_PostDoc/SYNEX/Saved_Source_Dicts/IdeaPaperSystem_9d_base.dat"}
 
-# Tiling file name
-TilePickleName = "/Users/baird/Documents/LabEx_PostDoc/SYNEX/Tile_files/IdeaPaperSystem_9d_tiled.pkl"
+# Resurrect - either from lisabeta data or saved source file
+# Merger = SYU.GetSourceFromLisabetaData(FileName,**Merger_kwargs)
+Merger = SYSs.SMBH_Merger(**Merger_kwargs)
 
-# Get kuiper detection pvals
-Athena.GetKuiper(Athena.TilePickleName,source=Merger)
-# Athena.GetKuiper(TileJsonName)
+# Plot the CL bounds
+# SYU.PlotInferenceLambdaBeta(Merger.H5File, bins=50, SkyProjection=True, SaveFig=False, return_data=False)
+
+# Plot
+# SYU.PlotSkyMapData(Merger,SaveFig=False,plotName=None)
+
+# Make some test telescopes
+# Need to organize for intervals when telescope is not available... this is Tobs but this is also set by source in SYU.PrepareGwemoptDicts()...
+# Athena_kwargs={"FOV":1.,"exposuretime":100.,"slew_rate":1., "telescope":"Athena_1",
+#             "ExistentialFileName":"/Users/baird/Documents/LabEx_PostDoc/SYNEX/Saved_Telescope_Dicts/Athena_1_base.dat"}
+Athena_kwargs={"ExistentialFileName":"/Users/baird/Documents/LabEx_PostDoc/SYNEX/Saved_Telescope_Dicts/Athena_1_base.dat",
+               "exposuretime" : 60.,
+               "horizon" : -80.,
+               "elevation" : 1000000000.,
+               "dec_constraint": "-90,90",
+               "NewExistentialFileName":"/Users/baird/Documents/LabEx_PostDoc/SYNEX/Saved_Telescope_Dicts/Athena_1_dev.dat"}
+Athena_1=SYDs.Athena(**Athena_kwargs)
+
+# Test preparation of gwemopt objects
+# go_params,map_struct = SYU.PrepareGwemoptDicts(Merger,detectors=Athena_1)
+
+# Test tiling directly with gwemopt
+tiling_kwargs={}
+TileDict = SYU.TileWithGwemopt(Merger, detectors=Athena_1, **tiling_kwargs)
+
+
+
+
+
+
+# ########################### Example - GWEMOPT tiling strategies from within SYNEX ###########################
+#
+# # Initiate Athena
+# Athena_kwargs = {"FoView":1.*(np.pi/180.)**2,"T_lat":10000.,"T_init":0.,"slew_rate":None} # slew_rate=None for no gaps for slew
+# Athena = SYDs.Athena(**Athena_kwargs)
+#
+# # Define datafile
+# dataFile = "IdeaPaperSystem_9d.h5"
+#
+# # Start tiling
+# Athena.TileSkyArea(dataFile,TileStrat="moc",SAVE_SOURCE_EM_PROPERTIES_IN_TILE_JSON=True,go_params=None)
+#
+# # Plot tiles using gwemopt directly...
+# # gwemopt.plotting.tiles(params, map_struct, tile_structs)
+#
+# # Plot tiles using SYNEX... this should break right now.
+# SYU.PlotTilesArea_old(Athena.TilePickleName,n_tiles=50)
+#
+# # Tiling file name
+# TilePickleName = "/Users/baird/Documents/LabEx_PostDoc/SYNEX/Tile_files/IdeaPaperSystem_9d_tiled.dat"
+#
+# # Get kuiper detection pvals
+# Athena.GetKuiper(Athena.TilePickleName,source=Merger)
+# # Athena.GetKuiper(TileJsonName)
 
 
 

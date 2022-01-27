@@ -2,20 +2,16 @@ import astropy.units as u
 import astropy.stats as astat
 import astropy, astroplan
 import numpy as np
+import os
 import SYNEX.SYNEX_Utils as SYU
 from SYNEX.SYNEX_Utils import SYNEX_PATH
 import gwemopt
 import json
+from datetime import date
+import pathlib
 import pickle
 import matplotlib
 import matplotlib.pyplot as plt
-import matplotlib.pylab as pylab
-params = {'legend.fontsize': 8, # 'x-large',
-         'axes.labelsize': 8, # 'x-large',
-         'xtick.labelsize': 4, # 'x-large',
-         'ytick.labelsize': 4, # 'x-large'}
-         'lines.markersize': 2}
-pylab.rcParams.update(params)
 import scipy
 
 class LISA:
@@ -130,37 +126,43 @@ class Athena:
     """
 
     def __init__(self, **kwargs):
-        # Import default gwemopt dict
-        from SYNEX.gwemopt_defaults import go_params_default, config_struct_default as detector_go_params, detector_config_struct
-        
-        # Remove keys stored in Source classes
-        del detector_go_params["do3D"]
 
         # Default is not to recompute tesselation if the saved '.tess' file exists
         MUTATED=False
 
         # Check if we are resurrecting a class from a save file
         if "ExistentialFileName" in kwargs.keys():
-            # FUSE THIS WITH CONFIG KEY IN GO_PARAMS... Save in two files so we
-            # respect gwemopt conventions? Seems overkill but 'gwemop.utils.readParamsFromFile(file)'
-            # already exists and can be used for both 'config' and 'params' dictionaries.
             self.ExistentialFileName=kwargs["ExistentialFileName"]
+            del kwargs["ExistentialFileName"]
+            if os.path.isfile(self.ExistentialFileName):
+                # FUSE THIS WITH CONFIG KEY IN GO_PARAMS... Save in two files so we
+                # respect gwemopt conventions? Seems overkill but 'gwemop.utils.readParamsFromFile(file)'
+                # already exists and can be used for both 'config' and 'params' dictionaries.
 
-            # Load saved dictionary
-            with open(self.ExistentialFileName, 'r') as f:
-                SavedDict = pickle.load(f)
+                # Load saved dictionary
+                with open(self.ExistentialFileName, 'rb') as f:
+                    SavedDict = pickle.load(f)
 
-            # Use these values as default to modify with remaining keys in '**kwargs'
-            detector_go_params = SavedDict["detector_go_params"]
-            detector_config_struct = SavedDict["detector_config_struct"]
+                # Use these values as default to modify with remaining keys in '**kwargs'
+                detector_go_params = SavedDict["detector_go_params"]
+                detector_config_struct = SavedDict["detector_config_struct"]
 
-            # Check if we will modify something later
-            if len(kwargs.keys())>1:
-                # more than just 'ExistentialFileName' specified
-                ValueCheck = [value!=SavedDict[key] for key,value in kwargs.items()]
-                if any([ValueCheck]):
-                    # Values are changed so recompute tesselation later even if the '.tess' file already exists
-                    MUTATED=True
+                # Check if we will modify something later
+                if len(kwargs.keys())>1:
+                    # more than just 'ExistentialFileName' specified
+                    ValueCheck1 = [value!=detector_go_params[key] for key,value in kwargs.items() if key in detector_go_params]
+                    ValueCheck2 = [value!=detector_config_struct[key] for key,value in kwargs.items() if key in detector_config_struct]
+                    if any([ValueCheck1]) or any([ValueCheck2]):
+                        # Values are changed so recompute tesselation later even if the '.tess' file already exists
+                        MUTATED=True
+            else:
+                # Import default gwemopt dicts
+                from SYNEX.gwemopt_defaults import go_params_default as detector_go_params
+                from SYNEX.gwemopt_defaults import config_struct_default as detector_config_struct
+        else:
+            # Import default gwemopt dicts
+            from SYNEX.gwemopt_defaults import go_params_default as detector_go_params
+            from SYNEX.gwemopt_defaults import config_struct_default as detector_config_struct
 
         # Change all things in go_params that are specified in kwargs,
         # and warn the user if any of the things they set are not used...
@@ -168,48 +170,56 @@ class Athena:
         for key,value in kwargs.items():
             if key in detector_go_params:
                 detector_go_params[key]=value
-            else:
-                print("'",key,"' not contained in gwemopt 'params' dict...")
+            elif key in detector_config_struct:
+                detector_config_struct[key]=value
+            elif key not in ["NewExistentialFileName"]: # Kept like this in case more non-gwemopt keys are added
+                print("'",key,"' not contained in gwemopt dicts...")
                 print_reminder = True
-        # Now initiate config struct for this telescope
-        if "ConfigFileName" in kwargs.keys():
-            detector_config_struct = gwemopt.utils.readParamsFromFile(kwargs["ConfigFileName"])
-            detector_config_struct["telescope"] = detector_go_params["telescopes"]
-        else:
-            for key,value in kwargs.items():
-                if key in detector_config_struct:
-                    detector_config_struct[key]=value
-                else:
-                    print("'",key,"' not contained in gwemopt 'config_struct' dict...")
-                    print_reminder = True
+                detector_config_struct[key]=value
+        # # Now initiate config struct for this telescope
+        # if "ConfigFileName" in kwargs.keys():
+        #     detector_config_struct = gwemopt.utils.readParamsFromFile(kwargs["ConfigFileName"])
+        #     detector_config_struct["telescope"] = detector_go_params["telescopes"]
+        # else:
+        #     for key,value in kwargs.items():
+        #         if key in detector_config_struct:
+        #             detector_config_struct[key]=value
+        #         else:
+        #             print("'",key,"' not contained in gwemopt 'config_struct' dict...")
+        #             print_reminder = True
 
         # Check if tesselation file was set
         if detector_config_struct["tesselationFile"]==None:
-            detector_config_struct["tesselationFile"]=SYNEX_PATH+"/gwemopt_tess_files/" + detector_go_params["telescopes"] + ".tess"
+            if "ExistentialFileName" in kwargs:
+                detector_config_struct["tesselationFile"]=SYNEX_PATH+"/gwemopt_tess_files"+kwargs["ExistentialFileName"].split("Saved_Telescope_Dicts")[-1]
+                detector_config_struct["tesselationFile"]=".".join(detector_config_struct["tesselationFile"].split(".")[:-1])+".tess"
+            else:
+                detector_config_struct["tesselationFile"]=SYNEX_PATH+"/gwemopt_tess_files/" + detector_config_struct["telescope"] + ".tess"
 
         # Check if tesselation file exists and if we want to recompute - otherwise if it exists it will be loaded
-        if MUTATED and os.path.isfile(self.detector_config_struct["tesselationFile"]):
+        if MUTATED and os.path.isfile(detector_config_struct["tesselationFile"]):
             if "NewtesselationFile" in kwargs:
                 # Take new filename if given
-                self.detector_config_struct["tesselationFile"] = kwargs["NewtesselationFile"]
+                detector_config_struct["tesselationFile"] = kwargs["NewtesselationFile"]
+            elif "NewExistentialFileName" in kwargs:
+                # make a name based on this
+                detector_config_struct["tesselationFile"]=SYNEX_PATH+"/gwemopt_tess_files"+kwargs["NewExistentialFileName"].split("Saved_Telescope_Dicts")[-1]
+                detector_config_struct["tesselationFile"]=".".join(detector_config_struct["tesselationFile"].split(".")[:-1])+".tess"
             else:
                 # No new filename given- create it. NOTE: file extension is checked in 'SYU.GWEMOPTPathChecks()' step below...
                 try:
                     # Does it already have an extension number? If so, start there...
-                    TessFileExt=self.detector_config_struct["tesselationFile"].split("_")[-1] # e.g. '3.tess'
+                    TessFileExt=detector_config_struct["tesselationFile"].split("_")[-1] # e.g. '3.tess'
                     TessFileExt = int(TessFileExt.split(".")[0])
                 except:
                     # If not,start at 1
                     TessFileExt = 1
-                    self.detector_config_struct["tesselationFile"] = ".".join(self.detector_config_struct["tesselationFile"].split(".")[:-1]) + "_1." + self.detector_config_struct["tesselationFile"].split(".")[-1]
+                    detector_config_struct["tesselationFile"] = ".".join(detector_config_struct["tesselationFile"].split(".")[:-1]) + "_1." + detector_config_struct["tesselationFile"].split(".")[-1]
 
                 # Find the first version that doesn't exist yet...
-                while os.path.isfile(self.detector_config_struct["tesselationFile"]):
+                while os.path.isfile(detector_config_struct["tesselationFile"]):
                     TessFileExt+=1
-                    self.detector_config_struct["tesselationFile"] = "_".join(self.detector_config_struct["tesselationFile"].split("_")[:-1]) + "_" + str(TessFileExt) + "." + self.detector_config_struct["tesselationFile"].split(".")[-1]
-
-        # Set config struct telescope name - for now there is only one 'telescope' in 'telescopes'
-        detector_config_struct["telescope"]=detector_go_params["telescopes"]
+                    detector_config_struct["tesselationFile"] = "_".join(detector_config_struct["tesselationFile"].split("_")[:-1]) + "_" + str(TessFileExt) + "." + detector_config_struct["tesselationFile"].split(".")[-1]
 
         # Check that file names are all coherent with SYNEX_PATH and telescope name
         detector_go_params, detector_config_struct = SYU.GWEMOPTPathChecks(detector_go_params,detector_config_struct)
@@ -220,11 +230,8 @@ class Athena:
 
         # Set save file name if not already there
         if not hasattr(self,"ExistentialFileName"):
-            # Default name to include telecope 'name' variable?
-            today = date.today()
-            d = today.strftime("%d_%m_%Y")
-            ExistentialFile = d + "_TelescopeDict.dat"
-            ExistentialFile=SYNEX_PATH+"/Saved_Telescope_Dicts/"+ExistentialFile
+            ExistentialFile=SYNEX_PATH+"/Saved_Telescope_Dicts"+self.detector_config_struct["tesselationFile"].split("gwemopt_tess_files")[-1]
+            ExistentialFile=".".join(ExistentialFile.split(".")[:-1])+".dat"
             self.ExistentialFileName=ExistentialFile
 
         # If we resurrected with mutation, keep a reference to where this class came from
@@ -248,7 +255,7 @@ class Athena:
                 while os.path.isfile(self.ExistentialFileName):
                     ExistentialFileExt+=1
                     self.ExistentialFileName = "_".join(self.ExistentialFileName.split("_")[:-1]) + "_" + str(ExistentialFileExt) + "." + self.ExistentialFileName.split(".")[-1]
-            print("Successfully mutated detector:", self.MutatedFromSourceFile)
+            print("Successfully mutated detector:", self.MutatedFromDetectorFile)
             print("New savefile for mutation:", self.ExistentialFileName)
 
         # Check that file paths exist - in case of subdirectory organizational architectures...
@@ -322,27 +329,6 @@ class Athena:
         with open(json_file, 'r') as f:
             input_params = json.load(f)
         f.close()
-
-        if source==None:
-            # convert the json params to source class
-            source = SYU.ParamsToClasses(input_params)
-
-            # Check if the EM properties were saved in the tile json file, otherwise recalculate. NOTE: recalculation is time intensive...
-            if "source_EM_properties" in TileDict:
-                source.xray_flux=TileDict["source_EM_properties"]["xray_flux"]
-                source.xray_time=TileDict["source_EM_properties"]["xray_time"]
-                source.GW_phi=TileDict["source_EM_properties"]["phi"]
-                source.GW_Omega=TileDict["source_EM_properties"]["Omega"]
-                source.r=TileDict["source_EM_properties"]["r"]
-                source.xray_gamma=TileDict["source_EM_properties"]["xray_gamma"]
-                source.xray_phi_0=TileDict["source_EM_properties"]["xray_phi_0"]
-                source.CTR=TileDict["source_EM_properties"]["CTR"]
-                source.GW_freqs=TileDict["source_EM_properties"]["GW_freqs"]
-            else:
-                # Recreate the EM flux and CTR - fime name and gamma hard coded for now... Maybe shoul dbe given at entry line to this function for continuity?
-                source.GenerateEMFlux(self)
-                ARF_file_loc_name = 'XIFU_CC_BASELINECONF_2018_10_10.arf'
-                source.GenerateCTR(ARF_file_loc_name=ARF_file_loc_name,gamma=1.7, LatTime=self.T_lat)
 
         T_s = source.xray_time[0]
         if T_s>input_params["waveform_params"]["DeltatL_cut"]:
@@ -494,86 +480,6 @@ class Athena:
         print(self.n_exposures, "exposures of source by tiles", self.exposure_tiles, "using", TileDict["Tile Strat"], "tiling strategy.")
         # print("Total photons:", sum(self.n_photons), "with", sum(self.n_photons[:-1]), "exposure photons and", self.n_photons[-1],"background photons.")
         print("Accumulated photons during on-source exposures (S+B):", sum(self.n_photons))
-
-        # Plot exposure photons as function of tiling
-        PLOT_PHOTON_TRACE = False
-        if PLOT_PHOTON_TRACE:
-            Times = [t/(24.*60.*60.) for t in self.tile_times]
-            plt.plot(Times, self.exposure_photons_trace)
-            plt.ylabel(r"Exposure Photons")
-            plt.xlabel("Time [days]")
-            plt.show()
-            plt.grid()
-
-        # Plot exposure photons as function of tiling
-        PLOT_EXP_PHOTON_TRACE = False
-        if PLOT_EXP_PHOTON_TRACE:
-            Times = [t/(24.*60.*60.) for t in self.tile_times]
-            plt.plot(Times, self.accum_exposure_photons_trace)
-            ax = plt.gca()
-            ax.set_yscale('log')
-            plt.ylabel(r"Accumulated Exposure Photons")
-            plt.xlabel("Time [days]")
-            plt.show()
-            plt.grid()
-
-        # Plot Kuiper statistic for exposures as function of tiling
-        PLOT_KUIPERS = False
-        if PLOT_KUIPERS:
-            Times = [t/(24.*60.*60.) for t in self.tile_times]
-            plt.plot(Times, self.exposure_kuiper_trace)
-            plt.ylabel(r"$\mathcal{K}_{exposure}$")
-            plt.xlabel("Time [days]")
-            plt.show()
-            plt.grid()
-
-        # Plot Kuiper p-value for tiles as function of tiling
-        PLOT_TILE_KUIPER_PVAL_TRACE = False
-        if PLOT_TILE_KUIPER_PVAL_TRACE:
-            Times = [t/(24.*60.*60.) for t in self.tile_times]
-            plt.plot(Times,self.tile_kuiper_p_val_trace)
-            ax = plt.gca()
-            ax.set_yscale('log')
-            plt.xlabel("Time [days]")
-            plt.ylabel("Tile Kuiper p-value")
-            plt.show()
-            plt.grid()
-
-        # Plot Detection p-value for tiles as function of tiling
-        PLOT_TILE_DETECTION_PVAL_TRACE = False
-        if PLOT_TILE_DETECTION_PVAL_TRACE:
-            Times = [t/(24.*60.*60.) for t in self.tile_times]
-            plt.plot(Times,self.tile_detection_p_val_trace)
-            ax = plt.gca()
-            ax.set_yscale('log')
-            plt.xlabel("Time [days]")
-            plt.ylabel("Tile Detection Kuiper p-value")
-            plt.show()
-            plt.grid()
-
-        # Plot Kuiper p-value for exposures as function of tiling
-        PLOT_EXP_KUIPER_PVAL_TRACE = False
-        if PLOT_EXP_KUIPER_PVAL_TRACE:
-            Times = [t/(24.*60.*60.) for t in self.tile_times]
-            plt.plot(Times,self.exposure_kuiper_p_val_trace)
-            ax = plt.gca()
-            ax.set_yscale('log')
-            plt.xlabel("Time [days]")
-            plt.ylabel("Exposure Kuiper p-value")
-            plt.show()
-            plt.grid()
-
-        # Plot Kuiper detection p-value for exposures as function of tiling (n_pix and n_exposures)
-        PLOT_DET_KUIPER_PVAL_TRACE = False
-        if PLOT_DET_KUIPER_PVAL_TRACE:
-            Times = [t/(24.*60.*60.) for t in self.tile_times]
-            plt.plot(Times, self.detection_kuiper_p_val_trace)
-            ax = plt.gca()
-            ax.set_yscale('log')
-            plt.ylabel("Detection Kuiper p-value")
-            plt.xlabel("Time [days]")
-            plt.show()
-            plt.grid()
 
     def RunSIXTE(self,TileJsonFile):
         # Figure out maximum times we can do in the time available

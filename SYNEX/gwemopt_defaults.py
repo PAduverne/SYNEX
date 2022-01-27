@@ -7,10 +7,10 @@ GWEMOPT parameters dictionary definition -- all of their flags are here for conv
 """
 
 from SYNEX.SYNEX_Utils import SYNEX_PATH
+import numpy as np
 
 # Define flags that are either not useful to Athena and LISA, or we want to default to False.
 go_params_default={
-"do3D":False,
 "doEvent":False,
 "doSuperSched":False,
 "doMovie_supersched":False,
@@ -48,13 +48,13 @@ go_params_default={
 "doRASlices":False,
 "doRotate":False,
 "doMindifFilt":False,
-"doTrueLocation":False,
 "doAvoidGalacticPlane":False
 }
 
 
 
 # Define flags that are useful to default to True.
+go_params_default["doTrueLocation"] = True # We always want to do this for performance benchmarking
 go_params_default["doSkymap"] = True # We always want to do this
 go_params_default["doCoverage"] = True # Not sure what it is yet because it's linked to scheduler and I'm not that far yet.
 go_params_default["doSchedule"] = True # We always want to do this
@@ -71,18 +71,18 @@ go_params_default["catalogDir"] = SYNEX_PATH+"/gwemopt_catalogs"
 go_params_default["event"] = "IdeaPaperSystem"
 go_params_default["coverageFiles"] = SYNEX_PATH+"/gwemopt_cover_files/Athena_test.dat"
 go_params_default["lightcurveFiles"] = SYNEX_PATH+"/gwemopt/lightcurves/Me2017_H4M050V20.dat" ### THIS NEEDS TO BE CHANGED LATER WHEN WE HAVE SOME LIGHTCURVES...
-go_params_default["tilesType"] = "moc"
-go_params_default["scheduleType"] = "greedy"
+go_params_default["tilesType"] = "moc" #  Tiling options are moc/greedy/hierarchical/ranked/galaxy.
+go_params_default["scheduleType"] = "greedy" # Scheduling options are greedy/sear/weighted/airmass_weighted, or with _slew.
 go_params_default["timeallocationType"] = "powerlaw"
-go_params_default["configDirectory"] = SYNEX_PATH+"/gwemopt_conf_files"
+go_params_default["configDirectory"] = None # SYNEX_PATH+"/gwemopt_conf_files" # Is this needed? I don't think so...
 go_params_default["gpstime"] = 1703721618.0 # 01/01/2034 00:00:00.000 UTC -- Athena launch
 go_params_default["Ninj"] = 1000
 go_params_default["Ndet"] = 1
-go_params_default["Ntiles"] = 10
+go_params_default["Ntiles"] = 50
 go_params_default["Ntiles_cr"] = 0.70
 go_params_default["Dscale"] = 1.0
-go_params_default["nside"] = 256
-go_params_default["Tobs"] = np.array([0.0,1.0])
+go_params_default["nside"] = 128
+go_params_default["Tobs"] = None # Source param to be defined when data file is provided -- e.g. np.array([0.0,1.0]) = [Tstart,Tend], for times in DAYS
 go_params_default["powerlaw_cl"] = 0.9
 go_params_default["powerlaw_n"] = 1.0
 go_params_default["powerlaw_dist_exp"] = 0
@@ -95,7 +95,6 @@ go_params_default["transients_to_catalog"] = 0.8
 go_params_default["dt"] = 14.0
 go_params_default["galaxy_catalog"] = "GLADE"
 go_params_default["filters"] = ['r','g','r']
-go_params_default["exposuretimes"] = np.array([30.0,30.0,30.0])     ### Time per tile? Latency time?
 go_params_default["max_nb_tiles"] = np.array([-1,-1,-1])            ### What is this?
 go_params_default["mindiff"] = 0.0
 go_params_default["airmass"] = 2.5
@@ -103,7 +102,7 @@ go_params_default["iterativeOverlap"] = 0.0
 go_params_default["maximumOverlap"] = 1.0
 go_params_default["catalog_n"] = 1.0
 go_params_default["galaxy_grade"] = "S"
-go_params_default["AGN_flag"] = False
+go_params_default["AGN_flag"] = True    ######### What does this change in GWEMOPT?
 go_params_default["splitType"] = "regional"
 go_params_default["Nregions"] = 768
 go_params_default["Ncores"] = 4
@@ -112,7 +111,7 @@ go_params_default["unbalanced_tiles"] = None
 go_params_default["treasuremap_token"] = ""
 go_params_default["treasuremap_status"] = ["planned","completed"]
 go_params_default["graceid"] = "S190426c"
-go_params_default["raslice"] = [0.0,24.0]
+go_params_default["raslice"] = [0.0,24.0] #### Can we set this to None? or empty list?
 go_params_default["nside_down"] = 2
 go_params_default["max_filter_sets"] = 4
 go_params_default["absmag"] = -15
@@ -123,8 +122,13 @@ go_params_default["galactic_limit"] = 15.0
 go_params_default["true_ra"] = None             # Source param to be defined when data file is provided
 go_params_default["true_dec"] = None            # Source param to be defined when data file is provided
 go_params_default["true_distance"] = None       # Source param to be defined when data file is provided
-go_params_default["telescopes"] = "Athena_test"
 
+
+##### Parameters required in go_params but SYNEX handles differently. These are calculated in SYNEX_Utils functions
+##### when arrays of sources/detectors are configured into gwemopt compatible objects...
+# go_params_default["exposuretimes"] = np.array([30.0,30.0,30.0]) ### Time per tile? Latency time? -- Calculated when go_params for GWEMOPT is configured using each detector(s) config
+# go_params_default["telescopes"] = np.array(["Athena_test_1","Athena_test_2","Athena_test_3"])
+# go_params_default["do3D"]=False
 
 
 
@@ -133,9 +137,11 @@ go_params_default["telescopes"] = "Athena_test"
 # BE TURNED INTO A TIME VARYING LAT/LONG/ELEVATION IF THIS WORKS INSIDE GWEMOPT
 # FUNCTIONS BUT NEED TO CHECK THIS...
 config_struct_default = {
+"telescope" : "Athena_test",
 "filt" : "c",
 "magnitude" : 18.7,
-"exposuretime" : np.array([10000.]), # 10^4 s... Does gwemopt require this in seconds or hours or what?
+"exposuretime" : 10000.,    ### IN SECONDS
+"min_observability_duration" : 0., ### IN HOURS
 "latitude" : 20.7204,       ### this could be a problem... Need to understand how gwemopt uses telesope location...
 "longitude" : -156.1552,    ### this could be a problem... Need to understand how gwemopt uses telesope location...
 "elevation" : 3055.0,       ### this could be a problem... Need to understand how gwemopt uses telesope location...
@@ -146,7 +152,13 @@ config_struct_default = {
 "tesselationFile" : None,
 "slew_rate" : 1., # in s/deg
 "readout" : 6,
-"horizon" : 30,       ### this could be a problem... Need to understand how gwemopt uses horizon...
+"horizon" : 30.,       ### this could be a problem... Need to understand how gwemopt uses horizon...
 "overhead_per_exposure" : 10., # Settle time after each slew/per tile? in seconds or what?
-"filt_change_time" : 60
+"filt_change_time" : 60,
+"dec_constraint" : "-90,90"
 }
+
+# ha_constraint?
+# moon_constraint?
+# sat_sun_restriction?
+# dec_constraint?

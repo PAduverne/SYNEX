@@ -49,9 +49,8 @@ Merger = SYSs.SMBH_Merger(**Merger_kwargs)
 #             "ExistentialFileName":"/Users/baird/Documents/LabEx_PostDoc/SYNEX/Saved_Telescope_Dicts/Athena_1_base.dat"}
 Athena_kwargs={"ExistentialFileName":"/Users/baird/Documents/LabEx_PostDoc/SYNEX/Saved_Telescope_Dicts/Athena_1_base.dat",
                "exposuretime" : 60.,
-               "horizon" : -80.,
-               "elevation" : 1000000000.,
-               "dec_constraint": "-90,90",
+               "horizon" : -80., # this is hardcoded in segments.py for telescope but not for tiles
+               "elevation" : 1500000000., # In meters
                "NewExistentialFileName":"/Users/baird/Documents/LabEx_PostDoc/SYNEX/Saved_Telescope_Dicts/Athena_1_dev.dat"}
 Athena_1=SYDs.Athena(**Athena_kwargs)
 

@@ -1754,8 +1754,25 @@ def TileWithGwemopt(source, detectors=None, **kwargs):
     # Get the right dicts to use -- detectors=None case handled in function
     go_params,map_struct=PrepareGwemoptDicts(source,detectors)
 
+    import ligo.segments as segments
+
     # Get segments -- need to understand what this is. Line 469 of binary file 'gwemopt_run'
     go_params = gwemopt.segments.get_telescope_segments(go_params)
+
+    # exposurelist=gou.get_exposures(go_params, go_params["config"]["Athena_1"], go_params["config"]["Athena_1"]["segmentlist"])
+    # go_params["config"]["Athena_1"]["exposurelist"].clear()
+    # go_params["config"]["Athena_1"]["exposurelist"].append(exposurelist)
+
+    # We need to trick segments to not think of it as a telescope fixed to earth...
+    print("Telescope segment properties...")
+    print(go_params["config"]["Athena_1"]["segmentlist"]) # list of segments
+    print("Exposure list len:",len(go_params["config"]["Athena_1"]["exposurelist"])) # list of segments
+    print(go_params["config"]["Athena_1"]["n_windows"]) # = len(go_params["config"]["Athena_1"]["exposurelist"])
+    print(go_params["config"]["Athena_1"]["tot_obs_time"])
+
+    for key,val in go_params["config"]["Athena_1"].items():
+        if key not in ["exposurelist", "tesselation"]:
+            print(key,":",val)
 
     # Get tile_structs
     if go_params["tilesType"]=="MaxProb":
@@ -1767,7 +1784,7 @@ def TileWithGwemopt(source, detectors=None, **kwargs):
         go_params["timeallocationType"] = "powerlaw"
         # Get tiling structs
         moc_structs = gwemopt.moc.create_moc(go_params, map_struct=map_struct)
-        tile_structs = gwemopt.tiles.moc(go_params,map_struct,moc_structs)
+        tile_structs = gwemopt.tiles.moc(go_params,map_struct,moc_structs,doSegments=False) # doSegments=False ?? Only for 'moc'... Otherwise it calls gwemopt.segments.get_segments_tiles
     elif go_params["tilesType"]=="greedy":
         # Adjust gwemopt params for requested tiling strat -- this will later be integrated into the athena init function...
         go_params["timeallocationType"] = "powerlaw"
@@ -1812,20 +1829,26 @@ def TileWithGwemopt(source, detectors=None, **kwargs):
                 ra, dec = tiles_struct[index]["ra"], tiles_struct[index]["dec"]
                 go_params["config"][telescope]["tesselation"] = np.append(go_params["config"][telescope]["tesselation"],[[index,ra,dec]],axis=0)
 
+    # # Check some tile properties
+    # print("Tile segment properties...")
+    # print("No. Tile structs:",len(tile_structs["Athena_1"].keys()))
+    # print(tile_structs["Athena_1"][17394].keys())
+    # print(len(tile_structs["Athena_1"][17394]["segmentlist"]))
+    # for key,val in tile_structs["Athena_1"][17394].items():
+    #     print(key,":",val)
+    #     # if key not in ["exposurelist", "tesselation"]:
+    #     #     print(key,":",val)
+    # segment_count = 0
+    # for tile in tile_structs["Athena_1"].keys():
+    #     segment_count+=len(tile_structs["Athena_1"][tile]["segmentlist"])
+    # print("Total segments across all tile structs:",segment_count)
+    # print("Total segments across detector:",len(go_params["config"]["Athena_1"]["segmentlist"]))
+
     # Check whats happening
     # gwemopt.plotting.tiles(go_params, map_struct, tile_structs)
 
     # Do some other stuff
     tile_structs, coverage_struct = gwemopt.coverage.timeallocation(go_params, map_struct, tile_structs)
-    # print(tile_structs.keys(),coverage_struct.keys())
-    # print(coverage_struct["FOV"],coverage_struct["area"],coverage_struct["telescope"],coverage_struct["galaxies"],coverage_struct["exposureused"])
-    # print(tile_structs["Athena_test"].keys())
-    # print(go_params["telescopes"])
-    # print(go_params["config"].keys())
-    # print(tile_structs["Athena_test"][17394].keys())
-    print(go_params["config"]["Athena_1"]["observer"])
-    for key,val in tile_structs["Athena_1"][21993].items(): # 17394
-        print(key,val)
     gwemopt.scheduler.summary(go_params, map_struct, coverage_struct)
     # gwemopt.plotting.coverage(go_params, map_struct, coverage_struct)
 

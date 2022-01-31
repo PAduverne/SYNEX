@@ -173,20 +173,9 @@ class Athena:
             elif key in detector_config_struct:
                 detector_config_struct[key]=value
             elif key not in ["NewExistentialFileName"]: # Kept like this in case more non-gwemopt keys are added
-                print("'",key,"' not contained in gwemopt dicts...")
+                print("'",key,"' not contained in gwemopt dicts... Setting anyway.")
                 print_reminder = True
                 detector_config_struct[key]=value
-        # # Now initiate config struct for this telescope
-        # if "ConfigFileName" in kwargs.keys():
-        #     detector_config_struct = gwemopt.utils.readParamsFromFile(kwargs["ConfigFileName"])
-        #     detector_config_struct["telescope"] = detector_go_params["telescopes"]
-        # else:
-        #     for key,value in kwargs.items():
-        #         if key in detector_config_struct:
-        #             detector_config_struct[key]=value
-        #         else:
-        #             print("'",key,"' not contained in gwemopt 'config_struct' dict...")
-        #             print_reminder = True
 
         # Check if tesselation file was set
         if detector_config_struct["tesselationFile"]==None:
@@ -302,13 +291,13 @@ class Athena:
                                          for n in reference_images[key]]
             self.detector_config_struct["reference_images"] = reference_images
 
-        location = astropy.coordinates.EarthLocation(self.detector_config_struct["longitude"],self.detector_config_struct["latitude"],self.detector_config_struct["elevation"])
-        observer = astroplan.Observer(location=location)
-        self.detector_config_struct["observer"] = observer
+        # location = astropy.coordinates.EarthLocation(self.detector_config_struct["longitude"],self.detector_config_struct["latitude"],self.detector_config_struct["elevation"])
+        # observer = astroplan.Observer(location=location)
+        # self.detector_config_struct["observer"] = observer
 
         # Save it all to file!
         self.ExistentialCrisis()
-
+    
     def GetKuiper(self, TilePickleFile, source=None):
         # Check first that the necessary steps have been done for the source and detector
         # if not hasattr(source, "CTR"):

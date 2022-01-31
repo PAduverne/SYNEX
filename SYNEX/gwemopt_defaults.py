@@ -154,11 +154,36 @@ config_struct_default = {
 "readout" : 6,
 "horizon" : 30.,       ### this could be a problem... Need to understand how gwemopt uses horizon...
 "overhead_per_exposure" : 10., # Settle time after each slew/per tile? in seconds or what?
-"filt_change_time" : 60,
-"dec_constraint" : "-90,90"
+"filt_change_time" : None, # Only needed for "doAlternatingFilters" case which we have set to False for now.
+"sat_sun_restriction" : 45.
 }
+# "dec_constraint" : "-90,90",
+
+
+#######
+# Segments is a list of ligo time segments (like sets) for when the telescope is available to make a measurement.
+# exposurelist is a similar list of segments calculated from segments that slices them into times when there is an exposure to the source location and reduces times by overhead for each orientation, time per tile, etc.
+# These are first calculated for the detector based on location and time, and then it is calculated for each tile depending on time allocation and position of moon/sun.
+#
+# I think we have to write our own versions of segments.py and adjust the usage of observer objects. the telescope part is easily done, even
+# if you modify the returned set of segments and then recalculate the exposures based on that... But doing this for tiles is going to be a pain.
+
+
+
 
 # ha_constraint?
 # moon_constraint?
-# sat_sun_restriction?
+# sat_sun_restriction? -- angular distance between satelite and sun in degrees. Need to modify lines 263-283 of 'coverage.py' to account for this in the right frame of reference.
+# Line 455 of 'scheduler.py' ::: segments.py: tile_struct[key]["segmentlist"] is a list of segments when the tile is available for observation
 # dec_constraint?
+
+### Use lisatools to convert SSB frame to LISA, and then adjust angles to be at L1 instead of traiing Earth.
+### Adjust telescope segments manually to be just one segment including all observation time
+### Adjust tile segments manually according to moon and sun location relative to telescope using astropy functions as in 'coverage.py'
+### Check these are not then manually done anywhere else in gwemopt...
+
+# Bottom of page 46 in https://arxiv.org/pdf/1903.04083.pdf states AXIS (NOT Athena...) needs 45 deg at least from Sun for resolution and thermal control...
+# Page iv in https://arxiv.org/pdf/1207.2745.pdf -- L2 Halo orbit with 750,000 km amplitude.
+# Page 64 in previous reference says 'orbital timescales of 1 to 300ks', but not sure if this is Athena or source related... (period = 16 mins - 3.47 days, so probs source...)
+# Second lagrange point is approx 1.5 million km from Earth.
+# If no proposed orbit files are available, can we use JW Telescope orbit files? It too is in L2 Halo orbit... Could be a good first estimate.

@@ -147,13 +147,17 @@ class Athena:
                 detector_go_params = SavedDict["detector_go_params"]
                 detector_config_struct = SavedDict["detector_config_struct"]
 
-                # Check if we will modify something later
-                if len(kwargs.keys())>1:
-                    # more than just 'ExistentialFileName' specified
+                if "NewExistentialFileName" in kwargs:
+                    # save file exists already and have a new one specified so mutate loaded source regardless
+                    MUTATED=True
+                elif len(kwargs.keys())>1:
+                    # Check if we will modify something later
                     ValueCheck1 = [value!=detector_go_params[key] for key,value in kwargs.items() if key in detector_go_params]
                     ValueCheck2 = [value!=detector_config_struct[key] for key,value in kwargs.items() if key in detector_config_struct]
-                    if any([ValueCheck1]) or any([ValueCheck2]):
-                        # Values are changed so recompute tesselation later even if the '.tess' file already exists
+                    KeysCheck1 = [key not in detector_go_params.keys() for key in kwargs.keys()]
+                    KeysCheck2 = [key not in detector_config_struct.keys() for key in kwargs.keys()]
+                    if any([ValueCheck1]) or any([ValueCheck2]) or any([KeysCheck1]) or any([KeysCheck2]):
+                        # Values are changed or new keys added; recompute tesselation later even if the '.tess' file already exists
                         MUTATED=True
             else:
                 # Import default gwemopt dicts
@@ -173,7 +177,7 @@ class Athena:
             elif key in detector_config_struct:
                 detector_config_struct[key]=value
             elif key not in ["NewExistentialFileName"]: # Kept like this in case more non-gwemopt keys are added
-                print("'",key,"' not contained in gwemopt dicts... Setting anyway.")
+                print("Setting new keys '",key,"' in detector_config_struct...")
                 print_reminder = True
                 detector_config_struct[key]=value
 
@@ -297,7 +301,7 @@ class Athena:
 
         # Save it all to file!
         self.ExistentialCrisis()
-    
+
     def GetKuiper(self, TilePickleFile, source=None):
         # Check first that the necessary steps have been done for the source and detector
         # if not hasattr(source, "CTR"):
@@ -521,7 +525,7 @@ class Athena:
         # Gather attributes to dict
         MyExistentialDict = self.__dict__
         # Save to file...
-        print("Saving detector attributes...")
+        print("Saving detector attributes to:",self.ExistentialFileName)
         with open(self.ExistentialFileName, 'wb') as f:
             pickle.dump(MyExistentialDict, f)
         print("Done.")

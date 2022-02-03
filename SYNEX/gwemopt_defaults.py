@@ -75,7 +75,7 @@ go_params_default["tilesType"] = "moc" #  Tiling options are moc/greedy/hierarch
 go_params_default["scheduleType"] = "greedy" # Scheduling options are greedy/sear/weighted/airmass_weighted, or with _slew.
 go_params_default["timeallocationType"] = "powerlaw"
 go_params_default["configDirectory"] = None # SYNEX_PATH+"/gwemopt_conf_files" # Is this needed? I don't think so...
-go_params_default["gpstime"] = 1703721618.0 # 01/01/2034 00:00:00.000 UTC -- Athena launch
+go_params_default["gpstime"] = 1703721618.0 # 01/01/2034 00:00:00.000 UTC -- time of event
 go_params_default["Ninj"] = 1000
 go_params_default["Ndet"] = 1
 go_params_default["Ntiles"] = 50
@@ -142,9 +142,9 @@ config_struct_default = {
 "magnitude" : 18.7,
 "exposuretime" : 10000.,    ### IN SECONDS
 "min_observability_duration" : 0., ### IN HOURS
-"latitude" : 20.7204,       ### this could be a problem... Need to understand how gwemopt uses telesope location...
-"longitude" : -156.1552,    ### this could be a problem... Need to understand how gwemopt uses telesope location...
-"elevation" : 3055.0,       ### this could be a problem... Need to understand how gwemopt uses telesope location...
+"latitude" : None, # 20.7204,       ### None if we want a telesscopic orbit
+"longitude" : None, # -156.1552,    ### None if we want a telesscopic orbit
+"elevation" : None, # 3055.0,       ### None if we want a telesscopic orbit
 "FOV_coverage" : 1., # In deg^2
 "FOV" : 1., # In deg^2
 "FOV_coverage_type" : "square",
@@ -152,10 +152,25 @@ config_struct_default = {
 "tesselationFile" : None,
 "slew_rate" : 1., # in s/deg
 "readout" : 6,
-"horizon" : 30.,       ### this could be a problem... Need to understand how gwemopt uses horizon...
+"horizon" : None, # 30.,            ### None if we want a telesscopic orbit
 "overhead_per_exposure" : 10., # Settle time after each slew/per tile? in seconds or what?
 "filt_change_time" : None, # Only needed for "doAlternatingFilters" case which we have set to False for now.
-"sat_sun_restriction" : 45.
+"sat_sun_restriction" : 45.,
+"sat_earth_constraint" : 30.,
+"sat_moon_constraint" : 20.0,
+"orbitFile" : None, # Where to save orbit to
+"frozenAthena" : False, # Consider stuck at L2 exactly so we only take Earth, Sun and Moon orbital motions into account
+"inc" : 60., # deg incline of orbital plane normal to Sun-Earth axis.
+"MeanRadius" : 750000000., # meters (from earth-orbit normal axis)
+"semi_maj" : 750000000., # equivalent to MeanRadius axis ONLY IF we say we are really orbiting the centre and not the focal point
+"L2_from_Earth" : 1500000000., # meters (L2 from Earth)
+"eccentricity" : 0.8,
+"ArgPeriapsis" : 0., # In Degrees, angle of point of closest approach to FOCAL POINT IN ORBIT PLANE
+"AscendingNode" : 0., # In DEGREES
+"phi_0" : 0., # In DEGREeS, initial phase of Athena when measurments start
+"period" : 180., # In days, for one complete halo orbit about L2
+"gps_science_start" : 1703721618.0, # 01/01/2034 00:00:00.000 UTC -- gps start time of science meaasurements
+"mission_duration" : 3. # in YEARS- total time from *start of science* to end of Athena mission
 }
 # "dec_constraint" : "-90,90",
 

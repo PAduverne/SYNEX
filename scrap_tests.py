@@ -20,46 +20,84 @@ pylab.rcParams.update(pylab_params)
 mpl.use('MacOSX')
 
 
+########################### Example - Plotting Athena orbit ###########################
 
+import ligo.segments as segments
+from astropy.time import Time
+import SYNEX.segments_athena as segs_a
 
+t0 = '2034-06-01T00:00:00.00' # YYYY-MM-DDTHH:mm:SS.MS
+t = Time(t0, format='isot', scale='utc').gps
 
-########################### Example - Get source from file and plot skymap ###########################
-
-# Source file we want to resurract - note we only specify everything afer .../inference_data or .../inference_param_files and don't need to give suffix either
-# FileName = "IdeaPaperSystem_9d"
-
-# Merger args
-Merger_kwargs = {"ExistentialFileName":"/Users/baird/Documents/LabEx_PostDoc/SYNEX/Saved_Source_Dicts/IdeaPaperSystem_9d_base.dat",
-                 "NewExistentialFileName":"/Users/baird/Documents/LabEx_PostDoc/SYNEX/Saved_Source_Dicts/IdeaPaperSystem_9d_dev.dat"}
-# Merger_kwargs = {"ExistentialFileName":"/Users/baird/Documents/LabEx_PostDoc/SYNEX/Saved_Source_Dicts/IdeaPaperSystem_9d_base.dat"}
-
-# Resurrect - either from lisabeta data or saved source file
-# Merger = SYU.GetSourceFromLisabetaData(FileName,**Merger_kwargs)
-Merger = SYSs.SMBH_Merger(**Merger_kwargs)
-
-# Plot the CL bounds
-# SYU.PlotInferenceLambdaBeta(Merger.H5File, bins=50, SkyProjection=True, SaveFig=False, return_data=False)
-
-# Plot
-# SYU.PlotSkyMapData(Merger,SaveFig=False,plotName=None)
-
-# Make some test telescopes
-# Need to organize for intervals when telescope is not available... this is Tobs but this is also set by source in SYU.PrepareGwemoptDicts()...
-# Athena_kwargs={"FOV":1.,"exposuretime":100.,"slew_rate":1., "telescope":"Athena_1",
+# Athena_kwargs={"FOV":1.,"exposuretime":60.,"slew_rate":1., "telescope":"Athena_1",
 #             "ExistentialFileName":"/Users/baird/Documents/LabEx_PostDoc/SYNEX/Saved_Telescope_Dicts/Athena_1_base.dat"}
-Athena_kwargs={"ExistentialFileName":"/Users/baird/Documents/LabEx_PostDoc/SYNEX/Saved_Telescope_Dicts/Athena_1_base.dat",
-               "exposuretime" : 60.,
-               "horizon" : -80., # this is hardcoded in segments.py for telescope but not for tiles
-               "elevation" : 1500000000., # In meters
-               "NewExistentialFileName":"/Users/baird/Documents/LabEx_PostDoc/SYNEX/Saved_Telescope_Dicts/Athena_1_dev.dat"}
+Athena_kwargs={
+                "ExistentialFileName":"/Users/baird/Documents/LabEx_PostDoc/SYNEX/Saved_Telescope_Dicts/Athena_1_base.dat",
+                "NewExistentialFileName":"/Users/baird/Documents/LabEx_PostDoc/SYNEX/Saved_Telescope_Dicts/Athena_1_dev.dat",
+                "frozenAthena" : False, # False,
+                "exposuretime" : 12*60*60,
+                "inc" : 80., # 60., # In DEGREES, incline of orbital plane normal to Sun-Earth axis.
+                "MeanRadius" : 750000000*1.5, # 750000000., # meters (from earth-orbit normal axis)
+                "semi_maj" : 750000000.*1.5, # 750000000., # equivalent to MeanRadius axis ONLY IF we say we are really orbiting the centre and not the focal point
+                "eccentricity" : 0.8, # 0.8
+                "ArgPeriapsis" : 0., # In DEGREES, angle of point of closest approach to FOCAL POINT IN ORBIT PLANE
+                "AscendingNode" : 0., # In DEGREES
+                "phi_0" : 0., # in DEGREES, initial phase of Athena when measurments start
+                "period" : 180., # 180., # In days, for one complete halo orbit about L2
+                "gps_science_start" : t, # 1703721618.0, # 01/01/2034 00:00:00.000 UTC -- gps start time of science meaasurements
+                "mission_duration" : 2.
+               }
+
 Athena_1=SYDs.Athena(**Athena_kwargs)
 
-# Test preparation of gwemopt objects
-# go_params,map_struct = SYU.PrepareGwemoptDicts(Merger,detectors=Athena_1)
+config_struct = segs_a.calc_telescope_orbit(Athena_1.detector_config_struct,SAVETOFILE=False)
 
-# Test tiling directly with gwemopt
-tiling_kwargs={}
-TileDict = SYU.TileWithGwemopt(Merger, detectors=Athena_1, **tiling_kwargs)
+# "orbitFile" default - build on data at start...
+strname="Athena_" + "".join(t0.split("T")[0].split("-")) + "_" + str(int((Athena_kwargs["mission_duration"]*364.25)//1)) + "d_inc"+str(int(Athena_kwargs["inc"]//1))+"_R"+str(int(Athena_kwargs["MeanRadius"]//1e6))+"Mkm_ecc"+str(int(Athena_kwargs["eccentricity"]//0.1))
+strname+="_ArgPeri"+str(int(Athena_kwargs["ArgPeriapsis"]//1))+"_AscNode"+str(int(Athena_kwargs["AscendingNode"]//1))+"_phi0"+str(int(Athena_kwargs["ArgPeriapsis"]//1))
+strname+="_P"+str(int(Athena_kwargs["period"]//1))+"_frozen"+str(Athena_kwargs["frozenAthena"])+".png"
+print(strname)
+
+SYU.PlotOrbit(config_struct)
+
+
+
+
+# ########################### Example - Get source from file and plot skymap ###########################
+#
+# # Source file we want to resurract - note we only specify everything afer .../inference_data or .../inference_param_files and don't need to give suffix either
+# # FileName = "IdeaPaperSystem_9d"
+#
+# # Merger args
+# Merger_kwargs = {"ExistentialFileName":"/Users/baird/Documents/LabEx_PostDoc/SYNEX/Saved_Source_Dicts/IdeaPaperSystem_9d_base.dat",
+#                  "NewExistentialFileName":"/Users/baird/Documents/LabEx_PostDoc/SYNEX/Saved_Source_Dicts/IdeaPaperSystem_9d_dev.dat"}
+# # Merger_kwargs = {"ExistentialFileName":"/Users/baird/Documents/LabEx_PostDoc/SYNEX/Saved_Source_Dicts/IdeaPaperSystem_9d_base.dat"}
+#
+# # Resurrect - either from lisabeta data or saved source file
+# # Merger = SYU.GetSourceFromLisabetaData(FileName,**Merger_kwargs)
+# Merger = SYSs.SMBH_Merger(**Merger_kwargs)
+#
+# # Plot the CL bounds
+# # SYU.PlotInferenceLambdaBeta(Merger.H5File, bins=50, SkyProjection=True, SaveFig=False, return_data=False)
+#
+# # Plot
+# # SYU.PlotSkyMapData(Merger,SaveFig=False,plotName=None)
+#
+# Make some test telescopes
+# Athena_kwargs={"FOV":1.,"exposuretime":60.,"slew_rate":1., "telescope":"Athena_1",
+#             "ExistentialFileName":"/Users/baird/Documents/LabEx_PostDoc/SYNEX/Saved_Telescope_Dicts/Athena_1_base.dat"}
+# Athena_kwargs={"ExistentialFileName":"/Users/baird/Documents/LabEx_PostDoc/SYNEX/Saved_Telescope_Dicts/Athena_1_base.dat",
+#                "exposuretime" : 60.,
+#                "elevation" : 1500000000., # In meters
+#                "NewExistentialFileName":"/Users/baird/Documents/LabEx_PostDoc/SYNEX/Saved_Telescope_Dicts/Athena_1_dev.dat"}
+# Athena_1=SYDs.Athena(**Athena_kwargs)
+#
+# # Test preparation of gwemopt objects
+# # go_params,map_struct = SYU.PrepareGwemoptDicts(Merger,detectors=Athena_1)
+#
+# # Test tiling directly with gwemopt
+# tiling_kwargs={}
+# TileDict = SYU.TileWithGwemopt(Merger, detectors=Athena_1, **tiling_kwargs)
 
 
 

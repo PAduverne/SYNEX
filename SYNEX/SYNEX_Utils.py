@@ -1754,22 +1754,11 @@ def TileWithGwemopt(source, detectors=None, **kwargs):
     # Get the right dicts to use -- detectors=None case handled in function
     go_params,map_struct=PrepareGwemoptDicts(source,detectors)
 
-    import ligo.segments as segments
-
     # Get segments -- need to understand what this is. Line 469 of binary file 'gwemopt_run'
-    go_params = gwemopt.segments.get_telescope_segments(go_params)
+    import SYNEX.segments_athena as segs_a
+    go_params = segs_a.get_telescope_segments(go_params)
 
-    # exposurelist=gou.get_exposures(go_params, go_params["config"]["Athena_1"], go_params["config"]["Athena_1"]["segmentlist"])
-    # go_params["config"]["Athena_1"]["exposurelist"].clear()
-    # go_params["config"]["Athena_1"]["exposurelist"].append(exposurelist)
-
-    # We need to trick segments to not think of it as a telescope fixed to earth...
-    print("Telescope segment properties...")
-    print(go_params["config"]["Athena_1"]["segmentlist"]) # list of segments
-    print("Exposure list len:",len(go_params["config"]["Athena_1"]["exposurelist"])) # list of segments
-    print(go_params["config"]["Athena_1"]["n_windows"]) # = len(go_params["config"]["Athena_1"]["exposurelist"])
-    print(go_params["config"]["Athena_1"]["tot_obs_time"])
-
+    print("Athena config checks...")
     for key,val in go_params["config"]["Athena_1"].items():
         if key not in ["exposurelist", "tesselation"]:
             print(key,":",val)
@@ -1780,9 +1769,6 @@ def TileWithGwemopt(source, detectors=None, **kwargs):
         moc_structs = gwemopt.moc.create_moc(go_params, map_struct=map_struct)
         tile_structs = gwemopt.tiles.moc(go_params,map_struct,moc_structs)
     elif go_params["tilesType"]=="moc":
-        # Adjust gwemopt params for requested tiling strat -- this will later be integrated into the athena init function...
-        go_params["timeallocationType"] = "powerlaw"
-        # Get tiling structs
         moc_structs = gwemopt.moc.create_moc(go_params, map_struct=map_struct)
         tile_structs = gwemopt.tiles.moc(go_params,map_struct,moc_structs,doSegments=False) # doSegments=False ?? Only for 'moc'... Otherwise it calls gwemopt.segments.get_segments_tiles
     elif go_params["tilesType"]=="greedy":
@@ -1829,23 +1815,18 @@ def TileWithGwemopt(source, detectors=None, **kwargs):
                 ra, dec = tiles_struct[index]["ra"], tiles_struct[index]["dec"]
                 go_params["config"][telescope]["tesselation"] = np.append(go_params["config"][telescope]["tesselation"],[[index,ra,dec]],axis=0)
 
-    # # Check some tile properties
-    # print("Tile segment properties...")
-    # print("No. Tile structs:",len(tile_structs["Athena_1"].keys()))
-    # print(tile_structs["Athena_1"][17394].keys())
-    # print(len(tile_structs["Athena_1"][17394]["segmentlist"]))
-    # for key,val in tile_structs["Athena_1"][17394].items():
-    #     print(key,":",val)
-    #     # if key not in ["exposurelist", "tesselation"]:
-    #     #     print(key,":",val)
-    # segment_count = 0
-    # for tile in tile_structs["Athena_1"].keys():
-    #     segment_count+=len(tile_structs["Athena_1"][tile]["segmentlist"])
-    # print("Total segments across all tile structs:",segment_count)
-    # print("Total segments across detector:",len(go_params["config"]["Athena_1"]["segmentlist"]))
+    # Check that we don't have tile segments
+    import SYNEX.segments_athena as segs_a
+    print("Check there are no segments yet:",tile_structs["Athena_1"][24398].keys())
+    for telescope in tile_structs.keys():
+        config_struct = go_params["config"][telescope]
+        tile_struct = tile_structs[telescope]
+        tile_structs[telescope] = segs_a.get_segments_tiles(go_params, config_struct, tile_struct)
 
-    # Check whats happening
-    # gwemopt.plotting.tiles(go_params, map_struct, tile_structs)
+    # Check the segments are there now
+    print("Check there are segments now:",tile_structs["Athena_1"][24398].keys())
+    for key,val in tile_structs["Athena_1"][24398].items():
+        print(key,":",val)
 
     # Do some other stuff
     tile_structs, coverage_struct = gwemopt.coverage.timeallocation(go_params, map_struct, tile_structs)
@@ -3168,6 +3149,125 @@ def ExtraPlotting(source):
         plt.xlabel("Time [days]")
         plt.show()
         plt.grid()
+
+def PlotOrbit(config_struct):
+    """
+    Plot orbit. Mostly to check we have done things right for orbital
+    calculations in segments_athena.py.
+    """
+
+    orbit_dict=config_struct["orbit_dict"]
+
+    SkyProj=False
+
+    from mpl_toolkits.mplot3d import Axes3D
+    from matplotlib import animation
+    import matplotlib.pyplot as plt
+    import astropy.constants as consts
+    # tt=orbit_dict["elapsed_time_from_start"]
+    obj_keys = ["Moon_From_Athena","Earth_From_Athena"] # ,"Sun_From_Athena"]
+    labels={"Moon_From_Athena":"Moon","Earth_From_Athena":"Earth","Sun_From_Athena":"Sun"}
+    colors={"Moon_From_Athena":"cyan","Earth_From_Athena":"blue","Sun_From_Athena":"red"}
+
+    Moon_RaDecs=orbit_dict["Moon_From_Athena_radecs"]
+    Earth_RaDecs=orbit_dict["Earth_From_Athena_radecs"]
+    Sun_RaDecs=orbit_dict["Sun_From_Athena_radecs"]
+
+    if SkyProj:
+        # Then np.arctan will give radians and projections will work
+        Factor=np.pi/180.
+    else:
+        # Then we convert np.arctan to degrees for rectangular plot
+        Factor=1.
+
+    # Everything in degrees so 'Factor' handles conversion if we chose a sky projection
+    moon_radii=[np.arctan(1737400./np.linalg.norm(orbit_dict["Moon_From_Athena"][:,i]))*180./np.pi for i in range(len(orbit_dict["Moon_From_Athena"][0,:]))]
+    earth_radii=[np.arctan(consts.R_earth.value/np.linalg.norm(orbit_dict["Earth_From_Athena"][:,i]))*180./np.pi for i in range(len(orbit_dict["Earth_From_Athena"][0,:]))]
+    sun_radii=[np.arctan(consts.R_sun.value/np.linalg.norm(orbit_dict["Sun_From_Athena"][:,i]))*180./np.pi for i in range(len(orbit_dict["Sun_From_Athena"][0,:]))]
+    
+    if SkyProj:
+        d_lim=1e-3/Factor
+        moon_decs=[d if d>d_lim else 0. for d in Moon_RaDecs[1,:]]
+        earth_decs=[d if d>d_lim else 0. for d in Earth_RaDecs[1,:]]
+        sun_decs=[d if d>d_lim else 0. for d in Sun_RaDecs[1,:]]
+        Moon_RaDecs[1,:]=moon_decs[:]
+        Earth_RaDecs[1,:]=earth_decs[:]
+        Sun_RaDecs[1,:]=sun_decs[:]
+
+    fig = plt.figure()
+    if SkyProj:
+        ax = plt.subplot(111, projection="mollweide")
+    else:
+        ax = plt.gca()
+        ax.set_aspect(1)
+
+    for i in range(len(Moon_RaDecs[0,:])):
+        if not SkyProj and i==0:
+            m = plt.Circle((Moon_RaDecs[0,i]*Factor, Moon_RaDecs[1,i]*Factor), moon_radii[i]*Factor, color="cyan",label="Moon")
+            e = plt.Circle((Earth_RaDecs[0,i]*Factor, Earth_RaDecs[1,i]*Factor), earth_radii[i]*Factor, color="blue",label="Earth")
+            s = plt.Circle((Sun_RaDecs[0,i]*Factor, Sun_RaDecs[1,i]*Factor), sun_radii[i]*Factor, color="red",label="Sun")
+        else:
+            m = plt.Circle((Moon_RaDecs[0,i]*Factor, Moon_RaDecs[1,i]*Factor), moon_radii[i]*Factor, color="cyan")
+            e = plt.Circle((Earth_RaDecs[0,i]*Factor, Earth_RaDecs[1,i]*Factor), earth_radii[i]*Factor, color="blue")
+            s = plt.Circle((Sun_RaDecs[0,i]*Factor, Sun_RaDecs[1,i]*Factor), sun_radii[i]*Factor, color="red")
+        ax.add_patch(m)
+        ax.add_patch(e)
+        ax.add_patch(s)
+    if not SkyProj:
+        plt.xlim([-180.,180.])
+        plt.ylim([-90.,90.])
+        plt.legend(fontsize="x-small")
+    plt.show()
+
+    # fig = plt.figure()
+    # ax = fig.add_subplot(projection='3d')
+    # for key in obj_keys:
+    #     obj_data = np.transpose(orbit_dict[key]) # some plotting stuff needs this orientation but in segments_athena we use healpy stuff that requires other way around.
+    #
+    #     N=np.shape(obj_data)[0]
+    #     colour=colors[key]
+    #     face_colour=colors[key]
+    #     label=labels[key]
+    #     ax.scatter(obj_data[:,0]/consts.au.value,obj_data[:,1]/consts.au.value,obj_data[:,2]/consts.au.value,c=colour,facecolor=face_colour,s=1,label=label)
+    # ax.scatter(0.,0.,0.,c="black",s=1,label="Athena")
+    # # ax.set_xlabel(r"T$_{orb}$ [au]",fontsize="x-small")
+    # # ax.set_ylabel(r"S-E Ax [au]",fontsize="x-small")
+    # # ax.set_zlabel(r"N$_{ecl}$ [au]",fontsize="x-small")
+    # ax.set_xlim3d([-0.03, 0.03]) # ([-1.1, 1.1])
+    # ax.set_ylim3d([-0.03, 0.03])
+    # ax.set_zlim3d([-0.005, 0.005])
+    # # plt.legend()
+    # plt.show()
+
+    # fig = plt.figure()
+    # ax = fig.add_subplot(projection='3d')
+    # obj_data = np.transpose(orbit_dict["Sun_From_Athena"])
+    # N=np.shape(obj_data)[0]
+    # ax.scatter(obj_data[:,0]/consts.au.value,obj_data[:,1]/consts.au.value,obj_data[:,2]/consts.au.value,c="red",facecolor="red",s=1,label="Sun")
+    # ax.scatter(0.,0.,0.,c="black",s=1,label="Athena")
+    # ax.set_xlim3d([-1.1, 1.1]) # ([-1.1, 1.1])
+    # ax.set_ylim3d([-1.1, 1.1])
+    # ax.set_zlim3d([-0.005, 0.005])
+    # # plt.legend()
+    # plt.show()
+
+    # def update(num, Earth_dist, line):
+    #     MRad = 750000000.
+    #     line.set_data(Earth_dist[:num,0]/MRad,Earth_dist[:num,1]/MRad)
+    #     line.set_3d_properties(Earth_dist[:num, 2]/MRad)
+    #
+    # fig = plt.figure()
+    # ax = fig.add_subplot(projection='3d')
+    # line, = ax.plot(Earth_dist[0:1, 0]/MeanRadius, Earth_dist[0:1, 1]/MeanRadius, Earth_dist[0:1, 2]/MeanRadius)
+    # ax.set_xlim3d([-1.0, 1.0])
+    # ax.set_ylim3d([0., 3.0])
+    # ax.set_zlim3d([-1.0, 1.0])
+    # ax.set_xlabel('Earth Orb Tangent',fontsize="x-small")
+    # ax.set_ylabel('Sun-Earth Axis',fontsize="x-small")
+    # ax.set_zlabel('Normal to Ecliptic plane',fontsize="x-small")
+    # ani = animation.FuncAnimation(fig, update, N, fargs=(Earth_dist, line), interval=10, blit=False)
+    # #ani.save('matplot003.gif', writer='imagemagick')
+    # plt.show()
 
 
 

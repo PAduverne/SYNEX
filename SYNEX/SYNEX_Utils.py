@@ -1754,15 +1754,10 @@ def TileWithGwemopt(source, detectors=None, **kwargs):
     """
     # Get the right dicts to use -- detectors=None case handled in function
     go_params,map_struct=PrepareGwemoptDicts(source,detectors)
-
+    
     # Get segments -- need to understand what this is. Line 469 of binary file 'gwemopt_run'
     import SYNEX.segments_athena as segs_a
     go_params = segs_a.get_telescope_segments(go_params)
-
-    print("Athena config checks...")
-    for key,val in go_params["config"]["Athena_1"].items():
-        if key not in ["exposurelist", "tesselation"]:
-            print(key,":",val)
 
     # Get tile_structs
     if go_params["tilesType"]=="MaxProb":
@@ -1816,44 +1811,16 @@ def TileWithGwemopt(source, detectors=None, **kwargs):
                 ra, dec = tiles_struct[index]["ra"], tiles_struct[index]["dec"]
                 go_params["config"][telescope]["tesselation"] = np.append(go_params["config"][telescope]["tesselation"],[[index,ra,dec]],axis=0)
 
-    # Check that we don't have tile segments
+    # Replace segments with our own
     import SYNEX.segments_athena as segs_a
     print("Check there are no segments yet:",tile_structs["Athena_1"][24398].keys())
     for telescope in tile_structs.keys():
-        config_struct = go_params["config"][telescope]
-        tile_struct = tile_structs[telescope]
-        tile_structs[telescope] = segs_a.get_segments_tiles(go_params, config_struct, tile_struct)
+        tile_structs[telescope] = segs_a.get_segments_tiles(go_params, go_params["config"][telescope], tile_structs[telescope])
 
-    # Check the segments are there now
-    print("Check there are segments now:",tile_structs["Athena_1"][24398].keys())
-    for key,val in tile_structs["Athena_1"][24398].items():
-        print(key,":",val)
-
-    # Do some other stuff
+    # Allocate times to tiles
     tile_structs, coverage_struct = gwemopt.coverage.timeallocation(go_params, map_struct, tile_structs)
-    gwemopt.scheduler.summary(go_params, map_struct, coverage_struct)
-    # gwemopt.plotting.coverage(go_params, map_struct, coverage_struct)
 
-    # Keeping the sub-dict used by gwemopt just in case (for now), insert some value conversions for SYNEX compatibility -- might get rid of this later and stick to gwemopt conventions...
-    for telescope in go_params["telescopes"]:
-        for tile in tile_structs[telescope].keys():
-            corners=tile_structs[telescope][tile]['corners']
-            lambda_range=[np.deg2rad(corners[0][0]),np.deg2rad(corners[1][0])]
-            beta_range=[np.deg2rad(corners[0][1]),np.deg2rad(corners[1][1])]
-            tile_structs[telescope][tile]["lambda"]=np.deg2rad(tile_structs[telescope][tileID]['ra'])-np.pi
-            tile_structs[telescope][tile]["beta"]=np.deg2rad(tile_structs[telescope][tileID]['dec'])
-            tile_structs[telescope][tile]["lambda_range"]=lambda_range
-            tile_structs[telescope][tile]["beta_range"]=beta_range
-            tile_structs[telescope][tile]["Center post prob"]=tile_structs[telescope][tileID]['prob']
-        tile_structs[telescope]["Tile Strat"] = TileStrat
-
-    # Output dictionary of tile properties
-    TileDict = {"LISA Data File": H5FileLocAndName,
-                "tile_structs": tile_structs,
-                "go_params": go_params,
-                "map_struct": map_struct}
-
-    return TileDict
+    return go_params, map_struct, tile_structs, coverage_struct
 
 def PrepareParamsDict(detectors=None):
     """
@@ -1908,7 +1875,7 @@ def PrepareParamsDict(detectors=None):
             go_params[key+"s"] = np.array(attr_list)
 
     # Fill out some necessary but missing info compiled only at runtime - just in case they aren't already there...
-    go_params["telescopes"] = np.array([detector.detector_config_struct["telescope"] for detector in detectors])
+    go_params["telescopes"] = [detector.detector_config_struct["telescope"] for detector in detectors] # They want this to be a list, not np array.
     go_params["exposuretimes"] = np.array([detector.detector_config_struct["exposuretime"] for detector in detectors])
 
     # Loop over each detector and fill config structs
@@ -3176,18 +3143,9 @@ def PlotOrbit(config_struct,SaveFig=False):
         Factor=1.
 
     # Everything in degrees so 'Factor' handles conversion if we chose a sky projection
-    moon_radii=[np.arctan(1737400./np.linalg.norm(orbit_dict["Moon_From_Athena"][:,i]))*180./np.pi for i in range(len(orbit_dict["Moon_From_Athena"][0,:]))]
-    earth_radii=[np.arctan(consts.R_earth.value/np.linalg.norm(orbit_dict["Earth_From_Athena"][:,i]))*180./np.pi for i in range(len(orbit_dict["Earth_From_Athena"][0,:]))]
-    sun_radii=[np.arctan(consts.R_sun.value/np.linalg.norm(orbit_dict["Sun_From_Athena"][:,i]))*180./np.pi for i in range(len(orbit_dict["Sun_From_Athena"][0,:]))]
-
-    if SkyProj:
-        d_lim=1e-3/Factor
-        moon_decs=[d if d>d_lim else 0. for d in Moon_RaDecs[1,:]]
-        earth_decs=[d if d>d_lim else 0. for d in Earth_RaDecs[1,:]]
-        sun_decs=[d if d>d_lim else 0. for d in Sun_RaDecs[1,:]]
-        Moon_RaDecs[1,:]=moon_decs[:]
-        Earth_RaDecs[1,:]=earth_decs[:]
-        Sun_RaDecs[1,:]=sun_decs[:]
+    moon_radii=np.arctan(1737400./np.linalg.norm(orbit_dict["Moon_From_Athena"],axis=0))*180./np.pi
+    earth_radii=np.arctan(consts.R_earth.value/np.linalg.norm(orbit_dict["Earth_From_Athena"],axis=0))*180./np.pi
+    sun_radii=np.arctan(consts.R_sun.value/np.linalg.norm(orbit_dict["Sun_From_Athena"],axis=0))*180./np.pi
 
     fig = plt.figure()
     if SkyProj:

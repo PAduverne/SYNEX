@@ -109,6 +109,11 @@ def get_segments_tile(config_struct, radec, segmentlist):
     E_f_A_radecs=config_struct["orbit_dict"]["Earth_From_Athena_radecs"]
     S_f_A_radecs=config_struct["orbit_dict"]["Sun_From_Athena_radecs"]
 
+    # Angular radii in degrees
+    moon_radii=np.arctan(1737400./np.linalg.norm(config_struct["orbit_dict"]["Moon_From_Athena"],axis=0))*180./np.pi
+    earth_radii=np.arctan(consts.R_earth.value/np.linalg.norm(config_struct["orbit_dict"]["Earth_From_Athena"],axis=0))*180./np.pi
+    sun_radii=np.arctan(consts.R_sun.value/np.linalg.norm(config_struct["orbit_dict"]["Sun_From_Athena"],axis=0))*180./np.pi
+    
     # Angular distances from tile direction and three astrophysical objects
     # Can we pass the 'angular_distance' function an array of directions? I think so if its ndarray...
     Moon_AngDist=angular_distance(M_f_A_radecs[0,:], M_f_A_radecs[1,:], radec.ra.value, radec.dec.value)
@@ -116,13 +121,13 @@ def get_segments_tile(config_struct, radec, segmentlist):
     Sun_AngDist=angular_distance(S_f_A_radecs[0,:], S_f_A_radecs[1,:], radec.ra.value, radec.dec.value)
 
     # Make the segmentlists for times when we are outside restriction limits
-    seglst=[segments.segment(times_mjd[i],times_mjd[i+1]) for i in range(len(times_mjd)-1) if Moon_AngDist[i+1]>=moon_constraint]
+    seglst=[segments.segment(times_mjd[i],times_mjd[i+1]) for i in range(len(times_mjd)-1) if Moon_AngDist[i+1]>=moon_constraint and Moon_AngDist[i+1]>=moon_radii[i+1]]
     moonsegmentlist = segments.segmentlist(seglst)
     moonsegmentlist.coalesce()
-    seglst=[segments.segment(times_mjd[i],times_mjd[i+1]) for i in range(len(times_mjd)-1) if Earth_AngDist[i+1]>=earth_constraint]
+    seglst=[segments.segment(times_mjd[i],times_mjd[i+1]) for i in range(len(times_mjd)-1) if Earth_AngDist[i+1]>=earth_constraint and Earth_AngDist[i+1]>=earth_radii[i+1]]
     earthsegmentlist = segments.segmentlist(seglst)
     earthsegmentlist.coalesce()
-    seglst=[segments.segment(times_mjd[i],times_mjd[i+1]) for i in range(len(times_mjd)-1) if Sun_AngDist[i+1]>=sun_constraint]
+    seglst=[segments.segment(times_mjd[i],times_mjd[i+1]) for i in range(len(times_mjd)-1) if Sun_AngDist[i+1]>=sun_constraint and Sun_AngDist[i+1]>=sun_radii[i+1]]
     sunsegmentlist = segments.segmentlist(seglst)
     sunsegmentlist.coalesce()
 
@@ -140,7 +145,7 @@ def get_segments_tile(config_struct, radec, segmentlist):
 def get_segments_tiles(params, config_struct, tile_struct):
 
     # Get rough details of sun, earth, moon radecs in ATHENA frame through orbit
-    config_struct = get_telescope_orbit(params, config_struct)
+    config_struct = get_telescope_orbit(config_struct)
 
     segmentlist = config_struct["segmentlist"]
 
@@ -202,11 +207,11 @@ def get_telescope_orbit(config_struct):
     or calculate an orbit approximation from additional parameters
     stored in config struct.
     """
-    if os.path.isfile(config_struct["orbitFile"]):
+    if config_struct["orbitFile"] and os.path.isfile(config_struct["orbitFile"]):
         with open(config_struct["orbitFile"], 'rb') as f:
             config_struct["orbit_dict"] = pickle.load(f)
     else:
-        config_struct=calc_telescope_orbit(calc_telescope_orbit)
+        config_struct=calc_telescope_orbit(config_struct,True)
 
     return config_struct
 
@@ -329,7 +334,7 @@ def calc_telescope_orbit(config_struct,SAVETOFILE=False):
                         "Earth_From_Athena":Earth_From_Athena,
                         "Sun_From_Athena":Sun_From_Athena
                         }
-    
+
     # Put into config struct to keep things tidy
     config_struct["orbit_dict"]=astrophysical_bodies_from_athena_radecs
 
@@ -337,12 +342,13 @@ def calc_telescope_orbit(config_struct,SAVETOFILE=False):
     if SAVETOFILE:
         if not config_struct["orbitFile"]:
             print("Creating new orbit file...")
+            from SYNEX.SYNEX_Utils import SYNEX_PATH
             t0 = config_struct["gps_science_start"]
             t = Time(t0, format='gps', scale='utc').isot
             f=SYNEX_PATH+"/orbit_files/"
-            orbitFile="Athena_" + "".join(t.split("T")[0].split("-")) + "_" + str(int((Athena_kwargs["mission_duration"]*364.25)//1)) + "d_inc"+str(int(Athena_kwargs["inc"]//1))+"_R"+str(int(Athena_kwargs["MeanRadius"]//1e6))+"Mkm_ecc"+str(int(Athena_kwargs["eccentricity"]//0.1))
-            orbitFile+="_ArgPeri"+str(int(Athena_kwargs["ArgPeriapsis"]//1))+"_AscNode"+str(int(Athena_kwargs["AscendingNode"]//1))+"_phi0"+str(int(Athena_kwargs["ArgPeriapsis"]//1))
-            orbitFile+="_P"+str(int(Athena_kwargs["period"]//1))+"_frozen"+str(Athena_kwargs["frozenAthena"])+".dat"
+            orbitFile="Athena_" + "".join(t.split("T")[0].split("-")) + "_" + str(int((config_struct["mission_duration"]*364.25)//1)) + "d_inc"+str(int(config_struct["inc"]//1))+"_R"+str(int(config_struct["MeanRadius"]//1e6))+"Mkm_ecc"+str(int(config_struct["eccentricity"]//0.1))
+            orbitFile+="_ArgPeri"+str(int(config_struct["ArgPeriapsis"]//1))+"_AscNode"+str(int(config_struct["AscendingNode"]//1))+"_phi0"+str(int(config_struct["ArgPeriapsis"]//1))
+            orbitFile+="_P"+str(int(config_struct["period"]//1))+"_frozen"+str(config_struct["frozenAthena"])+".dat"
             config_struct["orbitFile"]=orbitFile
         with open(config_struct["orbitFile"], 'wb') as f:
             pickle.dump(astrophysical_bodies_from_athena_radecs, f)

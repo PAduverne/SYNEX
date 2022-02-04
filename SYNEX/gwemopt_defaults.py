@@ -142,9 +142,9 @@ config_struct_default = {
 "magnitude" : 18.7,
 "exposuretime" : 10000.,    ### IN SECONDS
 "min_observability_duration" : 0., ### IN HOURS
-"latitude" : None, # 20.7204,       ### None if we want a telesscopic orbit
-"longitude" : None, # -156.1552,    ### None if we want a telesscopic orbit
-"elevation" : None, # 3055.0,       ### None if we want a telesscopic orbit
+"latitude" : 0., # None, # 20.7204,       ### None if we want a telesscopic orbit?
+"longitude" : 0., # None, # -156.1552,    ### None if we want a telesscopic orbit?
+"elevation" : 0., # None, # 3055.0,       ### None if we want a telesscopic orbit? GWEMOPT uses these for airmass calcs... Ask to raise flag for this? It's always written to file but only used if you choose "airmass_weighted" scheduleType
 "FOV_coverage" : 1., # In deg^2
 "FOV" : 1., # In deg^2
 "FOV_coverage_type" : "square",
@@ -154,7 +154,7 @@ config_struct_default = {
 "readout" : 6,
 "horizon" : None, # 30.,            ### None if we want a telesscopic orbit
 "overhead_per_exposure" : 10., # Settle time after each slew/per tile? in seconds or what?
-"filt_change_time" : None, # Only needed for "doAlternatingFilters" case which we have set to False for now.
+"filt_change_time" : 0.,
 "sat_sun_restriction" : 45.,
 "sat_earth_constraint" : 30.,
 "sat_moon_constraint" : 20.0,

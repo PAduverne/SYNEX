@@ -35,15 +35,15 @@ Athena_kwargs={
                 "ExistentialFileName":"/Users/baird/Documents/LabEx_PostDoc/SYNEX/Saved_Telescope_Dicts/Athena_1_base.dat",
                 "NewExistentialFileName":"/Users/baird/Documents/LabEx_PostDoc/SYNEX/Saved_Telescope_Dicts/Athena_1_dev.dat",
                 "frozenAthena" : False, # False,
-                "exposuretime" : 12*60*60,
-                "inc" : 80., # 60., # In DEGREES, incline of orbital plane normal to Sun-Earth axis.
-                "MeanRadius" : 750000000*1.5, # 750000000., # meters (from earth-orbit normal axis)
-                "semi_maj" : 750000000.*1.5, # 750000000., # equivalent to MeanRadius axis ONLY IF we say we are really orbiting the centre and not the focal point
-                "eccentricity" : 0.8, # 0.8
-                "ArgPeriapsis" : 0., # In DEGREES, angle of point of closest approach to FOCAL POINT IN ORBIT PLANE
-                "AscendingNode" : 0., # In DEGREES
-                "phi_0" : 0., # in DEGREES, initial phase of Athena when measurments start
-                "period" : 180., # 180., # In days, for one complete halo orbit about L2
+                "exposuretime" : 6*60*60,
+                "inc" : 60., # 60., # In DEGREES, incline of orbital plane normal to Sun-Earth axis.
+                "MeanRadius" : 750000000, # 750000000., # meters (from earth-orbit normal axis)
+                "semi_maj" : 750000000., # 750000000., # equivalent to MeanRadius axis ONLY IF we say we are really orbiting the centre and not the focal point
+                "eccentricity" : 0.4, # 0.8
+                "ArgPeriapsis" : 20., # 0., # In DEGREES, angle of point of closest approach to FOCAL POINT IN ORBIT PLANE
+                "AscendingNode" : -10., # 0., # In DEGREES
+                "phi_0" : 10., # 0., # in DEGREES, initial phase of Athena when measurments start
+                "period" : 90., # 180., # In days, for one complete halo orbit about L2
                 "gps_science_start" : t, # 1703721618.0, # 01/01/2034 00:00:00.000 UTC -- gps start time of science meaasurements
                 "mission_duration" : 2.
                }
@@ -52,13 +52,8 @@ Athena_1=SYDs.Athena(**Athena_kwargs)
 
 config_struct = segs_a.calc_telescope_orbit(Athena_1.detector_config_struct,SAVETOFILE=False)
 
-# "orbitFile" default - build on data at start...
-strname="Athena_" + "".join(t0.split("T")[0].split("-")) + "_" + str(int((Athena_kwargs["mission_duration"]*364.25)//1)) + "d_inc"+str(int(Athena_kwargs["inc"]//1))+"_R"+str(int(Athena_kwargs["MeanRadius"]//1e6))+"Mkm_ecc"+str(int(Athena_kwargs["eccentricity"]//0.1))
-strname+="_ArgPeri"+str(int(Athena_kwargs["ArgPeriapsis"]//1))+"_AscNode"+str(int(Athena_kwargs["AscendingNode"]//1))+"_phi0"+str(int(Athena_kwargs["ArgPeriapsis"]//1))
-strname+="_P"+str(int(Athena_kwargs["period"]//1))+"_frozen"+str(Athena_kwargs["frozenAthena"])+".png"
-print(strname)
-
-SYU.PlotOrbit(config_struct)
+SYU.PlotOrbit(config_struct, SaveFig=False)
+SYU.AnimateOrbit(config_struct,include_sun=False,SaveAnim=False)
 
 
 

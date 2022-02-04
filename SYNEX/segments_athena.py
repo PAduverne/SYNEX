@@ -294,20 +294,6 @@ def calc_telescope_orbit(config_struct,SAVETOFILE=False):
     UnitVec_sun_from_earth = hp.dir2vec(np.pi+Earth_Orbit[0,:]*180./np.pi,-Earth_Orbit[1,:]*180./np.pi,lonlat=True)
     Earth_From_Athena = RefPlane_orbit_EclFrame+UnitVec_sun_from_earth*config_struct["L2_from_Earth"]
     Sun_From_Athena = Earth_From_Athena+UnitVec_sun_from_earth*consts.au.value
-    
-    # A check if you want
-    CheckOrbit=False
-    if CheckOrbit:
-        import matplotlib.pyplot as plt
-        fig = plt.figure()
-        ax = fig.add_subplot(projection='3d')
-        ax.scatter(RefPlane_orbit_EclFrame[0,:]/config_struct["L2_from_Earth"],RefPlane_orbit_EclFrame[1,:]/config_struct["L2_from_Earth"],RefPlane_orbit_EclFrame[2,:]/config_struct["L2_from_Earth"])
-        ax.scatter(0.,0.,0.,c="black",s=1,label="L2")
-        ax.scatter(-1.,0.,0.,c="blue",s=1,label="L2")
-        ax.set_xlabel(r"R$_{orb}$ [$d_{l2}$]",fontsize="x-small")
-        ax.set_ylabel(r"T$_{orb}$ [$d_{l2}$]",fontsize="x-small")
-        ax.set_zlabel(r"N$_{ecl}$ [$d_{l2}$]",fontsize="x-small")
-        plt.show()
 
     # Get position of moon through orbit
     # NOTE : ephem gives helio longitude and latitude relative to Earth for Sun and Moon classes. Earth dist is in AU.
@@ -343,14 +329,24 @@ def calc_telescope_orbit(config_struct,SAVETOFILE=False):
                         "Earth_From_Athena":Earth_From_Athena,
                         "Sun_From_Athena":Sun_From_Athena
                         }
-
+    
     # Put into config struct to keep things tidy
     config_struct["orbit_dict"]=astrophysical_bodies_from_athena_radecs
 
     # Write to file
     if SAVETOFILE:
+        if not config_struct["orbitFile"]:
+            print("Creating new orbit file...")
+            t0 = config_struct["gps_science_start"]
+            t = Time(t0, format='gps', scale='utc').isot
+            f=SYNEX_PATH+"/orbit_files/"
+            orbitFile="Athena_" + "".join(t.split("T")[0].split("-")) + "_" + str(int((Athena_kwargs["mission_duration"]*364.25)//1)) + "d_inc"+str(int(Athena_kwargs["inc"]//1))+"_R"+str(int(Athena_kwargs["MeanRadius"]//1e6))+"Mkm_ecc"+str(int(Athena_kwargs["eccentricity"]//0.1))
+            orbitFile+="_ArgPeri"+str(int(Athena_kwargs["ArgPeriapsis"]//1))+"_AscNode"+str(int(Athena_kwargs["AscendingNode"]//1))+"_phi0"+str(int(Athena_kwargs["ArgPeriapsis"]//1))
+            orbitFile+="_P"+str(int(Athena_kwargs["period"]//1))+"_frozen"+str(Athena_kwargs["frozenAthena"])+".dat"
+            config_struct["orbitFile"]=orbitFile
         with open(config_struct["orbitFile"], 'wb') as f:
             pickle.dump(astrophysical_bodies_from_athena_radecs, f)
+        print("Saved orbit to :",orbitFile)
 
     return config_struct
 

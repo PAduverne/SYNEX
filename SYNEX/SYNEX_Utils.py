@@ -12,6 +12,7 @@ import pathlib
 SYNEX_PATH=str(pathlib.Path(__file__).parent.resolve()).split("SYNEX")[0]+"SYNEX"
 import astropy.constants as const
 import astropy.units as u
+from astropy.time import Time
 import numpy as np
 import healpy as hp
 import gwemopt
@@ -2835,8 +2836,8 @@ def PlotInferenceData(FileName, SaveFig=False):
     if SaveFig:
         # Put in folder for all lisabeta-related plots
         SaveFile = H5FileLocAndName[:-3]+'.png'
-        pathlib.Path(SYNEX_PATH + "/lisabeta_figs/").mkdir(parents=True, exist_ok=True)
-        SaveFile = SYNEX_PATH + "/lisabeta_figs/" + SaveFile.split("/")[-1]
+        pathlib.Path(SYNEX_PATH + "/Plots/lisabeta/").mkdir(parents=True, exist_ok=True)
+        SaveFile = SYNEX_PATH + "/Plots/lisabeta/" + SaveFile.split("/")[-1]
         plt.savefig(SaveFile)
 
     plt.show()
@@ -3150,7 +3151,7 @@ def ExtraPlotting(source):
         plt.show()
         plt.grid()
 
-def PlotOrbit(config_struct):
+def PlotOrbit(config_struct,SaveFig=False):
     """
     Plot orbit. Mostly to check we have done things right for orbital
     calculations in segments_athena.py.
@@ -3161,13 +3162,7 @@ def PlotOrbit(config_struct):
     SkyProj=False
 
     from mpl_toolkits.mplot3d import Axes3D
-    from matplotlib import animation
-    import matplotlib.pyplot as plt
     import astropy.constants as consts
-    # tt=orbit_dict["elapsed_time_from_start"]
-    obj_keys = ["Moon_From_Athena","Earth_From_Athena"] # ,"Sun_From_Athena"]
-    labels={"Moon_From_Athena":"Moon","Earth_From_Athena":"Earth","Sun_From_Athena":"Sun"}
-    colors={"Moon_From_Athena":"cyan","Earth_From_Athena":"blue","Sun_From_Athena":"red"}
 
     Moon_RaDecs=orbit_dict["Moon_From_Athena_radecs"]
     Earth_RaDecs=orbit_dict["Earth_From_Athena_radecs"]
@@ -3184,7 +3179,7 @@ def PlotOrbit(config_struct):
     moon_radii=[np.arctan(1737400./np.linalg.norm(orbit_dict["Moon_From_Athena"][:,i]))*180./np.pi for i in range(len(orbit_dict["Moon_From_Athena"][0,:]))]
     earth_radii=[np.arctan(consts.R_earth.value/np.linalg.norm(orbit_dict["Earth_From_Athena"][:,i]))*180./np.pi for i in range(len(orbit_dict["Earth_From_Athena"][0,:]))]
     sun_radii=[np.arctan(consts.R_sun.value/np.linalg.norm(orbit_dict["Sun_From_Athena"][:,i]))*180./np.pi for i in range(len(orbit_dict["Sun_From_Athena"][0,:]))]
-    
+
     if SkyProj:
         d_lim=1e-3/Factor
         moon_decs=[d if d>d_lim else 0. for d in Moon_RaDecs[1,:]]
@@ -3217,57 +3212,82 @@ def PlotOrbit(config_struct):
         plt.xlim([-180.,180.])
         plt.ylim([-90.,90.])
         plt.legend(fontsize="x-small")
+
+    # Save?
+    if SaveFig:
+        t0 = config_struct["gps_science_start"]
+        t = Time(t0, format='gps', scale='utc').isot
+        f=SYNEX_PATH+"/Plots/orbits/"
+        pathlib.Path(f).mkdir(parents=True, exist_ok=True)
+        strname="Athena_" + "".join(t.split("T")[0].split("-")) + "_" + str(int((config_struct["mission_duration"]*364.25)//1)) + "d_inc"+str(int(config_struct["inc"]//1))+"_R"+str(int(config_struct["MeanRadius"]//1e6))+"Mkm_ecc"+str(int(config_struct["eccentricity"]//0.1))
+        strname+="_ArgPeri"+str(int(config_struct["ArgPeriapsis"]//1))+"_AscNode"+str(int(config_struct["AscendingNode"]//1))+"_phi0"+str(int(config_struct["ArgPeriapsis"]//1))
+        strname+="_P"+str(int(config_struct["period"]//1))+"_frozen"+str(config_struct["frozenAthena"])+".pdf"
+        plt.savefig(f+strname,dpi=200)
+
     plt.show()
 
-    # fig = plt.figure()
-    # ax = fig.add_subplot(projection='3d')
-    # for key in obj_keys:
-    #     obj_data = np.transpose(orbit_dict[key]) # some plotting stuff needs this orientation but in segments_athena we use healpy stuff that requires other way around.
-    #
-    #     N=np.shape(obj_data)[0]
-    #     colour=colors[key]
-    #     face_colour=colors[key]
-    #     label=labels[key]
-    #     ax.scatter(obj_data[:,0]/consts.au.value,obj_data[:,1]/consts.au.value,obj_data[:,2]/consts.au.value,c=colour,facecolor=face_colour,s=1,label=label)
-    # ax.scatter(0.,0.,0.,c="black",s=1,label="Athena")
-    # # ax.set_xlabel(r"T$_{orb}$ [au]",fontsize="x-small")
-    # # ax.set_ylabel(r"S-E Ax [au]",fontsize="x-small")
-    # # ax.set_zlabel(r"N$_{ecl}$ [au]",fontsize="x-small")
-    # ax.set_xlim3d([-0.03, 0.03]) # ([-1.1, 1.1])
-    # ax.set_ylim3d([-0.03, 0.03])
-    # ax.set_zlim3d([-0.005, 0.005])
-    # # plt.legend()
-    # plt.show()
+def AnimateOrbit(config_struct,include_sun=False,SaveAnim=False):
+    """
+    Animation of orbit. Mostly just to be cool.
+    """
+    from mpl_toolkits.mplot3d import Axes3D
+    from matplotlib import animation
+    import astropy.constants as consts
 
-    # fig = plt.figure()
-    # ax = fig.add_subplot(projection='3d')
-    # obj_data = np.transpose(orbit_dict["Sun_From_Athena"])
-    # N=np.shape(obj_data)[0]
-    # ax.scatter(obj_data[:,0]/consts.au.value,obj_data[:,1]/consts.au.value,obj_data[:,2]/consts.au.value,c="red",facecolor="red",s=1,label="Sun")
-    # ax.scatter(0.,0.,0.,c="black",s=1,label="Athena")
-    # ax.set_xlim3d([-1.1, 1.1]) # ([-1.1, 1.1])
-    # ax.set_ylim3d([-1.1, 1.1])
-    # ax.set_zlim3d([-0.005, 0.005])
-    # # plt.legend()
-    # plt.show()
+    orbit_dict=config_struct["orbit_dict"]
 
-    # def update(num, Earth_dist, line):
-    #     MRad = 750000000.
-    #     line.set_data(Earth_dist[:num,0]/MRad,Earth_dist[:num,1]/MRad)
-    #     line.set_3d_properties(Earth_dist[:num, 2]/MRad)
-    #
-    # fig = plt.figure()
-    # ax = fig.add_subplot(projection='3d')
-    # line, = ax.plot(Earth_dist[0:1, 0]/MeanRadius, Earth_dist[0:1, 1]/MeanRadius, Earth_dist[0:1, 2]/MeanRadius)
-    # ax.set_xlim3d([-1.0, 1.0])
-    # ax.set_ylim3d([0., 3.0])
-    # ax.set_zlim3d([-1.0, 1.0])
+    obj_keys = ["Moon_From_Athena","Earth_From_Athena"]
+    if include_sun:
+        obj_keys.append("Sun_From_Athena")
+        Scale = consts.au.value # config_struct["MeanRadius"] #
+        lim = 1.1 # 1.+consts.au.value/Scale #
+    else:
+        Scale = config_struct["MeanRadius"]
+        L2_from_Earth = config_struct["L2_from_Earth"]
+        lim = 1.+L2_from_Earth/Scale
+
+    labels={"Moon_From_Athena":"Moon","Earth_From_Athena":"Earth","Sun_From_Athena":"Sun"}
+    colors={"Moon_From_Athena":"cyan","Earth_From_Athena":"blue","Sun_From_Athena":"red"}
+    sizes ={"Moon_From_Athena":(4.*np.pi/3.)*(1737400./Scale)**2,"Earth_From_Athena":(4.*np.pi/3.)*(consts.R_earth.value/Scale)**2,"Sun_From_Athena":(4.*np.pi/3.)*(consts.R_sun.value/Scale)**2}
+
+    # coordinate data into scaled vectors to plot
+    data = np.array([orbit_dict[key] for key in obj_keys])/Scale
+    data_labels = np.array([labels[key] for key in obj_keys])
+    data_colors = np.array([colors[key] for key in obj_keys])
+    data_sizes = np.array([5.]*len(obj_keys)) # sizes[key] for key in obj_keys])
+    N=np.shape(data)[2]
+    data=np.append(data,np.zeros((1,3,N)),axis=0)
+    data_labels=np.append(data_labels,"Athena")
+    data_colors=np.append(data_colors,"black")
+    data_sizes=np.append(data_sizes,5.)
+
+    def update(num, data, sc, data_sizes):
+        sc.set_offsets(data[:,0:2,num])
+        sc.set_3d_properties(data[:,2,num],zdir='z')
+        # sc.set_offset_position("data") # Can we use this for sizes too? -- NB This threw an error that the class doesnt have an attribute 'set_offset_position'
+        sc.set_sizes(data_sizes)
+
+    fig = plt.figure()
+    ax = fig.add_subplot(projection='3d')
+    sc = ax.scatter(data[:,0,0],data[:,1,0],data[:,2,0],c=data_colors,s=data_sizes) # ,s=sizes,label=data_labels,marker="o")
+    ax.set_xlim3d([-lim,lim])
+    ax.set_ylim3d([-lim,lim])
+    ax.set_zlim3d([-1.1,1.1])
     # ax.set_xlabel('Earth Orb Tangent',fontsize="x-small")
     # ax.set_ylabel('Sun-Earth Axis',fontsize="x-small")
     # ax.set_zlabel('Normal to Ecliptic plane',fontsize="x-small")
-    # ani = animation.FuncAnimation(fig, update, N, fargs=(Earth_dist, line), interval=10, blit=False)
-    # #ani.save('matplot003.gif', writer='imagemagick')
-    # plt.show()
+    ani = animation.FuncAnimation(fig, update, N, fargs=(data, sc, data_sizes), interval=1, blit=False)
+    # Save?
+    if SaveAnim:
+        t0 = config_struct["gps_science_start"]
+        t = Time(t0, format='gps', scale='utc').isot
+        f=SYNEX_PATH+"/Plots/OrbitAnimations/"
+        pathlib.Path(f).mkdir(parents=True, exist_ok=True)
+        strname="Athena_" + "".join(t.split("T")[0].split("-")) + "_" + str(int((config_struct["mission_duration"]*364.25)//1)) + "d_inc"+str(int(config_struct["inc"]//1))+"_R"+str(int(config_struct["MeanRadius"]//1e6))+"Mkm_ecc"+str(int(config_struct["eccentricity"]//0.1))
+        strname+="_ArgPeri"+str(int(config_struct["ArgPeriapsis"]//1))+"_AscNode"+str(int(config_struct["AscendingNode"]//1))+"_phi0"+str(int(config_struct["ArgPeriapsis"]//1))
+        strname+="_P"+str(int(config_struct["period"]//1))+"_frozen"+str(config_struct["frozenAthena"])+".mp4"
+        ani.save(f+strname, writer=animation.FFMpegWriter(fps=60)) # writer=animation.PillowWriter(fps=1)) # writer='imagemagick')
+    plt.show()
 
 
 

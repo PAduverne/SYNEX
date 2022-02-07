@@ -1,5 +1,6 @@
 import astropy.units as u
 import astropy.stats as astat
+from astropy.time import Time
 import astropy, astroplan
 import numpy as np
 import os
@@ -13,6 +14,7 @@ import pickle
 import matplotlib
 import matplotlib.pyplot as plt
 import scipy
+import copy
 
 class LISA:
     """
@@ -217,6 +219,40 @@ class Athena:
         # Check that file names are all coherent with SYNEX_PATH and telescope name
         detector_go_params, detector_config_struct = SYU.GWEMOPTPathChecks(detector_go_params,detector_config_struct)
 
+        # Get/Calculate orbit
+        SAVETOFILE=True
+        if not detector_config_struct["orbitFile"]:
+            print("Creating new orbit file name...")
+            t = Time(detector_config_struct["gps_science_start"], format='gps', scale='utc').isot
+            f=SYNEX_PATH+"/orbit_files/"
+            pathlib.Path(f).mkdir(parents=True, exist_ok=True)
+            orbitFile="Athena_" + "".join(t.split("T")[0].split("-")) + "_" + str(int((detector_config_struct["mission_duration"]*364.25)//1)) + "d_inc"+str(int(detector_config_struct["inc"]//1))+"_R"+str(int(detector_config_struct["MeanRadius"]//1e6))+"Mkm_ecc"+str(int(detector_config_struct["eccentricity"]//0.1))
+            orbitFile+="_ArgPeri"+str(int(detector_config_struct["ArgPeriapsis"]//1))+"_AscNode"+str(int(detector_config_struct["AscendingNode"]//1))+"_phi0"+str(int(detector_config_struct["ArgPeriapsis"]//1))
+            orbitFile+="_P"+str(int(detector_config_struct["period"]//1))+"_frozen"+str(detector_config_struct["frozenAthena"])+".dat"
+            detector_config_struct["orbitFile"]=f+orbitFile
+        if "NeworbitFile" in kwargs:
+            detector_config_struct["orbitFile"]=kwargs["NeworbitFile"]
+        elif MUTATED and os.path.isfile(detector_config_struct["orbitFile"]):
+                try:
+                    # Does it already have an extension number? If so, start there...
+                    orbitFileExt = detector_config_struct["orbitFile"].split("_")[-1] # e.g. '3.dat' for '4.config'
+                    orbitFileExt = int(orbitFileExt.split(".")[0])
+                except:
+                    # If not, start at 1
+                    orbitFileExt = 1
+                    detector_config_struct["orbitFile"] = ".".join(detector_config_struct["orbitFile"].split(".")[:-1]) + "_1." + detector_config_struct["orbitFile"].split(".")[-1]
+                # Find the first version that doesn't exist yet...
+                while os.path.isfile(detector_config_struct["orbitFile"]):
+                    orbitFileExt+=1
+                    detector_config_struct["orbitFile"] = "_".join(detector_config_struct["orbitFile"].split("_")[:-1]) + "_" + str(orbitFileExt) + "." + detector_config_struct["orbitFile"].split(".")[-1]
+        elif not MUTATED and os.path.isfile(detector_config_struct["orbitFile"]):
+            # Only False when detector is not mutated and the file exists -- only time we allow the orbit to be read in instead of recalculated.
+            SAVETOFILE=False
+
+        # NB : SAVETOFILE=True will force it to recalculate and overwrite any existing 'orbitFile'
+        import SYNEX.segments_athena as segs_a
+        detector_config_struct = segs_a.get_telescope_orbit(detector_config_struct,SAVETOFILE=SAVETOFILE)
+
         # Set as class attributes
         self.detector_go_params = detector_go_params
         self.detector_config_struct = detector_config_struct
@@ -237,7 +273,7 @@ class Athena:
                 # No new filename given- create it. NOTE: file extension left ambiguous
                 try:
                     # Does it already have an extension number? If so, start there...
-                    ExistentialFileExt=self.ExistentialFileName.split("_")[-1] # e.g. '3.dat' for '4.config'
+                    ExistentialFileExt = self.ExistentialFileName.split("_")[-1] # e.g. '3.dat' for '4.config'
                     ExistentialFileExt = int(ExistentialFileExt.split(".")[0])
                 except:
                     # If not, start at 1
@@ -294,10 +330,6 @@ class Athena:
                 reference_images[key] = [reference_images_map.get(n, n)
                                          for n in reference_images[key]]
             self.detector_config_struct["reference_images"] = reference_images
-
-        # location = astropy.coordinates.EarthLocation(self.detector_config_struct["longitude"],self.detector_config_struct["latitude"],self.detector_config_struct["elevation"])
-        # observer = astroplan.Observer(location=location)
-        # self.detector_config_struct["observer"] = observer
 
         # Save it all to file!
         self.ExistentialCrisis()
@@ -523,7 +555,10 @@ class Athena:
             # Reset name in class attributes
             self.ExistentialFileName = NewFileName
         # Gather attributes to dict
-        MyExistentialDict = self.__dict__
+        MyExistentialDict = copy.deepcopy(self.__dict__)
+        # Remove orbit and tesselation that are always recalculated at init
+        del MyExistentialDict["detector_config_struct"]["orbit_dict"]
+        del MyExistentialDict["detector_config_struct"]["tesselation"]
         # Save to file...
         print("Saving detector attributes to:",self.ExistentialFileName)
         with open(self.ExistentialFileName, 'wb') as f:

@@ -31,7 +31,7 @@ mpl.use('MacOSX')
 
 # Merger args
 Merger_kwargs = {"ExistentialFileName":"/Users/baird/Documents/LabEx_PostDoc/SYNEX/Saved_Source_Dicts/IdeaPaperSystem_9d_base.dat",
-                 "NewExistentialFileName":"/Users/baird/Documents/LabEx_PostDoc/SYNEX/Saved_Source_Dicts/IdeaPaperSystem_9d_dev.dat"}
+                 "NewExistentialFileName":"/Users/baird/Documents/LabEx_PostDoc/SYNEX/Saved_Source_Dicts/IdeaPaperSystem_9d_dev.dat",}
 # Merger_kwargs = {"ExistentialFileName":"/Users/baird/Documents/LabEx_PostDoc/SYNEX/Saved_Source_Dicts/IdeaPaperSystem_9d_base.dat"}
 
 # Resurrect - either from lisabeta data or saved source file
@@ -51,10 +51,13 @@ t = Time(t0, format='isot', scale='utc').gps
 #             "ExistentialFileName":"/Users/baird/Documents/LabEx_PostDoc/SYNEX/Saved_Telescope_Dicts/Athena_1_base.dat"}
 Athena_kwargs={"ExistentialFileName":"/Users/baird/Documents/LabEx_PostDoc/SYNEX/Saved_Telescope_Dicts/Athena_1_base.dat",
                 "NewExistentialFileName":"/Users/baird/Documents/LabEx_PostDoc/SYNEX/Saved_Telescope_Dicts/Athena_1_dev.dat",
+                "orbitFile":"/Users/baird/Documents/LabEx_PostDoc/SYNEX/orbit_files/Athena_20340601_728d_inc60_R750Mkm_ecc4_ArgPeri20_AscNode-10_phi020_P90_frozenFalse_base.dat",
+                "NeworbitFile":"/Users/baird/Documents/LabEx_PostDoc/SYNEX/orbit_files/Athena_20340601_728d_inc60_R750Mkm_ecc4_ArgPeri20_AscNode-10_phi020_P90_frozenFalse_dev.dat",
+                "tilesType" : "ranked",
                 "frozenAthena" : False, # False,
                 "exposuretime" : 10000., # 6*60*60,
                 "inc" : 60., # 60., # In DEGREES, incline of orbital plane normal to Sun-Earth axis.
-                "MeanRadius" : 750000000, # 750000000., # meters (from earth-orbit normal axis)
+                "MeanRadius" : 750000000., # 750000000., # meters (from earth-orbit normal axis)
                 "semi_maj" : 750000000., # 750000000., # equivalent to MeanRadius axis ONLY IF we say we are really orbiting the centre and not the focal point
                 "eccentricity" : 0.4, # 0.8
                 "ArgPeriapsis" : 20., # 0., # In DEGREES, angle of point of closest approach to FOCAL POINT IN ORBIT PLANE
@@ -75,6 +78,7 @@ Athena_1=SYDs.Athena(**Athena_kwargs)
 # import SYNEX.segments_athena as segs_a
 # config_struct = segs_a.calc_telescope_orbit(Athena_1.detector_config_struct,SAVETOFILE=False)
 # SYU.PlotOrbit(config_struct, SaveFig=False)
+# SYU.AnimateSkyProjOrbit(Athena_1.detector_config_struct,SaveAnim=False)
 
 # Test tiling directly with gwemopt
 tiling_kwargs={}

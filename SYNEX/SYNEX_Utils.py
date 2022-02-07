@@ -1754,7 +1754,7 @@ def TileWithGwemopt(source, detectors=None, **kwargs):
     """
     # Get the right dicts to use -- detectors=None case handled in function
     go_params,map_struct=PrepareGwemoptDicts(source,detectors)
-    
+
     # Get segments -- need to understand what this is. Line 469 of binary file 'gwemopt_run'
     import SYNEX.segments_athena as segs_a
     go_params = segs_a.get_telescope_segments(go_params)
@@ -1792,12 +1792,9 @@ def TileWithGwemopt(source, detectors=None, **kwargs):
                 go_params["config"][telescope]["tesselation"] = np.append(go_params["config"][telescope]["tesselation"],[[index,ra,dec]],axis=0)
             go_params["Ntiles"].append(len(tiles_struct.keys()))
     elif go_params["tilesType"]=="ranked":
-        # Adjust gwemopt params for requested tiling strat -- this will later be integrated into the athena init function...
-        go_params["timeallocationType"] = "powerlaw"
         # Get tiling structs
-        go_params["doMinimalTiling"]=True ###### ADDED THIS IN CASE THS HELPS THE CAUSE -- NEED TO VERIFY THAT THIS SAVES THE ROUTINE FROM BREAKING
         moc_structs = gwemopt.rankedTilesGenerator.create_ranked(go_params,map_struct)
-        tile_structs = gwemopt.tiles.moc(go_params,map_struct,moc_structs)
+        tile_structs = gwemopt.tiles.moc(go_params,map_struct,moc_structs,doSegments=False)
     elif go_params["tilesType"]=="galaxy":
         # Adjust gwemopt params for requested tiling strat -- this will later be integrated into the athena init function...
         go_params["timeallocationType"] = "powerlaw"
@@ -1813,7 +1810,6 @@ def TileWithGwemopt(source, detectors=None, **kwargs):
 
     # Replace segments with our own
     import SYNEX.segments_athena as segs_a
-    print("Check there are no segments yet:",tile_structs["Athena_1"][24398].keys())
     for telescope in tile_structs.keys():
         tile_structs[telescope] = segs_a.get_segments_tiles(go_params, go_params["config"][telescope], tile_structs[telescope])
 
@@ -3118,15 +3114,18 @@ def ExtraPlotting(source):
         plt.show()
         plt.grid()
 
-def PlotOrbit(config_struct,SaveFig=False):
+def PlotOrbit(config_struct,SkyProj=False,SaveFig=False):
     """
     Plot orbit. Mostly to check we have done things right for orbital
     calculations in segments_athena.py.
+
+    SkyProj=True will use "mollweide" projection but this takes radians as input
+    and will give give some glitchy things for patch radii due to their small
+    angular extents. If you set to cartesian (mollweide=False) patches will have
+    radii in degrees and not have the same problem.
     """
 
     orbit_dict=config_struct["orbit_dict"]
-
-    SkyProj=False
 
     from mpl_toolkits.mplot3d import Axes3D
     import astropy.constants as consts
@@ -3235,6 +3234,83 @@ def AnimateOrbit(config_struct,include_sun=False,SaveAnim=False):
     # ax.set_ylabel('Sun-Earth Axis',fontsize="x-small")
     # ax.set_zlabel('Normal to Ecliptic plane',fontsize="x-small")
     ani = animation.FuncAnimation(fig, update, N, fargs=(data, sc, data_sizes), interval=1, blit=False)
+    # Save?
+    if SaveAnim:
+        t0 = config_struct["gps_science_start"]
+        t = Time(t0, format='gps', scale='utc').isot
+        f=SYNEX_PATH+"/Plots/OrbitAnimations/"
+        pathlib.Path(f).mkdir(parents=True, exist_ok=True)
+        strname="Athena_" + "".join(t.split("T")[0].split("-")) + "_" + str(int((config_struct["mission_duration"]*364.25)//1)) + "d_inc"+str(int(config_struct["inc"]//1))+"_R"+str(int(config_struct["MeanRadius"]//1e6))+"Mkm_ecc"+str(int(config_struct["eccentricity"]//0.1))
+        strname+="_ArgPeri"+str(int(config_struct["ArgPeriapsis"]//1))+"_AscNode"+str(int(config_struct["AscendingNode"]//1))+"_phi0"+str(int(config_struct["ArgPeriapsis"]//1))
+        strname+="_P"+str(int(config_struct["period"]//1))+"_frozen"+str(config_struct["frozenAthena"])+".mp4"
+        ani.save(f+strname, writer=animation.FFMpegWriter(fps=60)) # writer=animation.PillowWriter(fps=1)) # writer='imagemagick')
+    plt.show()
+
+def AnimateSkyProjOrbit(config_struct,SkyProj=False,SaveAnim=False):
+    """
+    Animation of orbit using skymap projection. Mostly just to be cool.
+
+    SkyProj=True will use "mollweide" projection but this takes radians as input
+    and will give give some glitchy things for patch radii due to their small
+    angular extents. If you set to cartesian (mollweide=False) patches will have
+    radii in degrees and not have the same problem.
+    """
+
+    from mpl_toolkits.mplot3d import Axes3D
+    from matplotlib import animation
+    import astropy.constants as consts
+
+    if SkyProj:
+        # Then np.arctan will give radians and projections will work
+        Factor=np.pi/180.
+    else:
+        # Then we convert np.arctan to degrees for rectangular plot
+        Factor=1.
+
+    orbit_dict=config_struct["orbit_dict"]
+
+    Moon_RaDecs=Factor*orbit_dict["Moon_From_Athena_radecs"]
+    Earth_RaDecs=Factor*orbit_dict["Earth_From_Athena_radecs"]
+    Sun_RaDecs=Factor*orbit_dict["Sun_From_Athena_radecs"]
+
+    # Everything in degrees so 'Factor' handles conversion if we chose a sky projection
+    moon_radii=Factor*np.arctan(1737400./np.linalg.norm(orbit_dict["Moon_From_Athena"],axis=0))*180./np.pi
+    earth_radii=Factor*np.arctan(consts.R_earth.value/np.linalg.norm(orbit_dict["Earth_From_Athena"],axis=0))*180./np.pi
+    sun_radii=Factor*np.arctan(consts.R_sun.value/np.linalg.norm(orbit_dict["Sun_From_Athena"],axis=0))*180./np.pi
+
+    fig = plt.figure()
+    if SkyProj:
+        ax = plt.subplot(111, projection="mollweide")
+    else:
+        ax = plt.gca()
+        ax.set_aspect(1)
+
+    if not SkyProj:
+        m = plt.Circle((Moon_RaDecs[0,0], Moon_RaDecs[1,0]), moon_radii[0], color="cyan",label="Moon")
+        e = plt.Circle((Earth_RaDecs[0,0], Earth_RaDecs[1,0]), earth_radii[0], color="blue",label="Earth")
+        s = plt.Circle((Sun_RaDecs[0,0], Sun_RaDecs[1,0]), sun_radii[0], color="red",label="Sun")
+    else:
+        m = plt.Circle((Moon_RaDecs[0,0], Moon_RaDecs[1,0]), moon_radii[0], color="cyan")
+        e = plt.Circle((Earth_RaDecs[0,0], Earth_RaDecs[1,0]), earth_radii[0], color="blue")
+        s = plt.Circle((Sun_RaDecs[0,0], Sun_RaDecs[1,0]), sun_radii[0], color="red")
+    ax.add_patch(m)
+    ax.add_patch(e)
+    ax.add_patch(s)
+
+    if not SkyProj:
+        plt.xlim([-180.,180.])
+        plt.ylim([-90.,90.])
+        plt.legend(fontsize="x-small")
+
+    def update(num, ax, Moon_RaDecs, Earth_RaDecs, Sun_RaDecs, moon_radii, earth_radii, sun_radii):
+        ax.patches[0].set(center=(Moon_RaDecs[0,num], Moon_RaDecs[1,num]), radius=moon_radii[num])
+        ax.patches[1].set(center=(Earth_RaDecs[0,num], Earth_RaDecs[1,num]), radius=earth_radii[num])
+        ax.patches[2].set(center=(Sun_RaDecs[0,num], Sun_RaDecs[1,num]), radius=sun_radii[num])
+
+    ax.set_xlabel('Athena RA',fontsize="x-small")
+    ax.set_ylabel('Athena Dec',fontsize="x-small")
+    N = len(Moon_RaDecs[0,:])
+    ani = animation.FuncAnimation(fig, update, N, fargs=(ax, Moon_RaDecs, Earth_RaDecs, Sun_RaDecs, moon_radii, earth_radii, sun_radii), interval=2, blit=False)
     # Save?
     if SaveAnim:
         t0 = config_struct["gps_science_start"]

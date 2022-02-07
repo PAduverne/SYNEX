@@ -113,7 +113,7 @@ def get_segments_tile(config_struct, radec, segmentlist):
     moon_radii=np.arctan(1737400./np.linalg.norm(config_struct["orbit_dict"]["Moon_From_Athena"],axis=0))*180./np.pi
     earth_radii=np.arctan(consts.R_earth.value/np.linalg.norm(config_struct["orbit_dict"]["Earth_From_Athena"],axis=0))*180./np.pi
     sun_radii=np.arctan(consts.R_sun.value/np.linalg.norm(config_struct["orbit_dict"]["Sun_From_Athena"],axis=0))*180./np.pi
-    
+
     # Angular distances from tile direction and three astrophysical objects
     # Can we pass the 'angular_distance' function an array of directions? I think so if its ndarray...
     Moon_AngDist=angular_distance(M_f_A_radecs[0,:], M_f_A_radecs[1,:], radec.ra.value, radec.dec.value)
@@ -200,22 +200,24 @@ def get_segments_tiles(params, config_struct, tile_struct):
 
     return tile_struct
 
-def get_telescope_orbit(config_struct):
+def get_telescope_orbit(config_struct,SAVETOFILE=False):
     """
     Overhead function to either load a custom orbit from
     config_struct["orbitFile"]=full_file_path,
     or calculate an orbit approximation from additional parameters
     stored in config struct.
+
+    NB : 'SAVETOFILE' is an override flag that forces overwrite of orbitFile.
     """
-    if config_struct["orbitFile"] and os.path.isfile(config_struct["orbitFile"]):
+    if os.path.isfile(config_struct["orbitFile"]) and not SAVETOFILE:
         with open(config_struct["orbitFile"], 'rb') as f:
             config_struct["orbit_dict"] = pickle.load(f)
     else:
-        config_struct=calc_telescope_orbit(config_struct,True)
+        config_struct=calc_telescope_orbit(config_struct,SAVETOFILE)
 
     return config_struct
 
-def calc_telescope_orbit(config_struct,SAVETOFILE=False):
+def calc_telescope_orbit(config_struct,SAVETOFILE):
     """
     NB: heliospheric long and latitude assumed here. config_struct has a number of
         added parameters for orbit calculation... Consider adding a switch for
@@ -239,17 +241,16 @@ def calc_telescope_orbit(config_struct,SAVETOFILE=False):
     """
 
     # Starting and end times to calculate orbit over
+    # Always start from where phi0 is taken -- start of science measurements
+    t = Time(config_struct["gps_science_start"], format='gps', scale='utc')
+    date_start = ephem.Date(t.iso)
     if "segmentlist" in config_struct:
-        # Use the start of observation segments as starting time
+        # Use the end of observation segments as end time
         segmentlist = config_struct["segmentlist"]
-        mjd_start = segmentlist[0][0]
-        date_start = ephem.Date(Time(segmentlist[0][0], format='mjd', scale='utc').iso)
         date_end = ephem.Date(Time(segmentlist[-1][1], format='mjd', scale='utc').iso)
     else:
         # Use gps start time of science measurements
-        mjd_start = Time(config_struct["gps_science_start"], format='gps', scale='utc').mjd
-        date_start = ephem.Date(Time(config_struct["gps_science_start"], format='gps', scale='utc').iso)
-        date_end = ephem.Date(Time(mjd_start+config_struct["mission_duration"]*364.25, format='mjd', scale='utc').iso)
+        date_end = ephem.Date(Time(t.mjd+config_struct["mission_duration"]*364.25, format='mjd', scale='utc').iso)
 
     # Get number of intervals as function of latency time
     # so we know how things move between tile changes...
@@ -257,7 +258,7 @@ def calc_telescope_orbit(config_struct,SAVETOFILE=False):
     n_times = int((interval_in_days*24.*60.*60)//config_struct["exposuretime"])
 
     # Check we aren't calculating some stupid number of points...
-    if n_times>1300: n_times=1300
+    if n_times>5000: n_times=5000
 
     # Set the times - make sure we get the start and end times too. LISA/Athena sources might only have a few days to work with
     times = np.linspace(0.,interval_in_days,n_times+1)
@@ -323,7 +324,7 @@ def calc_telescope_orbit(config_struct,SAVETOFILE=False):
     Sun_From_Athena_radecs[1,:] = np.rad2deg(0.5*np.pi - Sun_From_Athena_thetaphi[0,:])
 
     # Gather for return - do we want to put these inside config_struct ?
-    times_mjd=[mjd_start+dt for dt in times]
+    times_mjd=[t.mjd+dt for dt in times]
     astrophysical_bodies_from_athena_radecs={
                         "elapsed_time_from_start":times,
                         "times_mjd":times_mjd,
@@ -340,19 +341,9 @@ def calc_telescope_orbit(config_struct,SAVETOFILE=False):
 
     # Write to file
     if SAVETOFILE:
-        if not config_struct["orbitFile"]:
-            print("Creating new orbit file...")
-            from SYNEX.SYNEX_Utils import SYNEX_PATH
-            t0 = config_struct["gps_science_start"]
-            t = Time(t0, format='gps', scale='utc').isot
-            f=SYNEX_PATH+"/orbit_files/"
-            orbitFile="Athena_" + "".join(t.split("T")[0].split("-")) + "_" + str(int((config_struct["mission_duration"]*364.25)//1)) + "d_inc"+str(int(config_struct["inc"]//1))+"_R"+str(int(config_struct["MeanRadius"]//1e6))+"Mkm_ecc"+str(int(config_struct["eccentricity"]//0.1))
-            orbitFile+="_ArgPeri"+str(int(config_struct["ArgPeriapsis"]//1))+"_AscNode"+str(int(config_struct["AscendingNode"]//1))+"_phi0"+str(int(config_struct["ArgPeriapsis"]//1))
-            orbitFile+="_P"+str(int(config_struct["period"]//1))+"_frozen"+str(config_struct["frozenAthena"])+".dat"
-            config_struct["orbitFile"]=orbitFile
         with open(config_struct["orbitFile"], 'wb') as f:
             pickle.dump(astrophysical_bodies_from_athena_radecs, f)
-        print("Saved orbit to :",orbitFile)
+        print("Saved orbit to :",config_struct["orbitFile"])
 
     return config_struct
 

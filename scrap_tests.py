@@ -53,7 +53,7 @@ Athena_kwargs={"ExistentialFileName":"/Users/baird/Documents/LabEx_PostDoc/SYNEX
                 "NewExistentialFileName":"/Users/baird/Documents/LabEx_PostDoc/SYNEX/Saved_Telescope_Dicts/Athena_1_dev.dat",
                 "orbitFile":"/Users/baird/Documents/LabEx_PostDoc/SYNEX/orbit_files/Athena_20340601_728d_inc60_R750Mkm_ecc4_ArgPeri20_AscNode-10_phi020_P90_frozenFalse_base.dat",
                 "NeworbitFile":"/Users/baird/Documents/LabEx_PostDoc/SYNEX/orbit_files/Athena_20340601_728d_inc60_R750Mkm_ecc4_ArgPeri20_AscNode-10_phi020_P90_frozenFalse_dev.dat",
-                "tilesType" : "ranked",
+                "tilesType" : "moc", # "ranked",
                 "frozenAthena" : False, # False,
                 "exposuretime" : 10000., # 6*60*60,
                 "inc" : 60., # 60., # In DEGREES, incline of orbital plane normal to Sun-Earth axis.
@@ -77,20 +77,55 @@ Athena_1=SYDs.Athena(**Athena_kwargs)
 # # Check orbit
 # import SYNEX.segments_athena as segs_a
 # config_struct = segs_a.calc_telescope_orbit(Athena_1.detector_config_struct,SAVETOFILE=False)
-# SYU.PlotOrbit(config_struct, SaveFig=False)
-# SYU.AnimateSkyProjOrbit(Athena_1.detector_config_struct,SaveAnim=False)
+# SYU.PlotOrbit(config_struct,MollProj=False,SaveFig=False)
+# SYU.AnimateOrbit(config_struct,include_sun=False,SaveAnim=False)
+# SYU.AnimateSkyProjOrbit(Athena_1.detector_config_struct,MollProj=True,SaveAnim=True)
 
 # Test tiling directly with gwemopt
-tiling_kwargs={}
-go_params, map_struct, tile_structs, coverage_struct = SYU.TileWithGwemopt(Merger, detectors=Athena_1, **tiling_kwargs)
+# tiling_kwargs={}
+# go_params, map_struct, tile_structs, coverage_struct = SYU.TileWithGwemopt(Merger, detectors=Athena_1, **tiling_kwargs)
+
+# Test tiling with detector cloning
+cloning_params={"inc":np.linspace(0., 90., 5)}
+go_params, map_struct, tile_structs, coverage_struct = SYU.TileSkyArea(Merger,detectors=Athena_1,base_telescope_params=None,cloning_params=cloning_params)
 
 # See some stats and plots plots
 gwemopt.scheduler.summary(go_params, map_struct, coverage_struct)
-gwemopt.plotting.coverage(go_params, map_struct, coverage_struct)
+# gwemopt.plotting.coverage(go_params, map_struct, coverage_struct)
 
 
 
 
+
+
+
+
+# for key,value in coverage_struct.items():
+#     print(key,value)
+
+# print(coverage_struct.keys())
+# ipixs = np.empty((0,2))
+# for ipix in coverage_struct["ipix"]:
+#     prob = np.sum(map_struct["prob"][ipix])
+#     ipixs = np.append(ipixs,ipix)
+#     ipixs = np.unique(ipixs).astype(int)
+#     cum_prob = np.sum(map_struct["prob"][ipixs])
+#
+# print("data shape:",np.shape(coverage_struct["data"]),np.shape(coverage_struct["data"])[1])
+# for ii in range(np.shape(coverage_struct["data"])[0]):
+#     print(ii, coverage_struct["data"][ii,0],coverage_struct["data"][ii,1])
+#
+# print("len ipix:",len(coverage_struct["ipix"]))
+# print("len RAs:",len(coverage_struct["data"][:,0]))
+# print("len DECs:",len(coverage_struct["data"][:,1]))
+# print("len probs:",len(coverage_struct["data"][:,6]))
+# print("RAs:",coverage_struct["data"][:,0])
+# print("DECs:",coverage_struct["data"][:,1])
+# print("probs:",coverage_struct["data"][:,6])
+
+# Shape of coverage_struct["data"]:: N-by-9:
+# Columns of coverage_struct["data"]:: ra,dec,mjd,mag,exposureTime,field,tile_probs,airmass,program_id
+# NB: sum(tile_probs)>1 if there is overlap and/or we return to tiles since this is coverage of position probability on the 'sky'
 
 
 

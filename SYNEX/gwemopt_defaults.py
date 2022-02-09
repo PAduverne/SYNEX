@@ -48,13 +48,13 @@ go_params_default={
 "doRASlices":False,
 "doRotate":False,
 "doMindifFilt":False,
-"doAvoidGalacticPlane":False
+"doAvoidGalacticPlane":False,
+"doTrueLocation":False # Not sure what this is used for...
 }
 
 
 
 # Define flags that are useful to default to True.
-go_params_default["doTrueLocation"] = True # We always want to do this for performance benchmarking
 go_params_default["doSkymap"] = True # We always want to do this
 go_params_default["doCoverage"] = True # Not sure what it is yet because it's linked to scheduler and I'm not that far yet.
 go_params_default["doSchedule"] = True # We always want to do this

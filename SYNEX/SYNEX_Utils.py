@@ -1653,107 +1653,58 @@ def GetSourceFromLisabetaData(FileName, **kwargs):
 #                 ##########################################
 
 
-def TileSkyArea(source, detectors=None, TileStrat="moc", TileFileName=None, **kwargs):
+def TileSkyArea(source,detectors=None,base_telescope_params=None,cloning_params=None):
     """
     Global function to tile skyarea. This will handle all extra tiling we might add,
-    including handling series inputs over many sources (since I think gwemopt preferes
-    several telescopes and one skymap at a time?)
+    including handling series inputs over lists of sources and/or detectors.
+
+    TO DO: Case where we inject a list of sources...
     """
+    if not base_telescope_params==None:
+        detectors=[SYDs.Athena(base_telescope_params)]
 
-    # Choose strategy for tiling - modify
-    if TileStrat=="MaxProbOld":
-        """
-        Most basic way to tile - find the max prob sky location, and start there.
-        """
-        # Params for run time
-        extent = np.sqrt(detector.FoV) # in radians to match lisabeta units - side length of FoV
-        BreakFlag = False
-        TileNo = 0 # start at 0 to comply with gwemopt convention
+    out_dirs=None
+    # Populate detectors if kwargs has directed to do so
+    if not cloning_params==None:
+        # Init telescope
+        if detectors==None:
+            base_detector=SYDs.Athena()
+        elif isinstance(detectors, list):
+            base_detector = detectors[0] # Not sure if we would ever input a list... Sort this later if we ever need it.
+        else:
+            base_detector = detectors
+        telescope_params=copy.deepcopy(base_detector.__dict__)
 
-        # Get data
-        _, _, _, X, _, Y, _, Z = SYU.PlotInferenceLambdaBeta(source.H5File, bins=50, SkyProjection=False, SaveFig=False, return_data=True)
-        betas = Y.flatten()
+        # Start populating detector list
+        out_dirs=[]
+        detectors=[]
+        for key,values in cloning_params.items():
+            out_dirs.append(key)
+            if key in base_detector.detector_go_params or base_detector.detector_config_struct:
+                dict_list = [{"ExistentialFileName":base_detector.ExistentialFileName, "NewExistentialFileName":".".join(base_detector.ExistentialFileName.split(".")[:-1])+"_"+key+"_"+str(ii+1)+"."+base_detector.ExistentialFileName.split(".")[-1], key:values[ii]} for ii in range(len(values))]
+                detectors.append([SYDs.Athena(**dict_ii) for dict_ii in dict_list])
+            else:
+                print("key:",key,"not found in either detector_go_params or detector_config_struct...")
+            # detectors.append([base_detector.setattr(key,val) for val in values])
+        print("new shape of detectors list:",np.shape(detectors)) #### NOOOOOOOO You have to go into config struct etc...
 
-        # Repeat binning to ensure you can get the right points for overlap
-        if betas[-1]-betas[0]>extent*overlap:
-            bins = 2*int((betas[-1]-betas[0])/(extent*overlap))
-            _, _, _, X, _, Y, _, Z = SYU.PlotInferenceLambdaBeta(source.H5File, bins=bins, SkyProjection=False, SaveFig=False, return_data=True)
-        Post_probs = Z.flatten()
-        lambdas = X.flatten()
-        betas = Y.flatten()
-        plt.close('all')
+    # Loop over list of lists if we need to
+    if isinstance(detectors,list) and len(np.shape(detectors))>1:
+        for ii in range(np.shape(detectors)[0]):
+            go_params, map_struct, tile_structs, coverage_struct = TileWithGwemopt(source, detectors[ii], out_dirs[ii])
+            # Combine for return here...
+    else:
+        go_params, map_struct, tile_structs, coverage_struct = TileWithGwemopt(source, detectors, out_dirs)
 
-        # Output dictionary of tile properties
-        TileDict = {"Tile Strat": TileStrat, "overlap": overlap, "tile_structs":{detector.telesope:{}}, "LISA Data File":source.H5File}
+    return go_params, map_struct, tile_structs, coverage_struct
 
-        # Run through the space of confidence area, extracting tile properties and reducing the list of total tiles
-        while BreakFlag == False:
-            tile_prob = np.max(Post_probs)
-            arg_max = np.argmax(Post_probs)
-            if not isinstance(arg_max,np.int64):
-                arg_max = arg_max[0]
-            tile_beta = betas[arg_max]
-            tile_lambda = lambdas[arg_max]
-
-            # Put in the tile to the tile dictionary
-            lambda_range=[tile_lambda-extent/2.,tile_lambda+extent/2.]
-            beta_range=[tile_beta-extent/2.,tile_beta+extent/2.]
-            ra_range=[np.rad2deg(lambda_range[0]+np.pi),np.rad2deg(lambda_range[1]+np.pi)]
-            dec_range=[np.rad2deg(beta_range[0]),np.rad2deg(beta_range[1])]
-            corners=np.array([[ra_range[0],dec_range[0]], ## Following convention of gwemopt ordering
-                     [ra_range[1],dec_range[0]],
-                     [ra_range[0],dec_range[1]],
-                     [ra_range[1],dec_range[1]]])
-            Tile = {"ra":np.rad2deg(tile_lambda+np.pi), ## gwemopt dict fields -- 'ra', 'dec', 'ipix', 'corners', 'patch', 'area', 'segmentlist'
-                    "dec":np.rad2deg(tile_beta),
-                    "ipix":[], ## this is a number but I'm not sure what it is yet...
-                    "corners":corners,
-                    "patch":[], ## this is a matplotlib 'path' thing but I'm not sure what it is yet...
-                    "area":detector.FoView*(180./np.pi)**2,
-                    "segmentlist":[],
-                    "lambda":tile_lambda, ## lisabeta dict fields
-                    "beta":tile_beta,
-                    "lambda_range":lambda_range,
-                    "beta_range":beta_range,
-                    "Center post prob": tile_prob}
-            TileDict["tile_structs"][self.telescope][TileNo] = Tile
-
-            # Delete coordinates of mode that's done minus some overlap
-            mask = [np.all([betas[ii]<tile_beta+overlap*extent, betas[ii]>tile_beta-overlap*extent, lambdas[ii]<tile_lambda+overlap*extent, lambdas[ii]>tile_lambda-overlap*extent]) for ii in range(len(lambdas))]
-            betas = np.delete(betas, mask, axis=0)
-            lambdas = np.delete(lambdas, mask, axis=0)
-            Post_probs = np.delete(Post_probs, mask, axis=0)
-
-            # exit loop if the remaining data is
-            if len(Post_probs) <= 100 or TileNo>100:
-                BreakFlag = True
-            TileNo+=1
-
-    elif any([TileStrat=="moc" , TileStrat=="greedy" , TileStrat=="hierarchical" , TileStrat=="ranked" , TileStrat=="galaxy"]):
-        """
-        Go through gwemopt...
-        """
-        TileDict=TileWithGwemopt(source,detectors=None,FileName=None,TileFileName=None, **kwargs)
-
-    # Make output file name if not specified - this will put the file in folder where user is executing their top most script
-    if TileFileName==None:
-        TileFileName = self.go_params["skymap"].split("Skymap_files")[0] + "Tile_files" + self.go_params["skymap"].split("Skymap_files")[-1]
-        TileFileName = TileFileName[:-3] + "_" + TileStrat + ".dat"
-        print(TileFileName)
-
-    # Write to file
-    with open(TileFileName, 'wb') as f:
-        pickle.dump(TileDict, f)
-
-    # Write the name of the file to the detector object
-    source.TileFileName = TileFileName
-
-def TileWithGwemopt(source, detectors=None, **kwargs):
+def TileWithGwemopt(source,detectors=None,outDirExtension=None):
     """
     Function to handle tiling through gwemopt.
     """
+
     # Get the right dicts to use -- detectors=None case handled in function
-    go_params,map_struct=PrepareGwemoptDicts(source,detectors)
+    go_params,map_struct=PrepareGwemoptDicts(source,detectors,outDirExtension)
 
     # Get segments -- need to understand what this is. Line 469 of binary file 'gwemopt_run'
     import SYNEX.segments_athena as segs_a
@@ -1840,7 +1791,7 @@ def PrepareParamsDict(detectors=None):
     del config_struct_keys["tesselation"]
     config_struct_keys=config_struct_keys.keys()
 
-    # Sense which parameters are changing in detector_go_params dicts, taking care that some detectors might hold attributes while others change them
+    # Sense which parameters are changing in detector_go_params dicts - shold be a 1 dimensional list of detectors at a time now
     # I don't think any main parameters should change here... only in config struct. Double checek this then add error if they do? Or take first
     # Value and standardize?
     for key in go_params_keys:
@@ -1855,6 +1806,8 @@ def PrepareParamsDict(detectors=None):
         if len(uniqueness_count)>ulim:
             # This is messy for arrray case and needs to be revisited...
             go_params[key+"s"] = np.array(attr_list)
+            param_name=key
+            n_iters=len(attr_list)
 
     # Sense which parameters are changing in config structs
     for key in config_struct_keys:
@@ -1869,22 +1822,25 @@ def PrepareParamsDict(detectors=None):
         if len(uniqueness_count)>ulim:
             # This is messy for arrray case and needs to be revisited...
             go_params[key+"s"] = np.array(attr_list)
+            param_name=key
+            n_iters=len(attr_list)
 
     # Fill out some necessary but missing info compiled only at runtime - just in case they aren't already there...
-    go_params["telescopes"] = [detector.detector_config_struct["telescope"] for detector in detectors] # They want this to be a list, not np array.
-    go_params["exposuretimes"] = np.array([detector.detector_config_struct["exposuretime"] for detector in detectors])
+    telescopes = [detector.detector_config_struct["telescope"] for detector in detectors] # They want this to be a list, not np array.
+    if len(np.unique(telescopes))<=n_iters:
+        telescopes=[name+"_"+str(i) for name,i in zip(telescopes,list(range(n_iters)))]
+    go_params["telescopes"]=telescopes
+    for i in range(n_iters): detectors[i].detector_config_struct["telescope"]=telescopes[i]
+    go_params["exposuretimes"] = np.array([detector.detector_config_struct["exposuretime"] for detector in detectors]) # This line is necessary and not really sure why...
 
     # Loop over each detector and fill config structs
     go_params["config"]={}
     for detector in detectors:
         go_params["config"][detector.detector_config_struct["telescope"]] = detector.detector_config_struct
 
-    # Get segments... Not sure why
-    # go_params=gwemopt.segments.get_telescope_segments(go_params)
-
     return go_params
 
-def PrepareGwemoptDicts(source,detectors=None):
+def PrepareGwemoptDicts(source,detectors=None,outDirExtension=None):
     """
     Function to prepare skymap dictionary from source and detector(s) inputs
     for injection into GWEMOPT.
@@ -1906,6 +1862,15 @@ def PrepareGwemoptDicts(source,detectors=None):
     go_params["true_dec"]=source.true_dec
     go_params["true_distance"]=source.true_distance
     go_params["Tobs"]=np.array([0.,-source.DeltatL_cut/86400.]) # in pairs of [Tstart,Tend] for times in DAYS. We CAN pass more than one pair here.
+
+    # Update the gwemopt output dir to comply with lisabeta h5 and json filenames
+    # This will overwrite existing files with the same event name... Mybe later include checks?
+    go_params["outputDir"]+="/"+".".join(source.JsonFile.split("/")[-1].split(".")[:-1])
+    if not outDirExtension==None:
+        go_params["outputDir"]+="_"+outDirExtension
+    pathlib.Path(go_params["outputDir"]).mkdir(parents=True, exist_ok=True)
+    if os.path.isfile(go_params["outputDir"]):
+        print("WARNING: outputDir",go_params["outputDir"].split("/SYNEX/")[-1],"already exists... Files within will be overwriten.")
 
     # Now get map struct
     map_struct=source.map_struct
@@ -3114,7 +3079,7 @@ def ExtraPlotting(source):
         plt.show()
         plt.grid()
 
-def PlotOrbit(config_struct,SkyProj=False,SaveFig=False):
+def PlotOrbit(config_struct,MollProj=False,SaveFig=False):
     """
     Plot orbit. Mostly to check we have done things right for orbital
     calculations in segments_athena.py.
@@ -3134,7 +3099,7 @@ def PlotOrbit(config_struct,SkyProj=False,SaveFig=False):
     Earth_RaDecs=orbit_dict["Earth_From_Athena_radecs"]
     Sun_RaDecs=orbit_dict["Sun_From_Athena_radecs"]
 
-    if SkyProj:
+    if MollProj:
         # Then np.arctan will give radians and projections will work
         Factor=np.pi/180.
     else:
@@ -3147,7 +3112,7 @@ def PlotOrbit(config_struct,SkyProj=False,SaveFig=False):
     sun_radii=np.arctan(consts.R_sun.value/np.linalg.norm(orbit_dict["Sun_From_Athena"],axis=0))*180./np.pi
 
     fig = plt.figure()
-    if SkyProj:
+    if MollProj:
         ax = plt.subplot(111, projection="mollweide")
     else:
         ax = plt.gca()
@@ -3165,7 +3130,7 @@ def PlotOrbit(config_struct,SkyProj=False,SaveFig=False):
         ax.add_patch(m)
         ax.add_patch(e)
         ax.add_patch(s)
-    if not SkyProj:
+    if not MollProj:
         plt.xlim([-180.,180.])
         plt.ylim([-90.,90.])
         plt.legend(fontsize="x-small")
@@ -3176,7 +3141,10 @@ def PlotOrbit(config_struct,SkyProj=False,SaveFig=False):
         t = Time(t0, format='gps', scale='utc').isot
         f=SYNEX_PATH+"/Plots/orbits/"
         pathlib.Path(f).mkdir(parents=True, exist_ok=True)
-        strname="Athena_" + "".join(t.split("T")[0].split("-")) + "_" + str(int((config_struct["mission_duration"]*364.25)//1)) + "d_inc"+str(int(config_struct["inc"]//1))+"_R"+str(int(config_struct["MeanRadius"]//1e6))+"Mkm_ecc"+str(int(config_struct["eccentricity"]//0.1))
+        if MollProj:
+            strname="Athena_mollweide_" + "".join(t.split("T")[0].split("-")) + "_" + str(int((config_struct["mission_duration"]*364.25)//1)) + "d_inc"+str(int(config_struct["inc"]//1))+"_R"+str(int(config_struct["MeanRadius"]//1e6))+"Mkm_ecc"+str(int(config_struct["eccentricity"]//0.1))
+        else:
+            strname="Athena_cartesian_" + "".join(t.split("T")[0].split("-")) + "_" + str(int((config_struct["mission_duration"]*364.25)//1)) + "d_inc"+str(int(config_struct["inc"]//1))+"_R"+str(int(config_struct["MeanRadius"]//1e6))+"Mkm_ecc"+str(int(config_struct["eccentricity"]//0.1))
         strname+="_ArgPeri"+str(int(config_struct["ArgPeriapsis"]//1))+"_AscNode"+str(int(config_struct["AscendingNode"]//1))+"_phi0"+str(int(config_struct["ArgPeriapsis"]//1))
         strname+="_P"+str(int(config_struct["period"]//1))+"_frozen"+str(config_struct["frozenAthena"])+".pdf"
         plt.savefig(f+strname,dpi=200)
@@ -3186,6 +3154,9 @@ def PlotOrbit(config_struct,SkyProj=False,SaveFig=False):
 def AnimateOrbit(config_struct,include_sun=False,SaveAnim=False):
     """
     Animation of orbit. Mostly just to be cool.
+
+    To change from 'mp4' to 'swf' format (eg for inclusion in latex slides), use command line:
+    "ffmpeg -i in.mp4 out.swf"
     """
     from mpl_toolkits.mplot3d import Axes3D
     from matplotlib import animation
@@ -3246,7 +3217,7 @@ def AnimateOrbit(config_struct,include_sun=False,SaveAnim=False):
         ani.save(f+strname, writer=animation.FFMpegWriter(fps=60)) # writer=animation.PillowWriter(fps=1)) # writer='imagemagick')
     plt.show()
 
-def AnimateSkyProjOrbit(config_struct,SkyProj=False,SaveAnim=False):
+def AnimateSkyProjOrbit(config_struct,MollProj=False,SaveAnim=False):
     """
     Animation of orbit using skymap projection. Mostly just to be cool.
 
@@ -3254,13 +3225,16 @@ def AnimateSkyProjOrbit(config_struct,SkyProj=False,SaveAnim=False):
     and will give give some glitchy things for patch radii due to their small
     angular extents. If you set to cartesian (mollweide=False) patches will have
     radii in degrees and not have the same problem.
+
+    To change from 'mp4' to 'swf' format (eg for inclusion in latex slides), use command line:
+    "ffmpeg -i in.mp4 out.swf"
     """
 
     from mpl_toolkits.mplot3d import Axes3D
     from matplotlib import animation
     import astropy.constants as consts
 
-    if SkyProj:
+    if MollProj:
         # Then np.arctan will give radians and projections will work
         Factor=np.pi/180.
     else:
@@ -3279,13 +3253,13 @@ def AnimateSkyProjOrbit(config_struct,SkyProj=False,SaveAnim=False):
     sun_radii=Factor*np.arctan(consts.R_sun.value/np.linalg.norm(orbit_dict["Sun_From_Athena"],axis=0))*180./np.pi
 
     fig = plt.figure()
-    if SkyProj:
+    if MollProj:
         ax = plt.subplot(111, projection="mollweide")
     else:
         ax = plt.gca()
         ax.set_aspect(1)
 
-    if not SkyProj:
+    if not MollProj:
         m = plt.Circle((Moon_RaDecs[0,0], Moon_RaDecs[1,0]), moon_radii[0], color="cyan",label="Moon")
         e = plt.Circle((Earth_RaDecs[0,0], Earth_RaDecs[1,0]), earth_radii[0], color="blue",label="Earth")
         s = plt.Circle((Sun_RaDecs[0,0], Sun_RaDecs[1,0]), sun_radii[0], color="red",label="Sun")
@@ -3297,7 +3271,7 @@ def AnimateSkyProjOrbit(config_struct,SkyProj=False,SaveAnim=False):
     ax.add_patch(e)
     ax.add_patch(s)
 
-    if not SkyProj:
+    if not MollProj:
         plt.xlim([-180.,180.])
         plt.ylim([-90.,90.])
         plt.legend(fontsize="x-small")
@@ -3317,7 +3291,10 @@ def AnimateSkyProjOrbit(config_struct,SkyProj=False,SaveAnim=False):
         t = Time(t0, format='gps', scale='utc').isot
         f=SYNEX_PATH+"/Plots/OrbitAnimations/"
         pathlib.Path(f).mkdir(parents=True, exist_ok=True)
-        strname="Athena_" + "".join(t.split("T")[0].split("-")) + "_" + str(int((config_struct["mission_duration"]*364.25)//1)) + "d_inc"+str(int(config_struct["inc"]//1))+"_R"+str(int(config_struct["MeanRadius"]//1e6))+"Mkm_ecc"+str(int(config_struct["eccentricity"]//0.1))
+        if MollProj:
+            strname="Athena_SkyProjOrbit_mollweide_" + "".join(t.split("T")[0].split("-")) + "_" + str(int((config_struct["mission_duration"]*364.25)//1)) + "d_inc"+str(int(config_struct["inc"]//1))+"_R"+str(int(config_struct["MeanRadius"]//1e6))+"Mkm_ecc"+str(int(config_struct["eccentricity"]//0.1))
+        else:
+            strname="Athena_SkyProjOrbit_cartesian_" + "".join(t.split("T")[0].split("-")) + "_" + str(int((config_struct["mission_duration"]*364.25)//1)) + "d_inc"+str(int(config_struct["inc"]//1))+"_R"+str(int(config_struct["MeanRadius"]//1e6))+"Mkm_ecc"+str(int(config_struct["eccentricity"]//0.1))
         strname+="_ArgPeri"+str(int(config_struct["ArgPeriapsis"]//1))+"_AscNode"+str(int(config_struct["AscendingNode"]//1))+"_phi0"+str(int(config_struct["ArgPeriapsis"]//1))
         strname+="_P"+str(int(config_struct["period"]//1))+"_frozen"+str(config_struct["frozenAthena"])+".mp4"
         ani.save(f+strname, writer=animation.FFMpegWriter(fps=60)) # writer=animation.PillowWriter(fps=1)) # writer='imagemagick')

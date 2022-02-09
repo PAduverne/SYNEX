@@ -220,7 +220,6 @@ class Athena:
         detector_go_params, detector_config_struct = SYU.GWEMOPTPathChecks(detector_go_params,detector_config_struct)
 
         # Get/Calculate orbit
-        SAVETOFILE=True
         if not detector_config_struct["orbitFile"]:
             print("Creating new orbit file name...")
             t = Time(detector_config_struct["gps_science_start"], format='gps', scale='utc').isot
@@ -230,9 +229,16 @@ class Athena:
             orbitFile+="_ArgPeri"+str(int(detector_config_struct["ArgPeriapsis"]//1))+"_AscNode"+str(int(detector_config_struct["AscendingNode"]//1))+"_phi0"+str(int(detector_config_struct["ArgPeriapsis"]//1))
             orbitFile+="_P"+str(int(detector_config_struct["period"]//1))+"_frozen"+str(detector_config_struct["frozenAthena"])+".dat"
             detector_config_struct["orbitFile"]=f+orbitFile
-        if "NeworbitFile" in kwargs:
-            detector_config_struct["orbitFile"]=kwargs["NeworbitFile"]
-        elif MUTATED and os.path.isfile(detector_config_struct["orbitFile"]):
+        if MUTATED and os.path.isfile(detector_config_struct["orbitFile"]):
+            if "NeworbitFile" in kwargs:
+                # Take new filename if given
+                detector_config_struct["orbitFile"] = kwargs["NeworbitFile"]
+            elif "NewExistentialFileName" in kwargs:
+                # make a name based on this
+                detector_config_struct["orbitFile"]=SYNEX_PATH+"/orbit_files"+kwargs["NewExistentialFileName"].split("Saved_Telescope_Dicts")[-1]
+                detector_config_struct["orbitFile"]=".".join(detector_config_struct["orbitFile"].split(".")[:-1])+".dat"
+            else:
+                # No new filename given- create it. NOTE: file extension is checked in 'SYU.GWEMOPTPathChecks()' step below...
                 try:
                     # Does it already have an extension number? If so, start there...
                     orbitFileExt = detector_config_struct["orbitFile"].split("_")[-1] # e.g. '3.dat' for '4.config'
@@ -245,11 +251,12 @@ class Athena:
                 while os.path.isfile(detector_config_struct["orbitFile"]):
                     orbitFileExt+=1
                     detector_config_struct["orbitFile"] = "_".join(detector_config_struct["orbitFile"].split("_")[:-1]) + "_" + str(orbitFileExt) + "." + detector_config_struct["orbitFile"].split(".")[-1]
-        elif not MUTATED and os.path.isfile(detector_config_struct["orbitFile"]):
-            # Only False when detector is not mutated and the file exists -- only time we allow the orbit to be read in instead of recalculated.
-            SAVETOFILE=False
 
         # NB : SAVETOFILE=True will force it to recalculate and overwrite any existing 'orbitFile'
+        if MUTATED or not os.path.isfile(detector_config_struct["orbitFile"]):
+            SAVETOFILE=True
+        else:
+            SAVETOFILE=False
         import SYNEX.segments_athena as segs_a
         detector_config_struct = segs_a.get_telescope_orbit(detector_config_struct,SAVETOFILE=SAVETOFILE)
 

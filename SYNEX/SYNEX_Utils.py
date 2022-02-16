@@ -50,7 +50,7 @@ import ptemcee.mpi_pool as mpi_pool
 import SYNEX.SYNEX_Sources as SYSs
 import SYNEX.SYNEX_Detectors as SYDs
 
-# Finally, plotting stuff
+# Plotting stuff
 import matplotlib.pyplot as plt
 import matplotlib as mpl
 import matplotlib.pylab as pylab
@@ -68,6 +68,10 @@ pylab_params = {'legend.fontsize': 8, # 'x-large',
          'font.size': 8} # 0.1}
 pylab.rcParams.update(pylab_params)
 mpl.use('MacOSX')
+
+# Stop warnings about deprecated methods...
+import warnings
+warnings.filterwarnings("ignore")
 
 # # Import lalsimulation stuff incase we decide to use it later - you have to download it from the website I think like acor etc.
 # import lalsimulation
@@ -981,7 +985,7 @@ def WriteParamsToJson(source, detector, inference_params, IsMaster=True, **RunTi
             json.dump(json_default_dict, f, indent=2)
         f.close()
     else:
-        time.sleep(10)
+        time.sleep(10) # MPI.COMM_WORLD.Barrier()???
 
 def RunFoMOverRange(source,detector,ParamDict,FigureOfMerit='SNR',RunGrid=False,inference_params=None,**InferenceTechkwargs):
     """
@@ -1675,7 +1679,7 @@ def TileSkyArea(source,detectors=None,base_telescope_params=None,cloning_params=
             base_detector = detectors
         telescope_params=copy.deepcopy(base_detector.__dict__)
 
-        # Start populating detector list
+        # Start populating detector list -- list of lists, each embedded list corresponds to each requested cloning parameter
         out_dirs=[]
         detectors=[]
         for key,values in cloning_params.items():
@@ -1686,7 +1690,11 @@ def TileSkyArea(source,detectors=None,base_telescope_params=None,cloning_params=
             else:
                 print("key:",key,"not found in either detector_go_params or detector_config_struct...")
             # detectors.append([base_detector.setattr(key,val) for val in values])
-        print("new shape of detectors list:",np.shape(detectors)) #### NOOOOOOOO You have to go into config struct etc...
+        print("new shape of detectors list:",np.shape(detectors), np.shape(out_dirs), detectors[0])
+
+        # Sanity check that cloning went ok...
+        print_check=[det.detector_config_struct["exposuretime"] for det in detectors[0]]
+        print("Cloning sanity check:",print_check, out_dirs)
 
     # Loop over list of lists if we need to
     if isinstance(detectors,list) and len(np.shape(detectors))>1:
@@ -1718,24 +1726,24 @@ def TileWithGwemopt(source,detectors=None,outDirExtension=None):
     elif go_params["tilesType"]=="moc":
         moc_structs = gwemopt.moc.create_moc(go_params, map_struct=map_struct)
         tile_structs = gwemopt.tiles.moc(go_params,map_struct,moc_structs,doSegments=False) # doSegments=False ?? Only for 'moc'... Otherwise it calls gwemopt.segments.get_segments_tiles
+        for telescope in tile_structs.keys():
+            tile_structs[telescope] = segs_a.get_segments_tiles(go_params, go_params["config"][telescope], tile_structs[telescope])
     elif go_params["tilesType"]=="greedy":
-        # Adjust gwemopt params for requested tiling strat -- this will later be integrated into the athena init function...
-        go_params["timeallocationType"] = "powerlaw"
-        # Get tiling structs
         tile_structs = gwemopt.tiles.greedy(go_params,map_struct)
+        go_params["Ntiles"] = []
         for telescope in go_params["telescopes"]:
+            tile_structs[telescope] = segs_a.get_segments_tiles(go_params, go_params["config"][telescope], tile_structs[telescope]) # replace segs with our own
             go_params["config"][telescope]["tesselation"] = np.empty((0,3))
             tiles_struct = tile_structs[telescope]
             for index in tiles_struct.keys():
                 ra, dec = tiles_struct[index]["ra"], tiles_struct[index]["dec"]
                 go_params["config"][telescope]["tesselation"] = np.append(go_params["config"][telescope]["tesselation"],[[index,ra,dec]],axis=0)
+            go_params["Ntiles"].append(len(tiles_struct.keys()))
     elif go_params["tilesType"]=="hierarchical":
-        # Adjust gwemopt params for requested tiling strat -- this will later be integrated into the athena init function...
-        go_params["timeallocationType"] = "powerlaw"
-        # Get tiling structs
-        tile_structs = gwemopt.tiles.hierarchical(go_params,map_struct)
+        tile_structs = gwemopt.tiles.hierarchical(go_params,map_struct) # ,doSegments=False)
         go_params["Ntiles"] = []
         for telescope in go_params["telescopes"]:
+            tile_structs[telescope] = segs_a.get_segments_tiles(go_params, go_params["config"][telescope], tile_structs[telescope]) # replace segs with our own
             go_params["config"][telescope]["tesselation"] = np.empty((0,3))
             tiles_struct = tile_structs[telescope]
             for index in tiles_struct.keys():
@@ -1746,23 +1754,19 @@ def TileWithGwemopt(source,detectors=None,outDirExtension=None):
         # Get tiling structs
         moc_structs = gwemopt.rankedTilesGenerator.create_ranked(go_params,map_struct)
         tile_structs = gwemopt.tiles.moc(go_params,map_struct,moc_structs,doSegments=False)
+        for telescope in tile_structs.keys():
+            tile_structs[telescope] = segs_a.get_segments_tiles(go_params, go_params["config"][telescope], tile_structs[telescope])
     elif go_params["tilesType"]=="galaxy":
-        # Adjust gwemopt params for requested tiling strat -- this will later be integrated into the athena init function...
-        go_params["timeallocationType"] = "powerlaw"
-        # Get tiling structs
+        # Really not sure how this works and where segments are calculated... Use this method with care.
         map_struct, catalog_struct = gwemopt.catalog.get_catalog(go_params, map_struct)
         tile_structs = gwemopt.tiles.galaxy(go_params,map_struct,catalog_struct)
         for telescope in go_params["telescopes"]:
+            # tile_structs[telescope] = segs_a.get_segments_tiles(go_params, go_params["config"][telescope], tile_structs[telescope])
             go_params["config"][telescope]["tesselation"] = np.empty((0,3))
             tiles_struct = tile_structs[telescope]
             for index in tiles_struct.keys():
                 ra, dec = tiles_struct[index]["ra"], tiles_struct[index]["dec"]
                 go_params["config"][telescope]["tesselation"] = np.append(go_params["config"][telescope]["tesselation"],[[index,ra,dec]],axis=0)
-
-    # Replace segments with our own
-    import SYNEX.segments_athena as segs_a
-    for telescope in tile_structs.keys():
-        tile_structs[telescope] = segs_a.get_segments_tiles(go_params, go_params["config"][telescope], tile_structs[telescope])
 
     # Allocate times to tiles
     tile_structs, coverage_struct = gwemopt.coverage.timeallocation(go_params, map_struct, tile_structs)
@@ -1777,13 +1781,6 @@ def PrepareParamsDict(detectors=None):
 
     Can we give kwargs option to ask for an array of detectors with given attribute changes?
     """
-    if detectors==None:
-        # Create default Athena detector
-        detectors = SYDs.Athena()
-    if not isinstance(detectors, list):
-        # turn into list if not one already
-        detectors = list([detectors])
-
     # Get first set of go_params and config struct
     go_params = copy.deepcopy(detectors[0].detector_go_params)
     go_params_keys = go_params.keys()
@@ -1794,6 +1791,7 @@ def PrepareParamsDict(detectors=None):
     # Sense which parameters are changing in detector_go_params dicts - shold be a 1 dimensional list of detectors at a time now
     # I don't think any main parameters should change here... only in config struct. Double checek this then add error if they do? Or take first
     # Value and standardize?
+    n_iters=1
     for key in go_params_keys:
         attr_list = [detector.detector_go_params[key] for detector in detectors]
         try:
@@ -1853,21 +1851,45 @@ def PrepareGwemoptDicts(source,detectors=None,outDirExtension=None):
 
     Include variable Tobs- gwemopt uses the option of several available windows... Maybe for scheduling time wtih telescope(s) or map updates.
     """
-    # Prepare go_params from detector(s) first - this function already treats detectors=None case
+    # treat different detector input cases
+    if detectors==None:
+        # Create default Athena detector
+        detectors = SYDs.Athena()
+    if not isinstance(detectors, list):
+        # turn into list if not one already
+        detectors = list([detectors])
+
+    # Prepare go_params from detector(s) first
     go_params = PrepareParamsDict(detectors)
 
+    # Ideal pixelation for detector(s) FoV has pixel area <= min FOV
+    nside_arr=np.array([2**i for i in range(11,3,-1)])
+    area_arr=hp.nside2pixarea(nside_arr,degrees=True)
+    area_cut = np.min([det.detector_config_struct["FOV"] for det in detectors])
+    nside=nside_arr[np.searchsorted(area_arr, area_cut, side='left')-1]
+    print("Ideal nside is:",nside)
+
     # Update missing params in go_params contained in source
+    go_params["nside"]=nside # hp.pixelfunc.get_nside(source.map_struct["prob"])
+    if source.gpstime!=None:
+        go_params["gpstime"]=source.gpstime
+    else:
+        go_params["gpstime"]=np.max([det.detector_config_struct["gps_science_start"] for det in detectors]) # find first day that all detectors can start tiling
     go_params["do3D"]=source.do3D
     go_params["true_ra"]=source.true_ra
     go_params["true_dec"]=source.true_dec
     go_params["true_distance"]=source.true_distance
-    go_params["Tobs"]=np.array([0.,-source.DeltatL_cut/86400.]) # in pairs of [Tstart,Tend] for times in DAYS. We CAN pass more than one pair here.
+    go_params["Tobs"]=np.array([0.,-source.DeltatL_cut/86400.]) # np.array([0.,100.]) # in pairs of [Tstart,Tend] for times in DAYS. We CAN pass more than one pair here.
 
     # Update the gwemopt output dir to comply with lisabeta h5 and json filenames
-    # This will overwrite existing files with the same event name... Mybe later include checks?
-    go_params["outputDir"]+="/"+".".join(source.JsonFile.split("/")[-1].split(".")[:-1])
-    if not outDirExtension==None:
-        go_params["outputDir"]+="_"+outDirExtension
+    # This will overwrite existing files with the same event name... Maybe later include checks?
+    if not go_params["tilesType"] in ["hierarchical","greedy"]:
+        ### DONT add subfolder structure to 'outputDir' if sampler based tilesType is requested:
+        ### The pathlength becomes too long for pymultinest so filenames get truncated, leading to 'file not found' errors...
+        ### "greedy" acutally uses emcee -- does this have the same problem?
+        go_params["outputDir"]+="/"+".".join(source.JsonFile.split("/")[-1].split(".")[:-1])
+        if not outDirExtension==None:
+            go_params["outputDir"]+="_"+outDirExtension
     pathlib.Path(go_params["outputDir"]).mkdir(parents=True, exist_ok=True)
     if os.path.isfile(go_params["outputDir"]):
         print("WARNING: outputDir",go_params["outputDir"].split("/SYNEX/")[-1],"already exists... Files within will be overwriten.")
@@ -1875,8 +1897,8 @@ def PrepareGwemoptDicts(source,detectors=None,outDirExtension=None):
     # Now get map struct
     map_struct=source.map_struct
 
-    # Run through the GWEMOPT checker for uniformity between go_params and sky_map
-    # We can apply rotations etc here - TO INCLUDE LATER?
+    # Run through the GWEMOPT checker for uniformity between go_params and sky_map (rescale nside etc)
+    # We can also apply rotations etc here
     map_struct=gou.read_skymap(go_params,source.do3D,map_struct=map_struct)
 
     return go_params,map_struct

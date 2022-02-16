@@ -27,25 +27,26 @@ mpl.use('MacOSX')
 ########################### Example - Get source from file and plot skymap ###########################
 
 # Source file we want to resurract - note we only specify everything afer .../inference_data or .../inference_param_files and don't need to give suffix either
-# FileName = "IdeaPaperSystem_9d"
+# FileName = "Randomized_SYNEX/RemakePaperPlots/Randomized_angles_spins_MRat_10_1wk" # "IdeaPaperSystem_9d"
 
 # Merger args
 Merger_kwargs = {"ExistentialFileName":"/Users/baird/Documents/LabEx_PostDoc/SYNEX/Saved_Source_Dicts/IdeaPaperSystem_9d_base.dat",
                  "NewExistentialFileName":"/Users/baird/Documents/LabEx_PostDoc/SYNEX/Saved_Source_Dicts/IdeaPaperSystem_9d_dev.dat",}
-# Merger_kwargs = {"ExistentialFileName":"/Users/baird/Documents/LabEx_PostDoc/SYNEX/Saved_Source_Dicts/IdeaPaperSystem_9d_base.dat"}
+# Merger_kwargs = {"ExistentialFileName":"/Users/baird/Documents/LabEx_PostDoc/SYNEX/Saved_Source_Dicts/TestSystem_9d_base.dat"}
 
 # Resurrect - either from lisabeta data or saved source file
 Merger = SYSs.SMBH_Merger(**Merger_kwargs)
 # Merger = SYU.GetSourceFromLisabetaData(FileName,**Merger_kwargs)
 
-# Plot the CL bounds
+# # Plot the CL bounds
 # SYU.PlotInferenceLambdaBeta(Merger.H5File, bins=50, SkyProjection=True, SaveFig=False, return_data=False)
-
-# Plot
+#
+# # Plot
 # SYU.PlotSkyMapData(Merger,SaveFig=False,plotName=None)
 
 # Make some test telescopes
-t0 = '2034-06-01T00:00:00.00' # YYYY-MM-DDTHH:mm:SS.MS
+###### TO DO -- check when calculating orbit that it is intersecting properly between orbit strt and obs times...
+t0 = '2034-01-01T00:00:00.00' # YYYY-MM-DDTHH:mm:SS.MS 01/01/2034
 t = Time(t0, format='isot', scale='utc').gps
 # Athena_kwargs={"FOV":1.,"exposuretime":60.,"slew_rate":1., "telescope":"Athena_1",
 #             "ExistentialFileName":"/Users/baird/Documents/LabEx_PostDoc/SYNEX/Saved_Telescope_Dicts/Athena_1_base.dat"}
@@ -53,9 +54,12 @@ Athena_kwargs={"ExistentialFileName":"/Users/baird/Documents/LabEx_PostDoc/SYNEX
                 "NewExistentialFileName":"/Users/baird/Documents/LabEx_PostDoc/SYNEX/Saved_Telescope_Dicts/Athena_1_dev.dat",
                 "orbitFile":"/Users/baird/Documents/LabEx_PostDoc/SYNEX/orbit_files/Athena_20340601_728d_inc60_R750Mkm_ecc4_ArgPeri20_AscNode-10_phi020_P90_frozenFalse_base.dat",
                 "NeworbitFile":"/Users/baird/Documents/LabEx_PostDoc/SYNEX/orbit_files/Athena_20340601_728d_inc60_R750Mkm_ecc4_ArgPeri20_AscNode-10_phi020_P90_frozenFalse_dev.dat",
-                "tilesType" : "moc", # "ranked",
+                "tilesType" : "moc", # "greedy", # "hierarchical", # "ranked", # moc/greedy/hierarchical/ranked/galaxy.
+                "timeallocationType" : "powerlaw", # "absmag" / "powerlaw" / "waw" / "manual" / "pem"
+                "doCalcTiles" : False, # Calculates the no. of "hierarchical" tiles based on sky area prob threashold and FoV
+                "Ntiles" : 50, # 50, # Speific to tilesType=hierarchical (I think). Needs to be set if "doCalcTiles"=False
                 "frozenAthena" : False, # False,
-                "exposuretime" : 10000., # 6*60*60,
+                "exposuretime" : 10000., # 6*60*60, # 60., #
                 "inc" : 60., # 60., # In DEGREES, incline of orbital plane normal to Sun-Earth axis.
                 "MeanRadius" : 750000000., # 750000000., # meters (from earth-orbit normal axis)
                 "semi_maj" : 750000000., # 750000000., # equivalent to MeanRadius axis ONLY IF we say we are really orbiting the centre and not the focal point
@@ -65,17 +69,22 @@ Athena_kwargs={"ExistentialFileName":"/Users/baird/Documents/LabEx_PostDoc/SYNEX
                 "phi_0" : 10., # 0., # in DEGREES, initial phase of Athena when measurments start
                 "period" : 90., # 180., # In days, for one complete halo orbit about L2
                 "gps_science_start" : t, # 1703721618.0, # 01/01/2034 00:00:00.000 UTC -- gps start time of science meaasurements
-                "mission_duration" : 2.,
-                "filt_change_time" : 0.,
-                "overhead_per_exposure" : 0.,
+                "mission_duration" : 2., # In years
+                "filt_change_time" : 0., # In seconds?
+                "overhead_per_exposure" : 0., # In seconds?
                 "latitude" : 0., # None, # 20.7204,       ### None if we want a telesscopic orbit?
                 "longitude" : 0., # None, # -156.1552,    ### None if we want a telesscopic orbit?
-                "elevation" : 0. # None, # 3055.0,       ### None if we want a telesscopic orbit? GWEMOPT uses these for airmass calcs... Ask to raise flag for this?
+                "elevation" : 0., # None, # 3055.0,       ### None if we want a telesscopic orbit? GWEMOPT uses these for airmass calcs... Ask to raise flag for this?
+                "slew_rate" : 100., # 1., # in deg/s -- Idea paper has 1 deg/sec
+                "horizon" : 0., # 30.,                    ### None if we want a telesscopic orbit?
+                "doMinimalTiling" : True, #  False,
+                "readout" : 0.0001, # 6
+                "doSingleExposure" : False, # False
                }
 Athena_1=SYDs.Athena(**Athena_kwargs)
 
 # # Check orbit
-# import SYNEX.segments_athena as segs_a
+import SYNEX.segments_athena as segs_a
 # config_struct = segs_a.calc_telescope_orbit(Athena_1.detector_config_struct,SAVETOFILE=False)
 # SYU.PlotOrbit(config_struct,MollProj=False,SaveFig=False)
 # SYU.AnimateOrbit(config_struct,include_sun=False,SaveAnim=False)
@@ -86,12 +95,47 @@ Athena_1=SYDs.Athena(**Athena_kwargs)
 # go_params, map_struct, tile_structs, coverage_struct = SYU.TileWithGwemopt(Merger, detectors=Athena_1, **tiling_kwargs)
 
 # Test tiling with detector cloning
-cloning_params={"inc":np.linspace(0., 90., 5)}
+cloning_params={"exposuretime":np.logspace(1,4,num=5,endpoint=True,base=10.)} # {"inc":np.linspace(0., 90., 5)}
 go_params, map_struct, tile_structs, coverage_struct = SYU.TileSkyArea(Merger,detectors=Athena_1,base_telescope_params=None,cloning_params=cloning_params)
 
+
+# Extract coverage information
+for detector in tile_structs:
+    tile_struct=tile_structs[detector]
+    pic_ra_tmp,pic_dec_tmp = 0.01,0.01
+    tile_keys_list=list(tile_struct.keys())
+    pix_record=np.unique(np.concatenate([tile_struct[tile_id]["ipix"] for tile_id in tile_keys_list if len(tile_struct[tile_id]["ipix"])>0],axis=0))
+    ang_dists=np.array([segs_a.angular_distance(tile_struct[tile_id]["ra"],tile_struct[tile_id]["dec"],pic_ra_tmp,pic_dec_tmp) for tile_id in tile_keys_list])
+    probs1=np.array([tile_struct[tile_id]["prob"] for tile_id in tile_keys_list])
+    probs2=np.array([np.sum(map_struct["prob"][tile_struct[tile_id]["ipix"]]) for tile_id in tile_keys_list])
+    tile_id_tmp=tile_keys_list[np.argmin(ang_dists)]
+    TotProb1=np.sum(probs1)
+    TotProb2=np.sum(probs2)
+    TotProb3=np.sum(map_struct["prob"][pix_record])
+    print("Total probability (det,tile_struct,covered map_struct, covered map_struct duplicates dropped):",detector,TotProb1,TotProb2,TotProb3)
+
+
+
+
+prob1=np.sum(coverage_struct["data"][:,6])
+prob2=np.sum([np.sum(map_struct["prob"][pix]) for pix in coverage_struct["ipix"]])
+pix_record=np.unique(np.concatenate(coverage_struct["ipix"][:],axis=0))
+prob3=np.sum(map_struct["prob"][pix_record])
+
+ang_dists=segs_a.angular_distance(coverage_struct["data"][:,0],coverage_struct["data"][:,1],pic_ra_tmp,pic_dec_tmp)
+tile_prob1_tmp=coverage_struct["data"][np.argmin(ang_dists),6]
+tile_prob2_tmp=np.sum(map_struct["prob"][coverage_struct["ipix"][np.argmin(ang_dists)]])
+
+print("Trial cov tile p:",tile_prob1_tmp,tile_prob2_tmp)
+print("Total cov probability (cov_struct data, map_struct, map_struct duplicates dropped):",prob1,prob2,prob3)
+
 # See some stats and plots plots
-gwemopt.scheduler.summary(go_params, map_struct, coverage_struct)
-# gwemopt.plotting.coverage(go_params, map_struct, coverage_struct)
+# gwemopt.plotting.tiles(go_params, map_struct, tile_structs)
+# print("Start of summary call: -----------------------------------------------")
+# gwemopt.scheduler.summary(go_params, map_struct, coverage_struct)
+# SYU.PlotSkyMapData(Merger,SaveFig=False,plotName=None)
+# print("Start of plotting call: -----------------------------------------------")
+gwemopt.plotting.coverage(go_params, map_struct, coverage_struct)
 
 
 

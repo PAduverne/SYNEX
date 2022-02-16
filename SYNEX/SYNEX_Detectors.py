@@ -178,7 +178,7 @@ class Athena:
                 detector_go_params[key]=value
             elif key in detector_config_struct:
                 detector_config_struct[key]=value
-            elif key not in ["NewExistentialFileName"]: # Kept like this in case more non-gwemopt keys are added
+            elif key not in ["NewExistentialFileName","NeworbitFile"]: # Kept like this in case more non-gwemopt keys are added
                 print("Setting new keys '",key,"' in detector_config_struct...")
                 print_reminder = True
                 detector_config_struct[key]=value
@@ -309,7 +309,11 @@ class Athena:
 
     def ComputeTesselation(self):
         if self.detector_go_params["doSingleExposure"]:
-            exposuretime = np.array(self.detector_go_params["exposuretimes"].split(","),dtype=np.float)[0]
+            # exposuretime = np.array(self.detector_go_params["exposuretimes"].split(","),dtype=np.float)[0]
+            if "exposuretimes" in self.detector_go_params:
+                exposuretime = np.array(self.detector_go_params["exposuretimes"].split(","),dtype=np.float)[0]
+            else:
+                exposuretime=self.detector_config_struct["exposuretime"]
             nmag = -2.5*np.log10(np.sqrt(self.detector_config_struct["exposuretime"]/exposuretime))
             self.detector_config_struct["magnitude"] = self.detector_config_struct["magnitude"] + nmag
             self.detector_config_struct["exposuretime"] = exposuretime

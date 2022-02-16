@@ -3,6 +3,8 @@
 
 GWEMOPT parameters dictionary definition -- all of their flags are here for convenience...
 
+Definitions can be found here: https://iopscience.iop.org/article/10.3847/1538-4357/838/2/108/meta
+
 
 """
 
@@ -29,7 +31,7 @@ go_params_default={
 "doSkybrightness":False,
 "doEfficiency":False,
 "doTransients":False,
-"doSingleExposure":False, # I think this means single exposure time - i.e. one latency time per tile.
+"doSingleExposure":False, # I think this means single exposure time - i.e. one latency time per tile. I False time times are weighted by their skymap probability (sum of map_struct pixel probs)
 "doAlternatingFilters":False,
 "doMaxTiles":False,
 "doReferences":False,
@@ -59,7 +61,7 @@ go_params_default["doSkymap"] = True # We always want to do this
 go_params_default["doCoverage"] = True # Not sure what it is yet because it's linked to scheduler and I'm not that far yet.
 go_params_default["doSchedule"] = True # We always want to do this
 go_params_default["doTiles"] = True # We always want to calculate these unless we already have them, in which case we can set this to False.
-go_params_default["doMinimalTiling"] = True # I think this means minimize overlap of tiles when calculating tesselation...
+go_params_default["doMinimalTiling"] = True # This is a flag to tile only 90% CL area of skymap instead of the whole sky - if False the runtime is huge and plotting tesselation shows the whole sky is tiled
 go_params_default["doCalcTiles"] = True # We always want to calculate these unless we already have them, in which case we can set this to False.
 
 
@@ -73,13 +75,13 @@ go_params_default["coverageFiles"] = SYNEX_PATH+"/gwemopt_cover_files/Athena_tes
 go_params_default["lightcurveFiles"] = SYNEX_PATH+"/gwemopt/lightcurves/Me2017_H4M050V20.dat" ### THIS NEEDS TO BE CHANGED LATER WHEN WE HAVE SOME LIGHTCURVES...
 go_params_default["tilesType"] = "moc" #  Tiling options are moc/greedy/hierarchical/ranked/galaxy.
 go_params_default["scheduleType"] = "greedy" # Scheduling options are greedy/sear/weighted/airmass_weighted, or with _slew.
-go_params_default["timeallocationType"] = "powerlaw"
+go_params_default["timeallocationType"] = "powerlaw" # "absmag" / "powerlaw" / "waw" / "manual" / "pem"
 go_params_default["configDirectory"] = None # SYNEX_PATH+"/gwemopt_conf_files" # Is this needed? I don't think so...
-go_params_default["gpstime"] = 1703721618.0 # 01/01/2034 00:00:00.000 UTC -- time of event
+go_params_default["gpstime"] = None # 1703721618.0 # 01/01/2034 00:00:00.000 UTC -- time of event -- set by source and if not by detectors
 go_params_default["Ninj"] = 1000
 go_params_default["Ndet"] = 1
-go_params_default["Ntiles"] = 50
-go_params_default["Ntiles_cr"] = 0.70
+go_params_default["Ntiles"] = 50 # Speific to tilesType=hierarchical (I think)
+go_params_default["Ntiles_cr"] = 0.70 # Speific to tilesType=hierarchical (I think)
 go_params_default["Dscale"] = 1.0
 go_params_default["nside"] = 128
 go_params_default["Tobs"] = None # Source param to be defined when data file is provided -- e.g. np.array([0.0,1.0]) = [Tstart,Tend], for times in DAYS
@@ -140,18 +142,18 @@ config_struct_default = {
 "telescope" : "Athena_test",
 "filt" : "c",
 "magnitude" : 18.7,
-"exposuretime" : 10000.,    ### IN SECONDS
+"exposuretime" : 10000.,    ### IN SECONDS, INCLUDES SLEW AND READONOUT TIME!
 "min_observability_duration" : 0., ### IN HOURS
 "latitude" : 0., # None, # 20.7204,       ### None if we want a telesscopic orbit?
 "longitude" : 0., # None, # -156.1552,    ### None if we want a telesscopic orbit?
 "elevation" : 0., # None, # 3055.0,       ### None if we want a telesscopic orbit? GWEMOPT uses these for airmass calcs... Ask to raise flag for this? It's always written to file but only used if you choose "airmass_weighted" scheduleType
 "FOV_coverage" : 1., # In deg^2
-"FOV" : 1., # In deg^2
+"FOV" : 1., # In deg^2 ### Is it deg^2? line 26 of samplers.py suggests it's the radius/side length of the observation window...
 "FOV_coverage_type" : "square",
 "FOV_type" : "square",
 "tesselationFile" : None,
 "slew_rate" : 1., # in s/deg
-"readout" : 6,
+"readout" : 6,                      ### In seconds?
 "horizon" : None, # 30.,            ### None if we want a telesscopic orbit
 "overhead_per_exposure" : 10., # Settle time after each slew/per tile? in seconds or what?
 "filt_change_time" : 0.,

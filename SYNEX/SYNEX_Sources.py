@@ -10,6 +10,7 @@ from datetime import date
 import pathlib
 import pickle
 # import statistics
+from scipy import stats
 from scipy.stats import norm
 
 import SYNEX.SYNEX_Utils as SYU
@@ -85,6 +86,14 @@ class SMBH_Merger:
     """
 
     def __init__(self, **kwargs_in):
+        """
+        TO DO: Need to check if read in vals from H5 file are LFrame or SSBFrame,
+        and then convert accordingly::
+        params_SSBframe=lisatools.convert_Lframe_to_SSBframe(
+                params_Lframe, t0=0., frozenLISA=False, LISAconst=pyresponse.LISAconstProposal)
+
+        But both frames should be stored in h5 file... need to make sure we are reading in the right ones.
+        """
         # Default assume class is not mutated from another saved class
         # "MUTATED" = key to force new savefile
         MUTATED=False
@@ -218,6 +227,8 @@ class SMBH_Merger:
                 self.ExistentialFileName=value
             elif key=='do3D':
                 self.do3D=value
+            elif key=='gpstime':
+                self.gpstime=value
             elif key=='EM_Flux_Data':
                 self.EM_Flux_Data=value
             elif key=='CTR_Data':
@@ -395,6 +406,8 @@ class SMBH_Merger:
                 self.ExistentialFileName=ExistentialFile
         if not hasattr(self,"do3D"):
                 self.do3D=False
+        if not hasattr(self,"gpstime"):
+                self.gpstime=None # Will be synced with detectors at EM observation stage
 
         # If we resurrected with mutation, keep a reference to where this class came from
         if MUTATED:
@@ -434,7 +447,9 @@ class SMBH_Merger:
         self.true_distance = self.dist                ## in Mpc
 
         # Now check if sky_map needs creating or reading -- adaptation for 3D case needed here...
-        if self.sky_map!=None and os.path.isfile(self.sky_map):
+        if MUTATED:
+            self.CreateSkyMapStruct()
+        elif self.sky_map!=None and os.path.isfile(self.sky_map):
             self.LoadSkymap()
         elif self.sky_map!=None and not os.path.isfile(self.sky_map):
             self.CreateSkyMapStruct()
@@ -448,10 +463,10 @@ class SMBH_Merger:
                 self.CreateSkyMapStruct()
 
         # run through gwemopt checker with a dummy params dict
-        # should we do this? If we change things in the real go_params in SYNEX_Utils, will this rework things aass required
+        # should we do this? If we change things in the real go_params in SYNEX_Utils, will this rework things as required
         # when passed again through the checker? Maybe just send through the med / std function...
         # dummy_go_params={}
-        # self.sky_map=gou.read_skymap(self.sky_map,self.do3D,dummy_go_params)
+        # self.sky_map=gou.read_skymap(dummy_go_params,is3D=self.do3D,map_struct=self.sky_map)
 
         # Save it all to file!
         self.ExistentialCrisis()
@@ -493,41 +508,58 @@ class SMBH_Merger:
         self.map_struct["ra"] = ra
         self.map_struct["dec"] = dec
 
-    def CreateSkyMapStruct(self,nside=None,SkyMapFileName=None):
-        # default pixelation if no nside given
-        if nside==None:
-            nside=128
-
-        # if SkyMapFileName given; then preferentially save to this filename.
+    def CreateSkyMapStruct(self,SkyMapFileName=None):
+        # if SkyMapFileName given then preferentially save to this filename.
         # This is checked in SYU.WriteSkymapToFile just before writing to file.
         if SkyMapFileName!=None:
             self.sky_map = SkyMapFileName
 
         # Read in data from file
         [infer_params, _, _, _] = SYU.read_h5py_file(self.H5File)
-        labels = ["lambda","beta"]
-        if np.size(infer_params[labels[0]][0])>1:
+        if np.size(infer_params["lambda"][0])>1:
             nsamples = len(infer_params["lambda"][0])
         else:
             nsamples = len(infer_params["lambda"])
-
-        # Get pixel locations from healpy params
-        npix = hp.nside2npix(nside)
-        pix_thetas, pix_phis = hp.pix2ang(nside, np.arange(npix))
-        pix_ras = np.rad2deg(pix_phis) # Ra and Dec for pix are stored in map_struct in degrees NOT radians
-        pix_decs = np.rad2deg(0.5*np.pi - pix_thetas)
-        pixels_numbers=hp.ang2pix(nside, pix_thetas, pix_phis)
 
         # Convert post angles to theta,phi
         post_phis = infer_params["lambda"]+np.pi
         post_thetas = np.pi/2.-infer_params["beta"]
 
-        # Convert posteriors to corresponding pixel number
+        # Start with basic pixel resolution
+        nside=32
+        npix = hp.nside2npix(nside)
         post_pix = hp.ang2pix(nside,post_thetas,post_phis)
 
-        # 2D pixel probability according to location
-        bins=np.arange(npix+1)
-        probs,_ = np.histogram(post_pix, bins=bins, density=True)
+        # Pixel probability according to location -- np.bincount is faster than np.histogram.
+        probs = np.bincount(post_pix,weights=np.array([1./nsamples]*nsamples), minlength=npix)
+        # bins=np.arange(npix+1)
+        # probs2,_ = np.histogram(post_pix, bins=bins, density=True) # returns the right normalization because bin widths=1.
+
+        # Check what average non-zero bin population is
+        non_zero_counts = nsamples*probs[np.where(probs>0)[0]]
+        _,minmax,mean,_,_,_=stats.describe(non_zero_counts)
+
+        # Do it all again but with better nside resolution, taking account of tiny posterior islands by capping to a max nside=2048
+        max_npix = hp.nside2npix(2048)
+        popCheck = int(mean//10)
+        if popCheck*npix<max_npix:
+            npix*=popCheck
+            nside=hp.npix2nside(npix)
+        else:
+            npix = max_npix
+            nside = 2048
+        post_pix = hp.ang2pix(nside,post_thetas,post_phis)
+        probs = np.bincount(post_pix,weights=np.array([1./nsamples]*nsamples), minlength=npix)
+
+        # Check everything went as planned
+        # non_zero_counts = nsamples*probs[np.where(probs>0)[0]]
+        # _,minmax,mean,_,_,_=stats.describe(non_zero_counts)
+        # print(stats.describe(non_zero_counts), hp.nside2pixarea(nside,degrees=True), mean//10, nside)
+
+        # Get pixel locations
+        pix_thetas, pix_phis = hp.pix2ang(nside, np.arange(npix))
+        pix_ras = np.rad2deg(pix_phis) # Ra and Dec for pix are stored in map_struct in degrees NOT radians
+        pix_decs = np.rad2deg(0.5*np.pi - pix_thetas)
 
         # Start the dictionary
         map_struct = {"prob":probs,
@@ -561,7 +593,6 @@ class SMBH_Merger:
                     if distmu[pixID]==0. or distsigma[pixID]==0. or np.isnan(distsigma[pixID]) or np.isnan(distmu[pixID]):
                         p_i = 0.
                     else:
-                        print(distmu[pixID], distsigma[pixID])
                         dp_dr = probs[pixID] * r**2 * norm(distmu[pixID], distsigma[pixID]).pdf(r)
                         p_i=np.trapz(dp_dr,r)
                     map_struct["distnorm"].append(p_i)
@@ -900,7 +931,7 @@ class SMBH_Merger:
         del MyExistentialDict["lamda"]
 
         # Save to file...
-        print("Saving source attributes...")
+        print("Saving source attributes to:",self.ExistentialFileName)
         with open(self.ExistentialFileName, 'wb') as f:
             pickle.dump(MyExistentialDict, f)
         print("Done.")

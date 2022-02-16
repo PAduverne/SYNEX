@@ -98,36 +98,14 @@ import SYNEX.segments_athena as segs_a
 cloning_params={"exposuretime":np.logspace(1,4,num=5,endpoint=True,base=10.)} # {"inc":np.linspace(0., 90., 5)}
 go_params, map_struct, tile_structs, coverage_struct = SYU.TileSkyArea(Merger,detectors=Athena_1,base_telescope_params=None,cloning_params=cloning_params)
 
+# Test input detectors one by one
+ex_ts=np.logspace(1,4,num=5,endpoint=True,base=10.)
+for ex_t in ex_ts:
+    cloning_params={"exposuretime":ex_t}
+    go_params, map_struct, tile_structs, coverage_struct = SYU.TileSkyArea(Merger,detectors=Athena_1,base_telescope_params=None,cloning_params=cloning_params)
 
-# Extract coverage information
-for detector in tile_structs:
-    tile_struct=tile_structs[detector]
-    pic_ra_tmp,pic_dec_tmp = 0.01,0.01
-    tile_keys_list=list(tile_struct.keys())
-    pix_record=np.unique(np.concatenate([tile_struct[tile_id]["ipix"] for tile_id in tile_keys_list if len(tile_struct[tile_id]["ipix"])>0],axis=0))
-    ang_dists=np.array([segs_a.angular_distance(tile_struct[tile_id]["ra"],tile_struct[tile_id]["dec"],pic_ra_tmp,pic_dec_tmp) for tile_id in tile_keys_list])
-    probs1=np.array([tile_struct[tile_id]["prob"] for tile_id in tile_keys_list])
-    probs2=np.array([np.sum(map_struct["prob"][tile_struct[tile_id]["ipix"]]) for tile_id in tile_keys_list])
-    tile_id_tmp=tile_keys_list[np.argmin(ang_dists)]
-    TotProb1=np.sum(probs1)
-    TotProb2=np.sum(probs2)
-    TotProb3=np.sum(map_struct["prob"][pix_record])
-    print("Total probability (det,tile_struct,covered map_struct, covered map_struct duplicates dropped):",detector,TotProb1,TotProb2,TotProb3)
-
-
-
-
-prob1=np.sum(coverage_struct["data"][:,6])
-prob2=np.sum([np.sum(map_struct["prob"][pix]) for pix in coverage_struct["ipix"]])
-pix_record=np.unique(np.concatenate(coverage_struct["ipix"][:],axis=0))
-prob3=np.sum(map_struct["prob"][pix_record])
-
-ang_dists=segs_a.angular_distance(coverage_struct["data"][:,0],coverage_struct["data"][:,1],pic_ra_tmp,pic_dec_tmp)
-tile_prob1_tmp=coverage_struct["data"][np.argmin(ang_dists),6]
-tile_prob2_tmp=np.sum(map_struct["prob"][coverage_struct["ipix"][np.argmin(ang_dists)]])
-
-print("Trial cov tile p:",tile_prob1_tmp,tile_prob2_tmp)
-print("Total cov probability (cov_struct data, map_struct, map_struct duplicates dropped):",prob1,prob2,prob3)
+# Print out own summary...
+# SYU.GetCoverageInfo(go_params, map_struct, tile_structs, coverage_struct)
 
 # See some stats and plots plots
 # gwemopt.plotting.tiles(go_params, map_struct, tile_structs)
@@ -135,7 +113,7 @@ print("Total cov probability (cov_struct data, map_struct, map_struct duplicates
 # gwemopt.scheduler.summary(go_params, map_struct, coverage_struct)
 # SYU.PlotSkyMapData(Merger,SaveFig=False,plotName=None)
 # print("Start of plotting call: -----------------------------------------------")
-gwemopt.plotting.coverage(go_params, map_struct, coverage_struct)
+# gwemopt.plotting.coverage(go_params, map_struct, coverage_struct)
 
 
 

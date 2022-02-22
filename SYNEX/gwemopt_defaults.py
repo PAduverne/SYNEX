@@ -27,7 +27,7 @@ go_params_default={
 "doCatalog":False,
 "doUseCatalog":False,
 "doCatalogDatabase":False,
-"doObservability":False,
+"doObservability":False, # Order tile priorities by airmass etc induced changes to observability for telescope... Not relevant for Athena
 "doSkybrightness":False,
 "doEfficiency":False,
 "doTransients":False,
@@ -80,8 +80,8 @@ go_params_default["configDirectory"] = None # SYNEX_PATH+"/gwemopt_conf_files" #
 go_params_default["gpstime"] = None # 1703721618.0 # 01/01/2034 00:00:00.000 UTC -- time of event -- set by source and if not by detectors
 go_params_default["Ninj"] = 1000
 go_params_default["Ndet"] = 1
-go_params_default["Ntiles"] = 50 # Speific to tilesType=hierarchical (I think)
-go_params_default["Ntiles_cr"] = 0.70 # Speific to tilesType=hierarchical (I think)
+go_params_default["Ntiles"] = 50 # Speific to tilesType=hierarchical and greedy
+go_params_default["Ntiles_cr"] = 0.70 # Speific to tilesType=hierarchical and greedy (I think)
 go_params_default["Dscale"] = 1.0
 go_params_default["nside"] = 128
 go_params_default["Tobs"] = None # Source param to be defined when data file is provided -- e.g. np.array([0.0,1.0]) = [Tstart,Tend], for times in DAYS
@@ -143,7 +143,7 @@ config_struct_default = {
 "filt" : "c",
 "magnitude" : 18.7,
 "exposuretime" : 10000.,    ### IN SECONDS, INCLUDES SLEW AND READONOUT TIME!
-"min_observability_duration" : 0., ### IN HOURS
+"min_observability_duration" : 0., ### IN HOURS -- minimum time per time if we set doSingleExposure=False and weight tile times by their probability
 "latitude" : 0., # None, # 20.7204,       ### None if we want a telesscopic orbit?
 "longitude" : 0., # None, # -156.1552,    ### None if we want a telesscopic orbit?
 "elevation" : 0., # None, # 3055.0,       ### None if we want a telesscopic orbit? GWEMOPT uses these for airmass calcs... Ask to raise flag for this? It's always written to file but only used if you choose "airmass_weighted" scheduleType
@@ -177,6 +177,17 @@ config_struct_default = {
 # "dec_constraint" : "-90,90",
 
 
+
+
+
+###########
+#
+# exposuretimes if doSingleExposure=True, then it takes them one by one and calculates things
+# exposuretime if doSingleExposure=False, then it takes it as a base and reduces/enlarges based on tile prob
+#
+#
+
+
 #######
 # Segments is a list of ligo time segments (like sets) for when the telescope is available to make a measurement.
 # exposurelist is a similar list of segments calculated from segments that slices them into times when there is an exposure to the source location and reduces times by overhead for each orientation, time per tile, etc.
@@ -187,6 +198,10 @@ config_struct_default = {
 
 
 
+
+
+# Coverage struct has "data" as numpy array with N*9 dimensions for N*[ra,dec,mjd,mag,exposureTime,field,prob,airmass,program_id]
+# If more than one detector, then numpy array of (n_det*N)*9 dimensions for (n_det*N)*[ra,dec,mjd,mag,exposureTime,field,prob,airmass,program_id]
 
 # ha_constraint?
 # moon_constraint?

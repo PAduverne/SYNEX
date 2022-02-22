@@ -132,6 +132,9 @@ class Athena:
         # Default is not to recompute tesselation if the saved '.tess' file exists
         MUTATED=False
 
+        # Default coverage dict is None
+        detector_source_coverage=None
+
         # Check if we are resurrecting a class from a save file
         if "ExistentialFileName" in kwargs.keys():
             self.ExistentialFileName=kwargs["ExistentialFileName"]
@@ -148,6 +151,10 @@ class Athena:
                 # Use these values as default to modify with remaining keys in '**kwargs'
                 detector_go_params = SavedDict["detector_go_params"]
                 detector_config_struct = SavedDict["detector_config_struct"]
+                if "detector_source_coverage" in SavedDict:
+                    detector_source_coverage = SavedDict["detector_source_coverage"] # None if not calculated yet
+                else:
+                    detector_source_coverage = None # None if not calculated yet
 
                 if "NewExistentialFileName" in kwargs:
                     # save file exists already and have a new one specified so mutate loaded source regardless
@@ -263,6 +270,11 @@ class Athena:
         # Set as class attributes
         self.detector_go_params = detector_go_params
         self.detector_config_struct = detector_config_struct
+        if MUTATED:
+            # Force this to be None if we changed something while resurrecting a class
+            self.detector_source_coverage=None
+        else:
+            self.detector_source_coverage=detector_source_coverage
 
         # Set save file name if not already there
         if not hasattr(self,"ExistentialFileName"):

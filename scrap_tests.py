@@ -24,8 +24,8 @@ mpl.use('MacOSX')
 
 
 
-########################### Example - Get source from file and plot skymap ###########################
 
+########################### Example - Init source and telescope and tile using gwemopt ###########################
 # Source file we want to resurract - note we only specify everything afer .../inference_data or .../inference_param_files and don't need to give suffix either
 # FileName = "Randomized_SYNEX/RemakePaperPlots/Randomized_angles_spins_MRat_10_1wk" # "IdeaPaperSystem_9d"
 
@@ -38,14 +38,8 @@ Merger_kwargs = {"ExistentialFileName":"/Users/baird/Documents/LabEx_PostDoc/SYN
 Merger = SYSs.SMBH_Merger(**Merger_kwargs)
 # Merger = SYU.GetSourceFromLisabetaData(FileName,**Merger_kwargs)
 
-# # Plot the CL bounds
-# SYU.PlotInferenceLambdaBeta(Merger.H5File, bins=50, SkyProjection=True, SaveFig=False, return_data=False)
-#
-# # Plot
-# SYU.PlotSkyMapData(Merger,SaveFig=False,plotName=None)
-
 # Make some test telescopes
-###### TO DO -- check when calculating orbit that it is intersecting properly between orbit strt and obs times...
+###### TO DO -- check when calculating orbit that it is intersecting properly between orbit start and obs times...
 t0 = '2034-01-01T00:00:00.00' # YYYY-MM-DDTHH:mm:SS.MS 01/01/2034
 t = Time(t0, format='isot', scale='utc').gps
 # Athena_kwargs={"FOV":1.,"exposuretime":60.,"slew_rate":1., "telescope":"Athena_base",
@@ -57,6 +51,7 @@ Athena_kwargs={"ExistentialFileName":"/Users/baird/Documents/LabEx_PostDoc/SYNEX
                 "telescope":"Athena",
                 "tilesType" : "moc", # "greedy", # "hierarchical", # "ranked", # moc/greedy/hierarchical/ranked/galaxy.
                 "timeallocationType" : "powerlaw", # "absmag" / "powerlaw" / "waw" / "manual" / "pem"
+                "scheduleType" : "greedy",
                 "doCalcTiles" : False, # Calculates the no. of "hierarchical" tiles based on sky area prob threashold and FoV
                 "Ntiles" : None, # 50, # Speific to tilesType=hierarchical and greedy. Needs to be set if "doCalcTiles"=False
                 "frozenAthena" : False, # False,
@@ -82,128 +77,197 @@ Athena_kwargs={"ExistentialFileName":"/Users/baird/Documents/LabEx_PostDoc/SYNEX
                 "doMinimalTiling" : True, #  True,
                 "readout" : 0.0001, # 6
                 "doSingleExposure" : False, # False
-               }
+                "iterativeOverlap" : 1.0,
+                "maximumOverlap" : 1.0,
+               } ### What about doPerturbativeTiling? ### "doPerturbativeTiling" : True
 Athena=SYDs.Athena(**Athena_kwargs)
 
-# # Check orbit
-import SYNEX.segments_athena as segs_a
-# config_struct = segs_a.calc_telescope_orbit(Athena.detector_config_struct,SAVETOFILE=False)
-# SYU.PlotOrbit(config_struct,MollProj=False,SaveFig=False)
-# SYU.AnimateOrbit(config_struct,include_sun=False,SaveAnim=False)
-# SYU.AnimateSkyProjOrbit(Athena.detector_config_struct,MollProj=True,SaveAnim=True)
-
-# Test tiling directly with gwemopt
-# cloning_params=None
-# go_params, map_struct, tile_structs, coverage_struct = SYU.TileSkyArea(Merger, detectors=Athena, base_telescope_params=None,cloning_params=cloning_params)
-
 # Test tiling with detector cloning
-# ex_times=np.logspace(1,4,num=5,endpoint=True,base=10.)
-ex_times=np.logspace(1,4,num=15,endpoint=True,base=10.)
+ex_times=np.logspace(1,4,num=5,endpoint=True,base=10.)
 cloning_params={"exposuretime":ex_times} # {"inc":np.linspace(0., 90., 5)}
 t0=time.time()
-go_params, map_struct, tile_structs, coverage_struct, DetectorInfo, detectors = SYU.TileSkyArea(Merger,detectors=Athena,base_telescope_params=None,cloning_params=cloning_params)
+go_params, map_struct, tile_structs, coverage_struct, detectors = SYU.TileSkyArea(Merger,detectors=Athena,base_telescope_params=None,cloning_params=cloning_params)
 t1=time.time()
 print("Time for list of detectors:",t1-t0)
+print("Final check on detector:", [d.detector_config_struct["exposuretime"] for d in detectors])
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+########################### Example - Init source and telescope and tile using gwemopt ###########################
+
+# # Source file we want to resurract - note we only specify everything afer .../inference_data or .../inference_param_files and don't need to give suffix either
+# # FileName = "Randomized_SYNEX/RemakePaperPlots/Randomized_angles_spins_MRat_10_1wk" # "IdeaPaperSystem_9d"
+#
+# # Merger args
+# Merger_kwargs = {"ExistentialFileName":"/Users/baird/Documents/LabEx_PostDoc/SYNEX/Saved_Source_Dicts/IdeaPaperSystem_9d_base.dat",
+#                  "NewExistentialFileName":"/Users/baird/Documents/LabEx_PostDoc/SYNEX/Saved_Source_Dicts/IdeaPaperSystem_9d_dev.dat",}
+# # Merger_kwargs = {"ExistentialFileName":"/Users/baird/Documents/LabEx_PostDoc/SYNEX/Saved_Source_Dicts/TestSystem_9d_base.dat"}
+#
+# # Resurrect - either from lisabeta data or saved source file
+# Merger = SYSs.SMBH_Merger(**Merger_kwargs)
+# # Merger = SYU.GetSourceFromLisabetaData(FileName,**Merger_kwargs)
+#
+# # # Plot the CL bounds
+# # SYU.PlotInferenceLambdaBeta(Merger.H5File, bins=50, SkyProjection=True, SaveFig=False, return_data=False)
+# #
+# # # Plot
+# # SYU.PlotSkyMapData(Merger,SaveFig=False,plotName=None)
+#
+# # Make some test telescopes
+# ###### TO DO -- check when calculating orbit that it is intersecting properly between orbit start and obs times...
+# t0 = '2034-01-01T00:00:00.00' # YYYY-MM-DDTHH:mm:SS.MS 01/01/2034
+# t = Time(t0, format='isot', scale='utc').gps
+# # Athena_kwargs={"FOV":1.,"exposuretime":60.,"slew_rate":1., "telescope":"Athena_base",
+# #             "ExistentialFileName":"/Users/baird/Documents/LabEx_PostDoc/SYNEX/Saved_Telescope_Dicts/Athena_base.dat"}
+# Athena_kwargs={"ExistentialFileName":"/Users/baird/Documents/LabEx_PostDoc/SYNEX/Saved_Telescope_Dicts/Athena_base.dat",
+#                 "NewExistentialFileName":"/Users/baird/Documents/LabEx_PostDoc/SYNEX/Saved_Telescope_Dicts/Athena_dev_list.dat",
+#                 "orbitFile":"/Users/baird/Documents/LabEx_PostDoc/SYNEX/orbit_files/Athena_20340601_728d_inc60_R750Mkm_ecc4_ArgPeri20_AscNode-10_phi020_P90_frozenFalse_base.dat",
+#                 "NeworbitFile":"/Users/baird/Documents/LabEx_PostDoc/SYNEX/orbit_files/Athena_20340601_728d_inc60_R750Mkm_ecc4_ArgPeri20_AscNode-10_phi020_P90_frozenFalse_dev.dat",
+#                 "telescope":"Athena",
+#                 "tilesType" : "moc", # "greedy", # "hierarchical", # "ranked", # moc/greedy/hierarchical/ranked/galaxy.
+#                 "timeallocationType" : "powerlaw", # "absmag" / "powerlaw" / "waw" / "manual" / "pem"
+#                 "scheduleType" : "greedy",
+#                 "doCalcTiles" : False, # Calculates the no. of "hierarchical" tiles based on sky area prob threashold and FoV
+#                 "Ntiles" : None, # 50, # Speific to tilesType=hierarchical and greedy. Needs to be set if "doCalcTiles"=False
+#                 "frozenAthena" : False, # False,
+#                 "exposuretime" : 10000., # 6*60*60, # 60., #
+#                 "min_observability_duration" : 10./3600., # in HOURS
+#                 "inc" : 60., # 60., # In DEGREES, incline of orbital plane normal to Sun-Earth axis.
+#                 "MeanRadius" : 750000000., # 750000000., # meters (from earth-orbit normal axis)
+#                 "semi_maj" : 750000000., # 750000000., # equivalent to MeanRadius axis ONLY IF we say we are really orbiting the centre and not the focal point
+#                 "eccentricity" : 0.4, # 0.8
+#                 "ArgPeriapsis" : 20., # 0., # In DEGREES, angle of point of closest approach to FOCAL POINT IN ORBIT PLANE
+#                 "AscendingNode" : -10., # 0., # In DEGREES
+#                 "phi_0" : 10., # 0., # in DEGREES, initial phase of Athena when measurments start
+#                 "period" : 90., # 180., # In days, for one complete halo orbit about L2
+#                 "gps_science_start" : t, # 1703721618.0, # 01/01/2034 00:00:00.000 UTC -- gps start time of science meaasurements
+#                 "mission_duration" : 2., # In years
+#                 "filt_change_time" : 0., # In seconds?
+#                 "overhead_per_exposure" : 0., # In seconds?
+#                 "latitude" : 0., # None, # 20.7204,       ### None if we want a telesscopic orbit?
+#                 "longitude" : 0., # None, # -156.1552,    ### None if we want a telesscopic orbit?
+#                 "elevation" : 0., # None, # 3055.0,       ### None if we want a telesscopic orbit? GWEMOPT uses these for airmass calcs... Ask to raise flag for this?
+#                 "slew_rate" : 100., # 1., # in deg/s -- Idea paper has 1 deg/sec
+#                 "horizon" : 0., # 30.,                    ### None if we want a telesscopic orbit?
+#                 "doMinimalTiling" : True, #  True,
+#                 "readout" : 0.0001, # 6
+#                 "doSingleExposure" : False, # False
+#                 "iterativeOverlap" : 1.0,
+#                 "maximumOverlap" : 1.0,
+#                } ### What about doPerturbativeTiling? ### "doPerturbativeTiling" : True
+# Athena=SYDs.Athena(**Athena_kwargs)
+#
+# # # Check orbit
+# import SYNEX.segments_athena as segs_a
+# # config_struct = segs_a.calc_telescope_orbit(Athena.detector_config_struct,SAVETOFILE=False)
+# # SYU.PlotOrbit(config_struct,MollProj=False,SaveFig=False)
+# # SYU.AnimateOrbit(config_struct,include_sun=False,SaveAnim=False)
+# # SYU.AnimateSkyProjOrbit(Athena.detector_config_struct,MollProj=True,SaveAnim=True)
+#
+#
+#
+# # Test tiling with detector cloning
+# ex_times=np.logspace(1,4,num=5,endpoint=True,base=10.)
+# cloning_params={"exposuretime":ex_times} # {"inc":np.linspace(0., 90., 5)}
+# t0=time.time()
+# go_params, map_struct, tile_structs, coverage_struct, DetectorInfo, detectors = SYU.TileSkyArea(Merger,detectors=Athena,base_telescope_params=None,cloning_params=cloning_params)
+# print("Final check on detector:", [d.detector_config_struct["exposuretime"] for d in detectors])
+# t1=time.time()
+# print("Time for list of detectors:",t1-t0) # About 410 for 15 detectors
+#
+# for telescope in tile_structs.keys():
+#     tile_struct=tile_structs[telescope]
+#     TelTileProperties=np.array([(telescope, tile_struct[i]["ra"], tile_struct[i]["dec"], tile_struct[i]["exposureTime"], tile_struct[i]["nexposures"]) for i in tile_struct.keys()])
+#
+# # # Data is N*9 with columns ra,dec,mjd,mag,exposureTime,field,tile_probs,airmass,program_id
+# # TelCovProperties=[list(zip(list(d.detector_coverage_struct["telescope"]), list(d.detector_coverage_struct["data"][:,0]), list(d.detector_coverage_struct["data"][:,1]), list(d.detector_coverage_struct["data"][:,2]), list(d.detector_coverage_struct["data"][:,4]))) for d in detectors]
+# #
+# # f = open('List_vs_Obo_coverage_info.txt', 'w')
+# # f.write("Detector list\n")
+# # for d in detectors:
+# #     TelProp = list(zip(list(d.detector_coverage_struct["telescope"]), list(d.detector_coverage_struct["data"][:,0]), list(d.detector_coverage_struct["data"][:,1]), list(d.detector_coverage_struct["data"][:,2]), list(d.detector_coverage_struct["data"][:,4])))
+# #     print("TelProp checks:",np.shape(TelProp),type(TelProp))
+# #     for i in range(np.shape(TelProp)[0]): f.write(" ".join([str(el) for el in TelProp[i][:]])+"\n")
+# #
+# #
+# # f.write("\n\n")
+# # f.write("One by one")
+# # f.write("\n")
+#
+#
+#
+# # Test input detectors one by one
+# Athena_kwargs["NewExistentialFileName"]="/Users/baird/Documents/LabEx_PostDoc/SYNEX/Saved_Telescope_Dicts/Athena_dev_ObO.dat"
+# DetectorInfo2=[]
+# t2=time.time()
+# for detii,ex_t in enumerate(ex_times):
+#     cloning_params={"exposuretime":ex_t}
+#     go_params, map_struct, tile_structs, coverage_struct, DetInf, detector = SYU.TileSkyArea(Merger,detectors=Athena,base_telescope_params=None,cloning_params=cloning_params)
+#     DetectorInfo2+=list(DetInf)
+#     d=detector[0]
+#     TelProp = list(zip(list(d.detector_coverage_struct["telescope"]), [detii]*len(d.detector_coverage_struct["telescope"]), list(d.detector_coverage_struct["data"][:,0]), list(d.detector_coverage_struct["data"][:,1]), list(d.detector_coverage_struct["data"][:,2]), list(d.detector_coverage_struct["data"][:,4])))
+#     print("TelProp checks (obo):",np.shape(TelProp),type(TelProp))
+#     # for i in range(np.shape(TelProp)[0]): f.write(" ".join([str(el) for el in TelProp[i][:]])+"\n")
+# DetectorInfo2=np.array(DetectorInfo2)
+# t3=time.time()
+#
+# # f.close()
+#
+# print("Time for one by one:",t3-t2) # About 1300 for 15 detectors
+#
 # # Make plots of results
-# plt.plot(ex_times,DetectorInfo[:,1])
+# plt.plot(ex_times,DetectorInfo[:,1],label=r"List of dets")
+# plt.plot(ex_times,DetectorInfo2[:,1],label=r"One-by-one dets")
 # plt.xlabel(r"Exposure time [s]")
 # plt.ylabel(r"Accumulated sky probability")
 # ax=plt.gca()
 # ax.set_xscale('log')
+# plt.legend(fontsize="x-small")
 # plt.show()
 #
-# plt.plot(ex_times,DetectorInfo[:,3],"-",label=r"Source captures")
-# plt.plot(ex_times,DetectorInfo[:,4],":",label=r"Tot. coverage")
-# plt.plot(ex_times,DetectorInfo[:,5],".-",label=r"Unique coverage")
+# plt.plot(ex_times,DetectorInfo[:,3],"-",label=r"Source captures (list)")
+# plt.plot(ex_times,DetectorInfo[:,4],":",label=r"Tot. coverage (list)")
+# plt.plot(ex_times,DetectorInfo[:,5],".-",label=r"Unique coverage (list)")
+# plt.plot(ex_times,DetectorInfo2[:,3],"-",label=r"Source captures (Obo)")
+# plt.plot(ex_times,DetectorInfo2[:,4],":",label=r"Tot. coverage (Obo)")
+# plt.plot(ex_times,DetectorInfo2[:,5],".-",label=r"Unique coverage (Obo)")
 # plt.xlabel(r"Exposure time [s]")
 # plt.ylabel(r"No. of tiles")
 # ax=plt.gca()
 # ax.set_xscale("log")
 # plt.legend(fontsize="x-small")
 # plt.show()
-
-# Test input detectors one by one
-DetectorInfo2=[]
-t2=time.time()
-for detii,ex_t in enumerate(ex_times):
-    cloning_params={"exposuretime":ex_t}
-    go_params, map_struct, tile_structs, coverage_struct, DetInf, detector = SYU.TileSkyArea(Merger,detectors=Athena,base_telescope_params=None,cloning_params=cloning_params)
-    DetectorInfo2+=list(DetInf)
-    print(np.shape(DetectorInfo),np.shape(DetectorInfo2),np.shape(DetInf),np.shape(DetInf[0]))
-DetectorInfo2=np.array(DetectorInfo2)
-t3=time.time()
-
-print("Time for one by one:",t3-t2)
-
-# Make plots of results
-plt.plot(ex_times,DetectorInfo[:,1],label=r"List of dets")
-plt.plot(ex_times,DetectorInfo2[:,1],label=r"One-by-one dets")
-plt.xlabel(r"Exposure time [s]")
-plt.ylabel(r"Accumulated sky probability")
-ax=plt.gca()
-ax.set_xscale('log')
-plt.legend(fontsize="x-small")
-plt.show()
-
-plt.plot(ex_times,DetectorInfo[:,3],"-",label=r"Source captures (list)")
-plt.plot(ex_times,DetectorInfo[:,4],":",label=r"Tot. coverage (list)")
-plt.plot(ex_times,DetectorInfo[:,5],".-",label=r"Unique coverage (list)")
-plt.plot(ex_times,DetectorInfo2[:,3],"-",label=r"Source captures (Obo)")
-plt.plot(ex_times,DetectorInfo2[:,4],":",label=r"Tot. coverage (Obo)")
-plt.plot(ex_times,DetectorInfo2[:,5],".-",label=r"Unique coverage (Obo)")
-plt.xlabel(r"Exposure time [s]")
-plt.ylabel(r"No. of tiles")
-ax=plt.gca()
-ax.set_xscale("log")
-plt.legend(fontsize="x-small")
-plt.show()
-
-# Print out own summary...
-# SYU.GetCoverageInfo(go_params, map_struct, tile_structs, coverage_struct)
-
-# See some stats and plots plots
-# gwemopt.plotting.tiles(go_params, map_struct, tile_structs)
-# print("Start of summary call: -----------------------------------------------")
-# gwemopt.scheduler.summary(go_params, map_struct, coverage_struct)
-# SYU.PlotSkyMapData(Merger,SaveFig=False,plotName=None)
-# print("Start of plotting call: -----------------------------------------------")
-# gwemopt.plotting.coverage(go_params, map_struct, coverage_struct)
-
-
-
-
-
-
-
-
-# for key,value in coverage_struct.items():
-#     print(key,value)
-
-# print(coverage_struct.keys())
-# ipixs = np.empty((0,2))
-# for ipix in coverage_struct["ipix"]:
-#     prob = np.sum(map_struct["prob"][ipix])
-#     ipixs = np.append(ipixs,ipix)
-#     ipixs = np.unique(ipixs).astype(int)
-#     cum_prob = np.sum(map_struct["prob"][ipixs])
 #
-# print("data shape:",np.shape(coverage_struct["data"]),np.shape(coverage_struct["data"])[1])
-# for ii in range(np.shape(coverage_struct["data"])[0]):
-#     print(ii, coverage_struct["data"][ii,0],coverage_struct["data"][ii,1])
+# # Print out own summary...
+# # SYU.GetCoverageInfo(go_params, map_struct, tile_structs, coverage_struct)
 #
-# print("len ipix:",len(coverage_struct["ipix"]))
-# print("len RAs:",len(coverage_struct["data"][:,0]))
-# print("len DECs:",len(coverage_struct["data"][:,1]))
-# print("len probs:",len(coverage_struct["data"][:,6]))
-# print("RAs:",coverage_struct["data"][:,0])
-# print("DECs:",coverage_struct["data"][:,1])
-# print("probs:",coverage_struct["data"][:,6])
+# # See some stats and plots plots
+# # gwemopt.plotting.tiles(go_params, map_struct, tile_structs)
+# # print("Start of summary call: -----------------------------------------------")
+# # gwemopt.scheduler.summary(go_params, map_struct, coverage_struct)
+# # SYU.PlotSkyMapData(Merger,SaveFig=False,plotName=None)
+# # print("Start of plotting call: -----------------------------------------------")
+# # gwemopt.plotting.coverage(go_params, map_struct, coverage_struct)
 
-# Shape of coverage_struct["data"]:: N-by-9:
-# Columns of coverage_struct["data"]:: ra,dec,mjd,mag,exposureTime,field,tile_probs,airmass,program_id
-# NB: sum(tile_probs)>1 if there is overlap and/or we return to tiles since this is coverage of position probability on the 'sky'
+
+
+
+
+
 
 
 

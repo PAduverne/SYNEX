@@ -1663,19 +1663,31 @@ def TileSkyArea(source,detectors=None,base_telescope_params=None,cloning_params=
     Global function to tile skyarea. This will handle all extra tiling we might add,
     including handling series inputs over lists of sources and/or detectors.
 
-    TO DO: Case where we inject a list of sources...
+    TO DO:
+    ------
+    1. Case where we inject a list of sources...
+    2. parallelize code if there are nodes available to do so
     """
+    # Prioritize creating from base params dict
     if not base_telescope_params==None:
         detectors=[SYDs.Athena(base_telescope_params)]
 
-    out_dirs=None
+    # Create default detector if still nothing there
+    if detectors==None:
+        detectors=[SYDs.Athena()]
+
+    # Make sure detectors variable is a list(in case single det input)
+    if not isinstance(detectors,list):
+        detectors=[detectors]
+
+    # Default of no output directory extension
+    out_dirs=[None]*len(detectors)
+
     # Populate detectors if kwargs has directed to do so
     if not cloning_params==None:
         # Init telescope
-        if detectors==None:
-            base_detector=SYDs.Athena()
-        elif isinstance(detectors, list):
-            base_detector = detectors[0] # Not sure if we would ever input a list... Sort this later if we ever need it.
+        if isinstance(detectors, list):
+            base_detector = detectors[0]
         else:
             base_detector = detectors
         telescope_params=copy.deepcopy(base_detector.__dict__)
@@ -1684,33 +1696,36 @@ def TileSkyArea(source,detectors=None,base_telescope_params=None,cloning_params=
         out_dirs=[]
         detectors=[]
         for key,values in cloning_params.items():
-            out_dirs.append(key)
             if not isinstance(values,(list,np.ndarray)):
                 # In case we are asked for a single value
                 values=[values]
             if key in base_detector.detector_go_params or base_detector.detector_config_struct:
-                dict_list = [{"ExistentialFileName":base_detector.ExistentialFileName, "NewExistentialFileName":".".join(base_detector.ExistentialFileName.split(".")[:-1])+"_"+key+"_"+str(ii+1)+"."+base_detector.ExistentialFileName.split(".")[-1], key:values[ii]} for ii in range(len(values))]
-                detectors.append([SYDs.Athena(**dict_ii) for dict_ii in dict_list])
+                dict_list = [{"ExistentialFileName":base_detector.ExistentialFileName,
+                              "NewExistentialFileName":".".join(base_detector.ExistentialFileName.split(".")[:-1])+"_"+key+"_"+str(ii+1)+"."+base_detector.ExistentialFileName.split(".")[-1],
+                              key:values[ii],
+                              "telescope":base_detector.detector_config_struct["telescope"]+"_"+key+"_"+str(ii+1)} for ii in range(len(values))]
+                detectors+=[SYDs.Athena(**dict_ii) for dict_ii in dict_list]
+                out_dirs+=[key]*len(dict_list)
+                check_vals_tmp=[detector.detector_config_struct[key] for detector in detectors]
+                check_tels_tmp=[detector.detector_config_struct["telescope"] for detector in detectors]
+                print("Check that detectors are varying as they should be:",key,check_tels_tmp,values,check_vals_tmp)
             else:
                 print("key:",key,"not found in either detector_go_params or detector_config_struct...")
 
-    # Loop over list of lists if we need to
-    if isinstance(detectors,list) and len(np.shape(detectors))>1:
-        for ii,det in enumerate(detectors):
-            go_params, map_struct, tile_structs, coverage_struct, DetectorInfo, detectors = TileWithGwemopt(source, det, out_dirs[ii])
-            # Combine for return here...
-    else:
-        go_params, map_struct, tile_structs, coverage_struct, DetectorInfo, detectors = TileWithGwemopt(source, detectors, out_dirs)
+    # Loop over list of lists if we need to -- if we cloned more than one param
+    for i in range(len(detectors)): go_params, map_struct, tile_structs, coverage_struct, detectors[i] = TileWithGwemopt(source,detectors[i],out_dirs[i])
+    # for det,od in zip(detectors,out_dirs):
+    #     go_params, map_struct, tile_structs, coverage_struct, detector = TileWithGwemopt(source,det,od)
 
-    return go_params, map_struct, tile_structs, coverage_struct, DetectorInfo, detectors
+    return detectors
 
-def TileWithGwemopt(source,detectors=None,outDirExtension=None):
+def TileWithGwemopt(source,detector,outDirExtension=None):
     """
     Function to handle tiling through gwemopt.
     """
 
-    # Get the right dicts to use -- detectors=None case handled in function
-    go_params,map_struct,detectors=PrepareGwemoptDicts(source,detectors,outDirExtension)
+    # Get the right dicts to use
+    go_params,map_struct=PrepareGwemoptDicts(source,detector,outDirExtension)
 
     # Get segments -- need to understand what this is. Line 469 of binary file 'gwemopt_run'
     import SYNEX.segments_athena as segs_a
@@ -1770,7 +1785,7 @@ def TileWithGwemopt(source,detectors=None,outDirExtension=None):
     tile_structs, coverage_struct = gwemopt.coverage.timeallocation(go_params, map_struct, tile_structs)
 
     # Get info for run
-    DetectorInfo, detectors = GetCoverageInfo(go_params, map_struct, tile_structs, coverage_struct, detectors, verbose=False)
+    detector = GetCoverageInfo(go_params, map_struct, tile_structs, coverage_struct, detector, verbose=True)
 
     # Add info about source to coverage summary
     SourceInfo={
@@ -1784,119 +1799,39 @@ def TileWithGwemopt(source,detectors=None,outDirExtension=None):
                 }
     if source.do3D:
         SourceInfo["source true loc"]+=[source.true_distance]
-    for det in detectors: det.detector_source_coverage.update(SourceInfo)
+    detector.detector_source_coverage.update(SourceInfo)
 
-    # Save detectors
-    for det in detectors: det.ExistentialCrisis()
+    # Save detector
+    detector.ExistentialCrisis()
 
-    return go_params, map_struct, tile_structs, coverage_struct, DetectorInfo, detectors
+    return go_params, map_struct, tile_structs, coverage_struct, detector
 
-def PrepareParamsDict(detectors):
+def PrepareGwemoptDicts(source,detector,outDirExtension=None):
     """
-    Iterate over all detectors handed to function to create gwemopt-usable dictionaries
+    Function to prepare GWELOPT dictionary from a source object and a detector objct.
 
-    What if certain flags change? Can we comply still or should we raise a value error?
-
-    Can we give kwargs option to ask for an array of detectors with given attribute changes?
-    """
-    # Get first set of go_params and config struct
-    go_params = copy.deepcopy(detectors[0].detector_go_params)
-    go_params_keys = go_params.keys()
-    config_struct_keys = copy.deepcopy(detectors[0].detector_config_struct)
-    del config_struct_keys["tesselation"]
-    config_struct_keys=config_struct_keys.keys()
-
-    # Sense which parameters are changing in detector_go_params dicts - shold be a 1 dimensional list of detectors at a time now
-    # I don't think any main parameters should change here... only in config struct. Double checek this then add error if they do? Or take first
-    # Value and standardize?
-    n_iters=1
-    for key in go_params_keys:
-        attr_list = [detector.detector_go_params[key] for detector in detectors]
-        try:
-            uniqueness_count = set(attr_list)
-            ulim=1
-        except: # in case of np.array
-            attr_list_flat = [item for attr_sublist in attr_list for item in attr_sublist]
-            uniqueness_count = set(attr_list_flat)
-            ulim=len(detectors[0].detector_go_params[key])
-        if len(uniqueness_count)>ulim:
-            # This is messy for arrray case and needs to be revisited...
-            go_params[key+"s"] = np.array(attr_list)
-            param_name=key
-            n_iters=len(attr_list)
-
-    # Sense which parameters are changing in config structs
-    for key in config_struct_keys:
-        attr_list = [detector.detector_config_struct[key] for detector in detectors]
-        try:
-            uniqueness_count = set(attr_list)
-            ulim=1
-        except: # in case of np.array
-            attr_list_flat = [item for attr_sublist in attr_list for item in attr_sublist]
-            uniqueness_count = set(attr_list_flat)
-            ulim=len(detectors[0].detector_config_struct[key])
-        if len(uniqueness_count)>ulim:
-            # This is messy for arrray case and needs to be revisited...
-            go_params[key+"s"] = np.array(attr_list)
-            param_name=key
-            n_iters=len(attr_list)
-
-    # Fill out some necessary but missing info compiled only at runtime - just in case they aren't already there...
-    telescopes = [detector.detector_config_struct["telescope"] for detector in detectors] # They want this to be a list, not np array.
-    if len(np.unique(telescopes))<=n_iters:
-        telescopes=[name+"_"+str(i) for name,i in zip(telescopes,list(range(n_iters)))]
-    go_params["telescopes"]=telescopes
-    for i in range(n_iters): detectors[i].detector_config_struct["telescope"]=telescopes[i]
-    exTs=np.array([detector.detector_config_struct["exposuretime"] for detector in detectors])
-    if len(np.unique(exTs))==1:
-        go_params["exposuretimes"]=np.unique(exTs)
-    else:
-        go_params["exposuretimes"]=exTs # This line is necessary and not really sure why...
-
-    # Loop over each detector and fill config structs
-    go_params["config"]={}
-    for detector in detectors:
-        go_params["config"][detector.detector_config_struct["telescope"]] = detector.detector_config_struct
-
-    return go_params
-
-def PrepareGwemoptDicts(source,detectors=None,outDirExtension=None):
-    """
-    Function to prepare skymap dictionary from source and detector(s) inputs
-    for injection into GWEMOPT.
-
-    Can we adjust this to treat cases where several sources are given? GWEMOPT
-    tends to treat only the case where there is one skymap and one or more
-    telescopes to tile the area...
-
-    Also need to adjust for case of updating skymaps...
+    Need to adjust for case of updating skymaps.
 
     Include variable Tobs- gwemopt uses the option of several available windows... Maybe for scheduling time wtih telescope(s) or map updates.
     """
-    # treat different detector input cases
-    if detectors==None:
-        # Create default Athena detector
-        detectors = SYDs.Athena()
-    if not isinstance(detectors, list):
-        # turn into list if not one already
-        detectors = list([detectors])
+    # Prepare go_params from detector first
+    go_params = copy.deepcopy(detector.detector_go_params)
+    telescopes = [detector.detector_config_struct["telescope"]] # They want this to be a list
+    go_params["telescopes"]=telescopes
+    go_params["exposuretimes"]=np.array([detector.detector_config_struct["exposuretime"]]) # This line is necessary and not really sure why...
+    go_params["config"]={detector.detector_config_struct["telescope"] : detector.detector_config_struct}
 
-    # Prepare go_params from detector(s) first
-    go_params = PrepareParamsDict(detectors)
-
-    # Ideal pixelation for detector(s) FoV has pixel area <= min FOV
+    # Ideal pixelation for detector FoV has pixel area <= FOV/4 (idk this for sure, I just made it up...)
     nside_arr=np.array([2**i for i in range(11,3,-1)])
     area_arr=hp.nside2pixarea(nside_arr,degrees=True)
-    area_cut = np.min([det.detector_config_struct["FOV"] for det in detectors])
-    nside=nside_arr[np.searchsorted(area_arr, area_cut/4., side='left')-1]
-    print("Ideal nside is:",nside)
+    nside=nside_arr[np.searchsorted(area_arr, detector.detector_config_struct["FOV"]/4., side='left')-1]
 
     # Update missing params in go_params contained in source
     go_params["nside"]=nside # hp.pixelfunc.get_nside(source.map_struct["prob"])
     if source.gpstime!=None:
         go_params["gpstime"]=source.gpstime
     else:
-        go_params["gpstime"]=np.max([det.detector_config_struct["gps_science_start"] for det in detectors]) # find first day that all detectors can start tiling
+        go_params["gpstime"]=detector.detector_config_struct["gps_science_start"]
     go_params["do3D"]=source.do3D
     go_params["true_ra"]=source.true_ra
     go_params["true_dec"]=source.true_dec
@@ -1923,7 +1858,85 @@ def PrepareGwemoptDicts(source,detectors=None,outDirExtension=None):
     # We can also apply rotations etc here
     map_struct=gou.read_skymap(go_params,source.do3D,map_struct=map_struct)
 
-    return go_params,map_struct,detectors
+    return go_params,map_struct
+
+def GetCoverageInfo(go_params, map_struct, tile_structs, coverage_struct, detector, verbose=True):
+    """
+    Extract coverage information
+    """
+    # Extract some data structures
+    source_pix=hp.ang2pix(go_params["nside"],np.deg2rad(90.-go_params["true_dec"]),np.deg2rad(go_params["true_ra"])) # (nside, theta, phi)
+    cov_data=coverage_struct["data"]
+    cov_ipix=coverage_struct["ipix"] # list because each sub-list is of variable length
+    map_probs=map_struct["prob"]
+
+    # Tiling info
+    telescope=detector.detector_config_struct["telescope"]
+    tile_struct=tile_structs[telescope]
+    tile_keys_list=list(tile_struct.keys())
+    pix_record=np.unique(np.concatenate([tile_struct[tile_id]["ipix"] for tile_id in tile_keys_list if len(tile_struct[tile_id]["ipix"])>0],axis=0))
+    probs1=np.array([tile_struct[tile_id]["prob"] for tile_id in tile_keys_list])
+    probs2=np.array([np.sum(map_probs[tile_struct[tile_id]["ipix"]]) for tile_id in tile_keys_list])
+    TotProb1=np.sum(probs1) # Tile struct probabilities
+    TotProb2=np.sum(probs2) # Mp struct probs summed using ipix in tile struct
+    TotProb3=np.sum(map_probs[pix_record]) # Unique probabilities
+    detector.detector_tile_struct=tile_struct
+    if verbose:
+        print("\n\n")
+        print("#"*20+"  "+telescope+"  "+"#"*20+"\n")
+        print("Total prob (tile_struct, map_struct, map_struct drop dups):",TotProb1,TotProb2,TotProb3)
+        print("Params/Config checks:", telescope, go_params["config"][telescope]["tot_obs_time"], go_params["config"][telescope]["exposuretime"], go_params["config"][telescope]["tot_obs_time"]/go_params["config"][telescope]["exposuretime"], "Tot tiles avail:", len(tile_struct.keys()))
+        print("\n")
+
+    # Coverage info
+    cov_ipix_array_unique=np.unique([pix for cov_ipix_el in cov_ipix for pix in cov_ipix_el])
+    prob1=np.sum(cov_data[:,6])
+    prob2=np.sum([map_probs[pix] for tile_pix in cov_ipix for pix in tile_pix]) # Probs according to coverage struct ipix
+    prob3=np.sum([map_probs[pix] for pix in cov_ipix_array_unique]) # Same as prob2 but only unique pixels
+    ex_Times = cov_data[:,4]
+    ex_Times_unique = np.unique(ex_Times)
+    detector.detector_coverage_struct=coverage_struct.update({"tile exposure times":ex_Times,"unique tile exposure times":ex_Times_unique})
+
+    # Print summary if asked for
+    if verbose:
+        print(len(ex_Times),"/",len(cov_data[:,4]), "coverage tiles")
+        print("Detector coverage prob (cov_struct data, map_struct, map_struct dup drop):",prob1,prob2,prob3)
+        print(len(ex_Times_unique),"/",len(cov_data[:,4]), "unique coverage tiles")
+        print(len(ex_Times_unique),"unique exposure times with (min, mean, max):",np.min(ex_Times_unique),np.mean(ex_Times_unique),np.max(ex_Times_unique))
+        print("\n")
+
+    ## Source tile info -- was it covered?
+    UniqueSourceCoverageCount=0
+    cov_source_tile=[]
+    cov_source_pix=[]
+    for tile_ii,tile_pix in enumerate(cov_ipix):
+        if source_pix in tile_pix:
+            cov_source_tile += [tile_ii] # [tile_ii for tile_ii,tile_pix in enumerate(cov_ipix) if source_pix in tile_pix]
+            cov_source_pix += list(tile_pix)
+            if all([pix not in cov_source_pix for pix in tile_pix]):
+                UniqueSourceCoverageCount+=1
+    SourceTile_prob1=[cov_data[i,6] for i in cov_source_tile]
+    SourceTile_prob2=[map_probs[pix] for tile_pix in cov_source_pix for pix in tile_pix]
+    SourceTile_accum_prob1=np.sum(SourceTile_prob1)
+    SourceTile_accum_prob2=np.sum(SourceTile_prob2)
+    print("Source tile probability checks:",SourceTile_accum_prob1,SourceTile_accum_prob2)
+    detector.detector_source_coverage={"telescope":telescope,"Source Tile Prob (by cov tiles)":SourceTile_prob1,
+                        "Source Tile Prob (by cov pixels)":SourceTile_prob2,"tile ID containing source pixel":cov_source_tile,
+                        "tile pixels containing source pixel":cov_source_pix, "No. unique source coverages":UniqueSourceCoverageCount}
+
+    # Print summary if asked for
+    if verbose:
+        print("--- Source Coverage ---")
+        print("\n")
+        print("Source covered by",telescope, len(cov_source_tile),"times.\n")
+        print(" "*10+"cov_struct p data:")
+        print(SourceTile_prob1,"\n")
+        print(" "*10+"map_struct pixel p's:")
+        print(SourceTile_prob2,"\n")
+        print("Source tile accumulated p:",SourceTile_accum_prob1,SourceTile_accum_prob2)
+
+    # Return values
+    return detector
 
 def WriteSkymapToFile(map_struct,SkyMapFileName,go_params=None):
     """
@@ -1967,104 +1980,6 @@ def WriteSkymapToFile(map_struct,SkyMapFileName,go_params=None):
         return go_params,map_struct
     else:
         return SkyMapFileName,map_struct
-
-def GetCoverageInfo(go_params, map_struct, tile_structs, coverage_struct, detectors, verbose=True):
-    """
-    Extract coverage information
-    """
-    # tiling info
-    source_pix=hp.ang2pix(go_params["nside"],np.deg2rad(90.-go_params["true_dec"]),np.deg2rad(go_params["true_ra"])) # (nside, theta, phi)
-    cov_data=coverage_struct["data"]
-    cov_tels=coverage_struct["telescope"]
-    cov_ipix=coverage_struct["ipix"] # list because each sub-list is of variable length
-    map_probs=map_struct["prob"]
-    DetectorInfo=[]
-    if verbose:
-        print("Data array check:",np.shape(coverage_struct["data"]),type(coverage_struct["data"]))
-        print("Telescope array check:",np.shape(coverage_struct["telescope"]),type(coverage_struct["telescope"]),cov_tels[0], cov_tels[10])
-        print("ipix array check:",np.shape(coverage_struct["ipix"]),type(coverage_struct["ipix"]),cov_ipix[0],cov_ipix[10])
-    for DetCount,telescope in enumerate(tile_structs):
-        tile_struct=tile_structs[telescope]
-        tile_keys_list=list(tile_struct.keys())
-        pix_record=np.unique(np.concatenate([tile_struct[tile_id]["ipix"] for tile_id in tile_keys_list if len(tile_struct[tile_id]["ipix"])>0],axis=0))
-        probs1=np.array([tile_struct[tile_id]["prob"] for tile_id in tile_keys_list])
-        probs2=np.array([np.sum(map_probs[tile_struct[tile_id]["ipix"]]) for tile_id in tile_keys_list])
-        TotProb1=np.sum(probs1)
-        TotProb2=np.sum(probs2)
-        TotProb3=np.sum(map_probs[pix_record])
-        detectors[DetCount].detector_tile_struct=tile_struct
-        if verbose:
-            print("\n\n")
-            print("#"*20+"  "+telescope+"  "+"#"*20+"\n")
-            print("Total prob (tile_struct, map_struct, map_struct drop dups):",TotProb1,TotProb2,TotProb3)
-            print("Params/Config checks:", telescope, go_params["config"][telescope]["tot_obs_time"], go_params["config"][telescope]["exposuretime"], go_params["config"][telescope]["tot_obs_time"]/go_params["config"][telescope]["exposuretime"], "Tot tiles avail:", len(tile_struct.keys()))
-            print("\n")
-
-        # See coverage for detector
-        tel_data_entries=np.where(cov_tels==telescope)[0]
-        det_pix_list=[cov_ipix[i] for i in tel_data_entries]
-        det_pix_array_unique=[]
-        det_pix_ii_unique=[]
-        for ii,cov_ipix_el in enumerate(det_pix_list):
-            if all([pix not in det_pix_array_unique for pix in cov_ipix_el]):
-                det_pix_array_unique+=list(cov_ipix_el)
-                det_pix_ii_unique+=[ii]
-        ex_Times = cov_data[tel_data_entries,4]
-        prob1=np.sum(cov_data[tel_data_entries,6])
-        prob2=np.sum([map_probs[pix] for tile_pix in det_pix_list for pix in tile_pix])
-        prob3=np.sum([map_probs[pix] for pix in det_pix_array_unique])
-        ex_Times_unique = np.unique([ex_Times[i] for i in det_pix_ii_unique])
-        detectors[DetCount].detector_coverage_struct={"data":cov_data[tel_data_entries,:],"ipix":det_pix_list, ### Is there a faster way to do this? Seems overkill
-                                "filters":coverage_struct["filters"][tel_data_entries],
-                                "patch":[coverage_struct["patch"][i] for i in tel_data_entries], # Must be list
-                                "FOV":coverage_struct["FOV"][tel_data_entries],
-                                "area":coverage_struct["area"][tel_data_entries],
-                                "telescope":coverage_struct["telescope"][tel_data_entries],
-                                "exposureused":[coverage_struct["exposureused"][i] for i in tel_data_entries], # Must be list
-                                "galaxies":[]} ### We don't use galaxies for now so leave as empty list
-        if verbose:
-            print(len(ex_Times),"/",len(cov_data[:,4]), "coverage tiles")
-            print("Detector coverage prob (cov_struct data, map_struct, map_struct dup drop):",prob1,prob2,prob3)
-            print(len(ex_Times_unique),"/",len(cov_data[:,4]), "unique coverage tiles")
-            print(len(ex_Times_unique),"unique exposure times with (min, mean, max):",np.min(ex_Times_unique),np.mean(ex_Times_unique),np.max(ex_Times_unique))
-            print("\n")
-
-        ## Source tile info -- was it covered?
-        tess_source_tile = [tile_ii for tile_ii in tile_struct.keys() if source_pix in tile_struct[tile_ii]["ipix"]]
-        cov_source_tile = [tile_ii for tile_ii,tile_pix in enumerate(det_pix_list) if source_pix in tile_pix]
-        cov_source_pix = [tile_pix for tile_pix in det_pix_list if source_pix in tile_pix]
-        SourceTile_prob1=[cov_data[i,6] for i in cov_source_tile]
-        SourceTile_prob2=[map_probs[pix] for tile_pix in cov_source_pix for pix in tile_pix]
-        SourceTile_accum_prob1=np.sum(SourceTile_prob1)
-        SourceTile_accum_prob2=np.sum(SourceTile_prob2)
-        detectors[DetCount].detector_source_coverage={"telescope":telescope,"prob3":prob3,
-                            "Source Tile Prob":SourceTile_prob2,"tile ID containing source pixel":cov_source_tile,
-                            "tile pixels containing source pixel":cov_source_pix,
-                            "tile exposure times":ex_Times,"unique tile exposure times":ex_Times_unique}
-        if verbose:
-            print("--- Source Coverage ---")
-            print("\n")
-            print("Source covered by",telescope, len(cov_source_tile),"times.\n")
-            print(" "*10+"cov_struct p data:")
-            print(SourceTile_prob1,"\n")
-            print(" "*10+"map_struct pixel p's:")
-            print(SourceTile_prob2,"\n")
-            print("Source tile accumulated p:",SourceTile_accum_prob1,SourceTile_accum_prob2)
-
-        # gather info for return
-        DetectorInfo.append([telescope,prob3,SourceTile_prob2,len(cov_source_tile),len(ex_Times),len(ex_Times_unique)])
-
-    # Check global coverage...
-    cov_source_tile = [tile_ii for tile_ii,tile_pix in enumerate(cov_ipix) if source_pix in tile_pix]
-    SourceTile_tels = np.unique([cov_tels[i] for i in cov_source_tile])
-    if verbose:
-        print("\n\n")
-        print("#"*20+"  Global Coverage  "+"#"*20+"\n")
-        print("Source covered",len(cov_source_tile),"times overall by detectors:",",".join(SourceTile_tels))
-        print("#"*59+"\n")
-
-    # Return values
-    return np.array(DetectorInfo), detectors
 
 
 

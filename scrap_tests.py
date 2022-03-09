@@ -83,13 +83,12 @@ Athena_kwargs={"ExistentialFileName":"/Users/baird/Documents/LabEx_PostDoc/SYNEX
 Athena=SYDs.Athena(**Athena_kwargs)
 
 # Test tiling with detector cloning
-ex_times=np.logspace(1,4,num=5,endpoint=True,base=10.)
+ex_times=np.logspace(1,4,num=2,endpoint=True,base=10.)
 cloning_params={"exposuretime":ex_times} # {"inc":np.linspace(0., 90., 5)}
 t0=time.time()
-go_params, map_struct, tile_structs, coverage_struct, detectors = SYU.TileSkyArea(Merger,detectors=Athena,base_telescope_params=None,cloning_params=cloning_params)
+detectors = SYU.TileSkyArea(Merger,detectors=Athena,base_telescope_params=None,cloning_params=cloning_params)
 t1=time.time()
-print("Time for list of detectors:",t1-t0)
-print("Final check on detector:", [d.detector_config_struct["exposuretime"] for d in detectors])
+print("Total time for",len(detectors),"detectors:",t1-t0, "s") # 1216 for 5 detectors...
 
 
 

@@ -97,7 +97,7 @@ hist_n_bins=1000
 #                     #                               #
 #                     #################################
 
-def ClassesToParams(source, detector, CollectionMethod="Inference",**kwargs):
+def ClassesToParams(source, detector=None, CollectionMethod="Inference",**kwargs):
     """ Function to change parameters embedded in the classes and handed to functions
     in dictionaries, to dictionaries and parameter lists for function calls in lisabeta.
 
@@ -105,7 +105,12 @@ def ClassesToParams(source, detector, CollectionMethod="Inference",**kwargs):
     ---------
     Source : SYNEX source object.
 
-    Detector : SYNEX detector object.
+    Detector : SYNEX GW detector object
+
+    NOTE:
+    -------
+    If source has JsonFile attribute then the "waveform_params" handed back
+    will be loaded preferentially from this instead of from GW detector object
     """
     # First gather the parameters into the right format to pass to the lisabeta functions
     param_dict = {
@@ -125,8 +130,7 @@ def ClassesToParams(source, detector, CollectionMethod="Inference",**kwargs):
 
     # Take out any modification, to these parameters in tge kwargs dict
     for key, value in kwargs.items():
-        if key in param_dict:
-            param_dict[key] = value
+        if key in param_dict: param_dict[key] = value
 
     # Sort out case where z is specified in kwargs
     if "z" in kwargs:
@@ -155,101 +159,64 @@ def ClassesToParams(source, detector, CollectionMethod="Inference",**kwargs):
 
     # Unwrap the positional arguments and override the source and detector values set
     # source params
-    waveform_params = {}
-    if "timetomerger_max" in kwargs:
-        waveform_params["timetomerger_max"] = kwargs["timetomerger_max"]
-    elif source.timetomerger_max!=None:
-        waveform_params["timetomerger_max"] = source.timetomerger_max                        # Included
-    if "minf" in kwargs:
-        waveform_params["minf"] = kwargs["minf"]
-    elif source.minf!=None:
-        waveform_params["minf"] = source.minf                        # Included
-    if "maxf" in kwargs:
-        waveform_params["maxf"] = kwargs["maxf"]
-    elif source.maxf!=None and not source.DeltatL_cut:
-        waveform_params["maxf"] = source.maxf                        # Included
-    if "t0" in kwargs:
-        waveform_params["t0"] = kwargs["t0"]
-    elif source.t0!=None:
-        waveform_params["t0"] = source.t0                        # Included
-    if "tref" in kwargs:
-        waveform_params["tref"] = kwargs["tref"]
-    elif source.tref!=None:
-        waveform_params["tref"] = source.tref                        # Included
-    if "phiref" in kwargs:
-        waveform_params["phiref"] = kwargs["phiref"]
-    elif source.phiref!=None:
-        waveform_params["phiref"] = source.phiref                        # Included
-    if "fref_for_phiref" in kwargs:
-        waveform_params["fref_for_phiref"] = kwargs["fref_for_phiref"]
-    elif source.fref_for_phiref!=None:
-        waveform_params["fref_for_phiref"] = source.fref_for_phiref                        # Included
-    if "fref_for_tref" in kwargs:
-        waveform_params["fref_for_tref"] = kwargs["fref_for_tref"]
-    elif source.fref_for_tref!=None:
-        waveform_params["fref_for_tref"] = source.fref_for_tref                        # Included
-    if "force_phiref_fref" in kwargs:
-        waveform_params["force_phiref_fref"] = kwargs["force_phiref_fref"]
-    elif source.force_phiref_fref!=None:
-        waveform_params["force_phiref_fref"] = source.force_phiref_fref                        # Included
-    if "toffset" in kwargs:
-        waveform_params["toffset"] = kwargs["toffset"]
-    elif source.toffset!=None:
-        waveform_params["toffset"] = source.toffset                        # Included
-    if "modes" in kwargs:
-        waveform_params["modes"] = kwargs["modes"]
-    elif source.modes!=None:
-        waveform_params["modes"] = source.modes                        # Included
-    if "acc" in kwargs:
-        waveform_params["acc"] = kwargs["acc"]
-    elif source.acc!=None:
-        waveform_params["acc"] = source.acc                        # Included
-    if "approximant" in kwargs:
-        waveform_params["approximant"] = kwargs["approximant"]
-    elif source.approximant!=None:
-        waveform_params["approximant"] = source.approximant                        # Included
-    if "DeltatL_cut" in kwargs:
-        waveform_params["DeltatL_cut"] = kwargs["DeltatL_cut"]
-    elif hasattr(source, "DeltatL_cut"):
-        waveform_params["DeltatL_cut"] = source.DeltatL_cut                        # Included
-    # detector params
-    if "tmin" in kwargs:
-        waveform_params["tmin"] = kwargs["tmin"]
-    elif hasattr(detector, "tmin") and detector.tmin!=None:
-        waveform_params["tmin"] = detector.tmin                        # Included
-    if "tmax" in kwargs:
-        waveform_params["tmax"] = kwargs["tmax"]
-    elif hasattr(detector, "tmax") and detector.tmax!=None:
-        waveform_params["tmax"] = detector.tmax                        # Included
-    if "TDI" in kwargs:
-        waveform_params["TDI"] = kwargs["TDI"]
-    elif hasattr(detector, "TDI") and detector.TDI!=None:
-        waveform_params["TDI"] = detector.TDI                        # Included
-    if "order_fresnel_stencil" in kwargs:
-        waveform_params["order_fresnel_stencil"] = kwargs["order_fresnel_stencil"]
-    elif hasattr(detector, "order_fresnel_stencil") and detector.order_fresnel_stencil!=None:
-        waveform_params["order_fresnel_stencil"] = detector.order_fresnel_stencil                        # Included
-    if "LISAconst" in kwargs:
-        waveform_params["LISAconst"] = kwargs["LISAconst"]
-    elif hasattr(detector, "LISAconst") and detector.LISAconst!=None:
-        waveform_params["LISAconst"] = detector.LISAconst                        # Included
-    if "responseapprox" in kwargs:
-        waveform_params["responseapprox"] = kwargs["responseapprox"]
-    elif hasattr(detector, "responseapprox") and detector.responseapprox!=None:
-        waveform_params["responseapprox"] = detector.responseapprox                        # Included
-    if "frozenLISA" in kwargs:
-        waveform_params["frozenLISA"] = kwargs["frozenLISA"]
-    elif hasattr(detector, "frozenLISA") and detector.frozenLISA!=None:
-        waveform_params["frozenLISA"] = detector.frozenLISA                        # Included
-    if "TDIrescaled" in kwargs:
-        waveform_params["TDIrescaled"] = kwargs["TDIrescaled"]
-    elif hasattr(detector, "TDIrescaled") and detector.TDIrescaled!=None:
-        waveform_params["TDIrescaled"] = detector.TDIrescaled                        # Included
-    if "LISAnoise" in kwargs:
-        waveform_params["LISAnoise"] = kwargs["LISAnoise"]
-    elif hasattr(detector, "LISAnoise") and detector.LISAnoise!=None:
-        waveform_params["LISAnoise"] = detector.LISAnoise                        # Included
+    if hasattr(source,"waveform_params"):
+        waveform_params=source.waveform_params
+    elif source.JsonFile:
+        with open(source.JsonFile, 'r') as f: input_params=json.load(f)
+        waveform_params=input_params["waveform_params"]
+    else:
+        waveform_params = {}
+        if source.timetomerger_max!=None:
+            waveform_params["timetomerger_max"] = source.timetomerger_max                        # Included
+        if source.minf!=None:
+            waveform_params["minf"] = source.minf                        # Included
+        if source.maxf!=None and not source.DeltatL_cut:
+            waveform_params["maxf"] = source.maxf                        # Included
+        if source.t0!=None:
+            waveform_params["t0"] = source.t0                        # Included
+        if source.tref!=None:
+            waveform_params["tref"] = source.tref                        # Included
+        if source.phiref!=None:
+            waveform_params["phiref"] = source.phiref                        # Included
+        if source.fref_for_phiref!=None:
+            waveform_params["fref_for_phiref"] = source.fref_for_phiref                        # Included
+        if source.fref_for_tref!=None:
+            waveform_params["fref_for_tref"] = source.fref_for_tref                        # Included
+        if source.force_phiref_fref!=None:
+            waveform_params["force_phiref_fref"] = source.force_phiref_fref                        # Included
+        if source.toffset!=None:
+            waveform_params["toffset"] = source.toffset                        # Included
+        if source.modes!=None:
+            waveform_params["modes"] = source.modes                        # Included
+        if source.acc!=None:
+            waveform_params["acc"] = source.acc                        # Included
+        if source.approximant!=None:
+            waveform_params["approximant"] = source.approximant                        # Included
+        if hasattr(source, "DeltatL_cut"):
+            waveform_params["DeltatL_cut"] = source.DeltatL_cut                        # Included
+        # detector params
+        if hasattr(detector, "tmin") and detector.tmin!=None:
+            waveform_params["tmin"] = detector.tmin                        # Included
+        if hasattr(detector, "tmax") and detector.tmax!=None:
+            waveform_params["tmax"] = detector.tmax                        # Included
+        if hasattr(detector, "TDI") and detector.TDI!=None:
+            waveform_params["TDI"] = detector.TDI                        # Included
+        if hasattr(detector, "order_fresnel_stencil") and detector.order_fresnel_stencil!=None:
+            waveform_params["order_fresnel_stencil"] = detector.order_fresnel_stencil                        # Included
+        if hasattr(detector, "LISAconst") and detector.LISAconst!=None:
+            waveform_params["LISAconst"] = detector.LISAconst                        # Included
+        if hasattr(detector, "responseapprox") and detector.responseapprox!=None:
+            waveform_params["responseapprox"] = detector.responseapprox                        # Included
+        if hasattr(detector, "frozenLISA") and detector.frozenLISA!=None:
+            waveform_params["frozenLISA"] = detector.frozenLISA                        # Included
+        if hasattr(detector, "TDIrescaled") and detector.TDIrescaled!=None:
+            waveform_params["TDIrescaled"] = detector.TDIrescaled
+        if hasattr(detector, "LISAnoise") and detector.LISAnoise!=None:
+            waveform_params["LISAnoise"] = detector.LISAnoise                        # Included
 
+    # update waveform param given in kwarks dict
+    for key,val in kwargs.items():
+        if key in waveform_params: waveform_params[key]=val
 
     # Optional parameters that depend on what method is being called
     # Need to understand if these are important differences...
@@ -1712,10 +1679,12 @@ def TileSkyArea(source,detectors=None,base_telescope_params=None,cloning_params=
             else:
                 print("key:",key,"not found in either detector_go_params or detector_config_struct...")
 
+    # Calculate source flux data -- NB CTR is telescope dependent so included inside loop for coverage info later if ARF file changes
+    if not hasattr(source,"EM_Flux_Data"): source.GenerateEMFlux(fstart22=1e-4,**{})
+    if len(set([detector.ARF_file_loc_name for detector in detectors]))==1: source.GenerateCTR(detectors[0].ARF_file_loc_name,gamma=1.7)
+
     # Loop over list of lists if we need to -- if we cloned more than one param
     for i in range(len(detectors)): go_params, map_struct, tile_structs, coverage_struct, detectors[i] = TileWithGwemopt(source,detectors[i],out_dirs[i])
-    # for det,od in zip(detectors,out_dirs):
-    #     go_params, map_struct, tile_structs, coverage_struct, detector = TileWithGwemopt(source,det,od)
 
     return detectors
 
@@ -1785,7 +1754,7 @@ def TileWithGwemopt(source,detector,outDirExtension=None):
     tile_structs, coverage_struct = gwemopt.coverage.timeallocation(go_params, map_struct, tile_structs)
 
     # Get info for run
-    detector = GetCoverageInfo(go_params, map_struct, tile_structs, coverage_struct, detector, verbose=True)
+    detector = GetCoverageInfo(go_params, map_struct, tile_structs, coverage_struct, detector, source, verbose=False)
 
     # Add info about source to coverage summary
     SourceInfo={
@@ -1831,7 +1800,8 @@ def PrepareGwemoptDicts(source,detector,outDirExtension=None):
     if source.gpstime!=None:
         go_params["gpstime"]=source.gpstime
     else:
-        go_params["gpstime"]=detector.detector_config_struct["gps_science_start"]
+        go_params["gpstime"]=detector.detector_config_struct["gps_science_start"]-source.DeltatL_cut/86400.
+        source.gpstime=go_params["gpstime"]
     go_params["do3D"]=source.do3D
     go_params["true_ra"]=source.true_ra
     go_params["true_dec"]=source.true_dec
@@ -1860,13 +1830,15 @@ def PrepareGwemoptDicts(source,detector,outDirExtension=None):
 
     return go_params,map_struct
 
-def GetCoverageInfo(go_params, map_struct, tile_structs, coverage_struct, detector, verbose=True):
+def GetCoverageInfo(go_params, map_struct, tile_structs, coverage_struct, detector, source=None, verbose=True):
     """
-    Extract coverage information
+    Extract coverage information, including a count for tiles that cover source and
+    tiles that cover source with exposure time at least the minimum for a threshold
+    photon count.
     """
     # Extract some data structures
     source_pix=hp.ang2pix(go_params["nside"],np.deg2rad(90.-go_params["true_dec"]),np.deg2rad(go_params["true_ra"])) # (nside, theta, phi)
-    cov_data=coverage_struct["data"]
+    cov_data=coverage_struct["data"] # Data is N*9 with columns ra,dec,mjd (exposure start),mag,exposureTime,field,tile_probs,airmass,program_id
     cov_ipix=coverage_struct["ipix"] # list because each sub-list is of variable length
     map_probs=map_struct["prob"]
 
@@ -1916,7 +1888,7 @@ def GetCoverageInfo(go_params, map_struct, tile_structs, coverage_struct, detect
             if all([pix not in cov_source_pix for pix in tile_pix]):
                 UniqueSourceCoverageCount+=1
     SourceTile_prob1=[cov_data[i,6] for i in cov_source_tile]
-    SourceTile_prob2=[map_probs[pix] for tile_pix in cov_source_pix for pix in tile_pix]
+    SourceTile_prob2=[map_probs[pix] for pix in cov_source_pix]
     SourceTile_accum_prob1=np.sum(SourceTile_prob1)
     SourceTile_accum_prob2=np.sum(SourceTile_prob2)
     print("Source tile probability checks:",SourceTile_accum_prob1,SourceTile_accum_prob2)
@@ -1934,6 +1906,34 @@ def GetCoverageInfo(go_params, map_struct, tile_structs, coverage_struct, detect
         print(" "*10+"map_struct pixel p's:")
         print(SourceTile_prob2,"\n")
         print("Source tile accumulated p:",SourceTile_accum_prob1,SourceTile_accum_prob2)
+
+    # Now add cuts to coverage info depending on photon flux
+    if not source==None and len(cov_source_tile)>0:
+        # Make sure source has relevant data and create it if not
+        if not hasattr(source,"EM_Flux_Data"): source.GenerateEMFlux(fstart22=1e-4,**{})
+        if not hasattr(source,"CTR_Data"): source.GenerateCTR(detector.ARF_file_loc_name,gamma=1.7) # Should be include gamma as a source param? Would we ever want to change this at run time?
+
+        # Calculate the exposuretimes for each tile that covers source
+        SourceTileExpTimes=[cov_data[tile_ii,4] for tile_ii in cov_source_tile]
+        SourceTileStartTimes=[86400.*(cov_data[tile_ii,2]-Time(go_params["gpstime"], format='gps', scale='utc').mjd) for tile_ii in cov_source_tile]
+        t2=time.time()
+
+        # Get CTR data out from source and cut to Tobs -- times here are seconds to merger (<0)
+        CTRs=source.CTR_Data["CTR"]
+        CTR_times=list(86400.*(-np.array(source.EM_Flux_Data["xray_time"])/86400. - Time(source.gpstime, format='gps', scale='utc').mjd + Time(go_params["gpstime"], format='gps', scale='utc').mjd)) # Just in case these are different -- i.e. if we have a run with multiple sources within Tobs
+        CTRs=[CTR for CTR,t in zip(CTRs,CTR_times) if t>=go_params["Tobs"][0] and t<=go_params["Tobs"][-1]]
+        CTR_times=[t for t in CTR_times if t>=go_params["Tobs"][0] and t<=go_params["Tobs"][-1]]
+
+        # Integrate CTR for each tile covering source to check no. of source photons received
+        TileListTimes=[[ts+i*dur/49 for i in range(50)] for ts,dur in zip(SourceTileStartTimes,SourceTileExpTimes)]
+        print("Times check:",TileTs,CTR_times,CTRs)
+        print("Times check 2:", source.EM_Flux_Data["xray_time"], Time(source.gpstime, format='gps', scale='utc').mjd)
+        t6=time.time()
+        SourceTilePhotonCounts=[np.trapz(np.interp(TileTs,CTR_times,CTRs),TileTs) for TileTs in TileListTimes]
+        t7=time.time()
+        print("time check 7:",t7-t6)
+
+        print("Photon count tests:",SourceTilePhotonCounts)
 
     # Return values
     return detector

@@ -619,7 +619,7 @@ class SMBH_Merger:
         # Save to file
         SYU.WriteSkymapToFile(self.map_struct,self.sky_map,None)
 
-    def GenerateEMFlux(self,detector,fstart22=1e-4,**EM_kwargs):
+    def GenerateEMFlux(self,fstart22=1e-4,**EM_kwargs):
         # Empty LALParams dict
         LALParams = lal.CreateDict();
         modearray = lalsim.SimInspiralCreateModeArray()
@@ -739,7 +739,7 @@ class SMBH_Merger:
         xray_flux = [mu_dopp[ii]*BolFac[ii]*EddLum/(4.*np.pi*self.dist*1e6*pyconstants.PC_SI*self.dist*1e6*pyconstants.PC_SI*10000.) for ii in range(len(BolFac))] # erg/s/cm^2 - this is orbital properties in *SOURCE* frame, then scaled by lum dist to account for redshifting to *DETECTOR* frame
 
         # Start time - LISABETA takes the Lframe flag appropriately. Need to convert to *SOURCE* frame
-        param_dict,waveform_params,extra_params = SYU.ClassesToParams(self,detector,**EM_kwargs) ## Do we need to change the approximant here from the saved one in source to EOB one?
+        param_dict,waveform_params,extra_params = SYU.ClassesToParams(self,detector=None,**EM_kwargs) ## Do we need to change the approximant here from the saved one in source to EOB one?
         waveform_params["DeltatL_cut"] = None # Need to set this to 0 to get the remaining signal for photon phases
         # print("Params from 'ClassesToParams':",param_dict,waveform_params,extra_params)
         if param_dict["m1"]==param_dict["m2"]:
@@ -777,115 +777,15 @@ class SMBH_Merger:
         EM_Flux_Data["r"] = [rad for (rad,time) in zip(r,xray_time) if time>t_start_flux and time<t_end_flux] # r
         EM_Flux_Data["GW_freqs"] = [f/(1.+self.z) for (f,time) in zip(GW_freqs,xray_time) if time>t_start_flux and time<t_end_flux] # [f/(1.+self.z) for f in GW_freqs]
         self.EM_Flux_Data = EM_Flux_Data
-
-        # Plot cumulative SNR
-        PLOT_CUMUL_SNR = False
-        if PLOT_CUMUL_SNR:
-            import matplotlib.pyplot as plt
-            import matplotlib.pylab as pylab
-            params = {'legend.fontsize': 8, # 'x-large',
-                     'axes.labelsize': 8, # 'x-large',
-                     'xtick.labelsize': 4, # 'x-large',
-                     'ytick.labelsize': 4, # 'x-large'}
-                     'lines.markersize': 2}
-            pylab.rcParams.update(params)
-            times = [t/(24.*60.*60.) for t in tf]
-            plt.plot(times, cumul_SNR)
-            ax = plt.gca()
-            ax.set_yscale('log')
-            plt.xlabel('Time [d]')
-            plt.ylabel('Cumul SNR')
-            plt.grid()
-            plt.show()
-
-        # Plot radial distance
-        DO_RADIUS_PLOT = False
-        if DO_RADIUS_PLOT:
-            print("Plotted system parameters:", self.M, self.q, self.z)
-            import matplotlib.pyplot as plt
-            import matplotlib.pylab as pylab
-            params = {'legend.fontsize': 8, # 'x-large',
-                     'axes.labelsize': 8, # 'x-large',
-                     'xtick.labelsize': 4, # 'x-large',
-                     'ytick.labelsize': 4, # 'x-large'}
-                     'lines.markersize': 2}
-            pylab.rcParams.update(params)
-            times = [time/(24.*60.*60.) for time in self.EM_Flux_Data["xray_time"]]
-            plt.plot(times, self.r)
-            ax = plt.gca()
-            ax.set_yscale('log')
-            plt.xlabel('Time [d]')
-            plt.ylabel('EOB Rad [R$_S$]')
-            plt.grid()
-            plt.show()
-
-        # Plot GW frequency as function of time
-        DO_GW_FREQ_PLOT = False
-        if DO_GW_FREQ_PLOT:
-            import matplotlib.pyplot as plt
-            import matplotlib.pylab as pylab
-            params = {'legend.fontsize': 8, # 'x-large',
-                     'axes.labelsize': 8, # 'x-large',
-                     'xtick.labelsize': 4, # 'x-large',
-                     'ytick.labelsize': 4, # 'x-large'}
-                     'lines.markersize': 2}
-            pylab.rcParams.update(params)
-            times = [time/(24.*60.*60.) for time in self.EM_Flux_Data["xray_time"]]
-            plt.plot(times, self.GW_freqs)
-            plt.xlabel('Time from Merger [d]')
-            plt.ylabel('GW Frequency [Hz]')
-            ax = plt.gca()
-            ax.set_yscale('log')
-            plt.grid()
-            plt.show()
-
-        # Plot x-ray flux and velocity
-        DO_XRAY_PLOT = False
-        if DO_XRAY_PLOT:
-            print("Plotted system parameters:", self.M, self.q, self.z)
-            import matplotlib.pyplot as plt
-            import matplotlib.pylab as pylab
-            params = {'legend.fontsize': 8, # 'x-large',
-                     'axes.labelsize': 8, # 'x-large',
-                     'xtick.labelsize': 4, # 'x-large',
-                     'ytick.labelsize': 4, # 'x-large'}
-                     'lines.markersize': 2}
-            pylab.rcParams.update(params)
-            times = [time/(24.*60.*60.) for time in self.EM_Flux_Data["xray_time"]]
-            plt.plot(times, self.xray_flux)
-            plt.xlabel('Time from Merger [d]')
-            plt.ylabel('X-ray Flux [erg s$^{-1}$ cm$^-2$]')
-            ax = plt.gca()
-            ax.set_yscale('log')
-            plt.grid()
-            plt.show()
-
-        # Plot EOB radial velocity for fun
-        DO_RAD_VEL_PLOT = False
-        if DO_RAD_VEL_PLOT:
-            print("Plotted system parameters:", self.M, self.q, self.z)
-            import matplotlib.pyplot as plt
-            import matplotlib.pylab as pylab
-            params = {'legend.fontsize': 8, # 'x-large',
-                     'axes.labelsize': 8, # 'x-large',
-                     'xtick.labelsize': 4, # 'x-large',
-                     'ytick.labelsize': 4, # 'x-large'}
-                     'lines.markersize': 2}
-            pylab.rcParams.update(params)
-            plt.plot(xray_time, r_dot)
-            plt.xlabel('Time [s]')
-            plt.ylabel('EOB Rad Vel [c]')
-            plt.grid()
-            plt.show()
-
+        
         # Save it
         self.ExistentialCrisis()
 
     def GenerateCTR(self,ARF_file_loc_name,gamma=1.7):
         CTR_Data={}
         CTR_Data["xray_gamma"] = gamma
-        if not hasattr(self,"xray_flux"):
-            raise ValueError("No x-ray flux generated. Need to call GenerateEMFlux with a detector object before running this function.")
+        if not hasattr(self,"EM_Flux_Data"):
+            raise ValueError("No EM flux generated. Need to call GenerateEMFlux with a detector object before running this function.")
 
         # CTR_Data["xray_phi_0"] = [(6.242e8)*self.EM_Flux_Data["xray_flux"][ii]*(2.-gamma)/(10.**(2.-gamma)-0.2**(2.-gamma)) for ii in range(len(self.EM_Flux_Data["xray_flux"]))]
         CTR_Data["xray_phi_0"] = [(6.242e8)*flu*(2.-gamma)/(10.**(2.-gamma)-0.2**(2.-gamma)) for flu in self.EM_Flux_Data["xray_flux"]]
@@ -904,6 +804,9 @@ class SMBH_Merger:
         integral = sum(integrand)/(1.+self.z) # We need another 1/(1+z) here otherwise the photon rate is too high. Maybe this is a redshifting of energy bins?
         # CTR = [integral*self.xray_phi_0[ii] for ii in range(len(self.xray_phi_0))]
         CTR_Data["CTR"] = [integral*el for el in CTR_Data["xray_phi_0"]] # CTR
+
+        # Store data in source object
+        self.CTR_Data=CTR_Data
 
         # Save it
         self.ExistentialCrisis()

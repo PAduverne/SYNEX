@@ -315,6 +315,9 @@ class Athena:
         # If 'MUTATED' was False then if the '.tess' file exists the tesselation will be loaded.
         self.ComputeTesselation()
 
+        # Hardcode ARF file for now -- to include later as option
+        self.ARF_file_loc_name=SYNEX_PATH+"/XIFU_CC_BASELINECONF_2018_10_10.arf"
+
         # Issue reminder of where to find list of gwemopt variables and flags
         if print_reminder:
             print("Some keys given at initiatiation of Athena class are not contained in gwemop params - see 'SYNEX/gwemopt_defaults.py' for full list of possible field names.")

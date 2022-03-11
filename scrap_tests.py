@@ -18,7 +18,10 @@ import matplotlib as mpl
 import matplotlib.pylab as pylab
 from SYNEX.SYNEX_Utils import pylab_params
 pylab.rcParams.update(pylab_params)
-mpl.use('MacOSX')
+try:
+    mpl.use('MacOSX')
+except:
+    print("\n")
 
 
 

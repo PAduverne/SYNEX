@@ -76,7 +76,7 @@ Athena_kwargs={"ExistentialFileName":"/Users/baird/Documents/LabEx_PostDoc/SYNEX
                 "horizon" : 0., # 30.,                    ### None if we want a telesscopic orbit?
                 "doMinimalTiling" : True, #  True,
                 "readout" : 0.0001, # 6
-                "doSingleExposure" : False, # False
+                "doSingleExposure" : True, # False
                 "iterativeOverlap" : 1.0,
                 "maximumOverlap" : 1.0,
                } ### What about doPerturbativeTiling? ### "doPerturbativeTiling" : True
@@ -85,12 +85,24 @@ Athena=SYDs.Athena(**Athena_kwargs)
 # Test tiling with detector cloning
 ex_times=np.logspace(1,4,num=2,endpoint=True,base=10.)
 cloning_params={"exposuretime":ex_times} # {"inc":np.linspace(0., 90., 5)}
-t0=time.time()
+tiling_t0=time.time()
 detectors = SYU.TileSkyArea(Merger,detectors=Athena,base_telescope_params=None,cloning_params=cloning_params)
-t1=time.time()
-print("Total time for",len(detectors),"detectors:",t1-t0, "s") # 1216 for 5 detectors...
+tiling_t1=time.time()
+print("Total time for",len(detectors),"detectors:",tiling_t1-tiling_t0, "s") # 1216 for 5 detectors...
 
+for detector in detectors:
+    T0_mjd=detector.detector_source_coverage["Start time (mjd)"]
+    Xs,Ys=[],[]
+    for ExT0s,ExTs in zip(detector.detector_source_coverage["Source tile start times (s)"],detector.detector_source_coverage["Source tile exposuretimes (s)"]): Xs+=[ExT0s/86400.,(ExT0s+ExTs)/86400.]
+    for CumCounts in np.cumsum(detector.detector_source_coverage["Source photon counts"]): Ys+=[CumCounts,CumCounts]
+    # Ys=[counts for counts in detector.detector_source_coverage["Source photon counts"]]
+    plt.plot(Xs,Ys,label=detector.detector_config_struct["telescope"])
 
+plt.xlabel(r"Time from "+str(T0_mjd)+" (mjd)")
+plt.ylabel(r"Source photons")
+plt.legend()
+plt.grid()
+plt.show()
 
 
 

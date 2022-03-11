@@ -1635,53 +1635,75 @@ def TileSkyArea(source,detectors=None,base_telescope_params=None,cloning_params=
     1. Case where we inject a list of sources...
     2. parallelize code if there are nodes available to do so
     """
-    # Prioritize creating from base params dict
-    if not base_telescope_params==None:
-        detectors=[SYDs.Athena(base_telescope_params)]
+    # Using MPI or not
+    if MPI is not None:
+        MPI_size = MPI.COMM_WORLD.Get_size()
+        MPI_rank = MPI.COMM_WORLD.Get_rank()
+        comm = MPI.COMM_WORLD
+        use_mpi=True
+        if (MPI_size > 1):
+            use_mpi=False
+    else:
+        use_mpi=False
+        MPI_rank=0
 
-    # Create default detector if still nothing there
-    if detectors==None:
-        detectors=[SYDs.Athena()]
+    if MPI_rank==0:
+        # Prioritize creating from base params dict
+        if not base_telescope_params==None:
+            detectors=[SYDs.Athena(base_telescope_params)]
 
-    # Make sure detectors variable is a list(in case single det input)
-    if not isinstance(detectors,list):
-        detectors=[detectors]
+        # Create default detector if still nothing there
+        if detectors==None:
+            detectors=[SYDs.Athena()]
 
-    # Default of no output directory extension
-    out_dirs=[None]*len(detectors)
+        # Make sure detectors variable is a list(in case single det input)
+        if not isinstance(detectors,list):
+            detectors=[detectors]
 
-    # Populate detectors if kwargs has directed to do so
-    if not cloning_params==None:
-        # Init telescope
-        if isinstance(detectors, list):
-            base_detector = detectors[0]
-        else:
-            base_detector = detectors
-        telescope_params=copy.deepcopy(base_detector.__dict__)
+        # Default of no output directory extension
+        out_dirs=[None]*len(detectors)
 
-        # Start populating detector list -- list of lists, each embedded list corresponds to each requested cloning parameter
-        out_dirs=[]
-        detectors=[]
-        for key,values in cloning_params.items():
-            if not isinstance(values,(list,np.ndarray)):
-                # In case we are asked for a single value
-                values=[values]
-            if key in base_detector.detector_go_params or base_detector.detector_config_struct:
-                dict_list = [{"ExistentialFileName":base_detector.ExistentialFileName,
-                              "NewExistentialFileName":".".join(base_detector.ExistentialFileName.split(".")[:-1])+"_"+key+"_"+str(ii+1)+"."+base_detector.ExistentialFileName.split(".")[-1],
-                              key:values[ii],
-                              "telescope":base_detector.detector_config_struct["telescope"]+"_"+key+"_"+str(ii+1)} for ii in range(len(values))]
-                detectors+=[SYDs.Athena(**dict_ii) for dict_ii in dict_list]
-                out_dirs+=[key]*len(dict_list)
-                check_vals_tmp=[detector.detector_config_struct[key] for detector in detectors]
-                check_tels_tmp=[detector.detector_config_struct["telescope"] for detector in detectors]
-                print("Check that detectors are varying as they should be:",key,check_tels_tmp,values,check_vals_tmp)
-            else:
-                print("key:",key,"not found in either detector_go_params or detector_config_struct...")
+        # Populate detectors if kwargs has directed to do so
+        if not cloning_params==None:
+            # Init telescope
+            base_detector=detectors[0] if isinstance(detectors, list) else detectors
 
-    # Calculate source flux data -- NB CTR is telescope dependent so included inside loop for coverage info later if ARF file changes
-    if not hasattr(source,"EM_Flux_Data"): source.GenerateEMFlux(fstart22=1e-4,**{})
-    if len(set([detector.ARF_file_loc_name for detector in detectors]))==1: source.GenerateCTR(detectors[0].ARF_file_loc_name,gamma=1.7)
+            # Start populating detector list -- list of lists, each embedded list corresponds to each requested cloning parameter
+            out_dirs=[]
+            detectors=[]
+            for key,values in cloning_params.items():
+                # In case single value
+                if not isinstance(values,(list,np.ndarray)): values=[values]
+                if key in base_detector.detector_go_params or key in base_detector.detector_config_struct:
+                    dict_list = [{"ExistentialFileName":base_detector.ExistentialFileName,
+                                  "NewExistentialFileName":".".join(base_detector.ExistentialFileName.split(".")[:-1])+"_"+key+"_"+str(ii+1)+"."+base_detector.ExistentialFileName.split(".")[-1],
+                                  key:values[ii],
+                                  "telescope":base_detector.detector_config_struct["telescope"]+"_"+key+"_"+str(ii+1)} for ii in range(len(values))]
+                    detectors+=[SYDs.Athena(**dict_ii) for dict_ii in dict_list]
+                    out_dirs+=[key]*len(dict_list)
+                    check_vals_tmp=[detector.detector_config_struct[key] for detector in detectors]
+                    check_tels_tmp=[detector.detector_config_struct["telescope"] for detector in detectors]
+                else:
+                    print("key:",key,"not found in either detector_go_params or detector_config_struct...")
+
+        # Calculate source flux data -- NB CTR is telescope dependent so included inside loop for coverage info later if ARF file changes
+        if not hasattr(source,"EM_Flux_Data"): source.GenerateEMFlux(fstart22=1e-4,**{})
+        if len(set([detector.ARF_file_loc_name for detector in detectors]))==1: source.GenerateCTR(detectors[0].ARF_file_loc_name,gamma=1.7)
+
+    if use_mpi:
+        # Clear objects in worker processes just in case
+        if MPI_rank>0:
+            source = None
+            detectors = None
+
+        # Send source to workers
+        source = comm.bcast(source, root=0)
+
+        # Scatter detectors to processors -- can we formulate a trade off between processes per detectors and partitioning
+        # pool to run gwemopt in parallel (doParallel and Ncores options in go_params)?
+        detectors = comm.scatter(detectors, root=0)
+
+        print("MPI rank/size: %d / %d" % (MPI_rank, MPI_size),"with 'detectors' shape:",np.shape(detectors), flush=True)
 
     # Loop over list of lists if we need to -- if we cloned more than one param
     for i in range(len(detectors)): go_params, map_struct, tile_structs, coverage_struct, detectors[i] = TileWithGwemopt(source,detectors[i],out_dirs[i])
@@ -1694,7 +1716,10 @@ def TileWithGwemopt(source,detector,outDirExtension=None):
     """
 
     # Get the right dicts to use
+    t_tile_0=time.time()
     go_params,map_struct=PrepareGwemoptDicts(source,detector,outDirExtension)
+    # go_params["doParallel"]=True
+    # go_params["Ncores"]=2
 
     # Get segments -- need to understand what this is. Line 469 of binary file 'gwemopt_run'
     import SYNEX.segments_athena as segs_a
@@ -1894,7 +1919,8 @@ def GetCoverageInfo(go_params, map_struct, tile_structs, coverage_struct, detect
     print("Source tile probability checks:",SourceTile_accum_prob1,SourceTile_accum_prob2)
     detector.detector_source_coverage={"telescope":telescope,"Source Tile Prob (by cov tiles)":SourceTile_prob1,
                         "Source Tile Prob (by cov pixels)":SourceTile_prob2,"tile ID containing source pixel":cov_source_tile,
-                        "tile pixels containing source pixel":cov_source_pix, "No. unique source coverages":UniqueSourceCoverageCount}
+                        "tile pixels containing source pixel":cov_source_pix, "No. source coverages":len(SourceTile_prob1),
+                        "No. unique source coverages":UniqueSourceCoverageCount}
 
     # Print summary if asked for
     if verbose:
@@ -1916,24 +1942,26 @@ def GetCoverageInfo(go_params, map_struct, tile_structs, coverage_struct, detect
         # Calculate the exposuretimes for each tile that covers source
         SourceTileExpTimes=[cov_data[tile_ii,4] for tile_ii in cov_source_tile]
         SourceTileStartTimes=[86400.*(cov_data[tile_ii,2]-Time(go_params["gpstime"], format='gps', scale='utc').mjd) for tile_ii in cov_source_tile]
-        t2=time.time()
 
         # Get CTR data out from source and cut to Tobs -- times here are seconds to merger (<0)
         CTRs=source.CTR_Data["CTR"]
         CTR_times=list(86400.*(-np.array(source.EM_Flux_Data["xray_time"])/86400. - Time(source.gpstime, format='gps', scale='utc').mjd + Time(go_params["gpstime"], format='gps', scale='utc').mjd)) # Just in case these are different -- i.e. if we have a run with multiple sources within Tobs
-        CTRs=[CTR for CTR,t in zip(CTRs,CTR_times) if t>=go_params["Tobs"][0] and t<=go_params["Tobs"][-1]]
-        CTR_times=[t for t in CTR_times if t>=go_params["Tobs"][0] and t<=go_params["Tobs"][-1]]
+        CTRs=[CTR for CTR,t in zip(CTRs,CTR_times) if t>=go_params["Tobs"][0]*86400. and t<=go_params["Tobs"][-1]*86400.]
+        CTR_times=[t for t in CTR_times if t>=go_params["Tobs"][0]*86400. and t<=go_params["Tobs"][-1]*86400.]
 
         # Integrate CTR for each tile covering source to check no. of source photons received
         TileListTimes=[[ts+i*dur/49 for i in range(50)] for ts,dur in zip(SourceTileStartTimes,SourceTileExpTimes)]
-        print("Times check:",TileTs,CTR_times,CTRs)
-        print("Times check 2:", source.EM_Flux_Data["xray_time"], Time(source.gpstime, format='gps', scale='utc').mjd)
-        t6=time.time()
         SourceTilePhotonCounts=[np.trapz(np.interp(TileTs,CTR_times,CTRs),TileTs) for TileTs in TileListTimes]
-        t7=time.time()
-        print("time check 7:",t7-t6)
 
-        print("Photon count tests:",SourceTilePhotonCounts)
+        detector.detector_source_coverage.update({"Source tile exposuretimes (s)":SourceTileExpTimes,
+                                                  "Source photon counts":SourceTilePhotonCounts,
+                                                  "Source tile start times (s)":SourceTileStartTimes,
+                                                  "Start time (mjd)":Time(go_params["gpstime"], format='gps', scale='utc').mjd})
+    else:
+        detector.detector_source_coverage.update({"Source tile exposuretimes (s)":[],
+                                                  "Source photon counts":[],
+                                                  "Source tile start times (s)":[],
+                                                  "Start time (mjd)":Time(go_params["gpstime"], format='gps', scale='utc').mjd})
 
     # Return values
     return detector

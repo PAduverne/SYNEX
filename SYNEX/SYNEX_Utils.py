@@ -68,7 +68,10 @@ pylab_params = {'legend.fontsize': 8, # 'x-large',
          'lines.linewidth': 0.7,
          'font.size': 8} # 0.1}
 pylab.rcParams.update(pylab_params)
-mpl.use('MacOSX')
+try:
+    mpl.use('MacOSX')
+except:
+    print("\n")
 
 # Stop warnings about deprecated methods...
 import warnings

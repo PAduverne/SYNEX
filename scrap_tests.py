@@ -34,8 +34,10 @@ except:
 
 # Merger args
 Merger_kwargs = {"ExistentialFileName":"/Users/baird/Documents/LabEx_PostDoc/SYNEX/Saved_Source_Dicts/IdeaPaperSystem_9d_base.dat",
-                 "NewExistentialFileName":"/Users/baird/Documents/LabEx_PostDoc/SYNEX/Saved_Source_Dicts/IdeaPaperSystem_9d_dev.dat",}
+                 "NewExistentialFileName":"/Users/baird/Documents/LabEx_PostDoc/SYNEX/Saved_Source_Dicts/IdeaPaperSystem_9d_dev.dat"}
 # Merger_kwargs = {"ExistentialFileName":"/Users/baird/Documents/LabEx_PostDoc/SYNEX/Saved_Source_Dicts/TestSystem_9d_base.dat"}
+# Merger_kwargs = {"ExistentialFileName":"/home/baird/SYNEX/Saved_Source_Dicts/IdeaPaperSystem_9d_base.dat",
+#                  "NewExistentialFileName":"/home/baird/SYNEX/Saved_Source_Dicts/IdeaPaperSystem_9d_dev.dat"}
 
 # Resurrect - either from lisabeta data or saved source file
 Merger = SYSs.SMBH_Merger(**Merger_kwargs)
@@ -83,6 +85,10 @@ Athena_kwargs={"ExistentialFileName":"/Users/baird/Documents/LabEx_PostDoc/SYNEX
                 "iterativeOverlap" : 1.0,
                 "maximumOverlap" : 1.0,
                } ### What about doPerturbativeTiling? ### "doPerturbativeTiling" : True
+# Athena_kwargs["ExistentialFileName"]="/home/baird/SYNEX/Saved_Telescope_Dicts/Athena_base.dat"
+# Athena_kwargs["NewExistentialFileName"]="/home/baird/SYNEX/Saved_Telescope_Dicts/Athena_dev.dat"
+# Athena_kwargs["orbitFile"]="/home/baird/SYNEX/orbit_files/Athena_20340601_728d_inc60_R750Mkm_ecc4_ArgPeri20_AscNode-10_phi020_P90_frozenFalse_base.dat"
+# Athena_kwargs["NeworbitFile"]="/home/baird/SYNEX/orbit_files/Athena_20340601_728d_inc60_R750Mkm_ecc4_ArgPeri20_AscNode-10_phi020_P90_frozenFalse_dev.dat"
 Athena=SYDs.Athena(**Athena_kwargs)
 
 # Test tiling with detector cloning
@@ -98,7 +104,7 @@ for detector in detectors:
     Xs,Ys=[],[]
     for ExT0s,ExTs in zip(detector.detector_source_coverage["Source tile start times (s)"],detector.detector_source_coverage["Source tile exposuretimes (s)"]): Xs+=[ExT0s/86400.,(ExT0s+ExTs)/86400.]
     for CumCounts in np.cumsum(detector.detector_source_coverage["Source photon counts"]): Ys+=[CumCounts,CumCounts]
-    # Ys=[counts for counts in detector.detector_source_coverage["Source photon counts"]]
+    print(detector,Xs,Ys,detector.detector_source_coverage["Source tile exposuretimes (s)"])
     plt.plot(Xs,Ys,label=detector.detector_config_struct["telescope"])
 
 plt.xlabel(r"Time from "+str(T0_mjd)+" (mjd)")

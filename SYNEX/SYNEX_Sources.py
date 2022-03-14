@@ -438,8 +438,12 @@ class SMBH_Merger:
         ExistentialPath="/".join(self.ExistentialFileName.split("/")[:-1])
         pathlib.Path(ExistentialPath).mkdir(parents=True, exist_ok=True)
         if self.sky_map!=None:
-            SkyMapPath="/".join(self.sky_map.split("/")[:-1])
-            pathlib.Path(SkyMapPath).mkdir(parents=True, exist_ok=True)
+            try:
+                SkyMapPath="/".join(self.sky_map.split("/")[:-1])
+                pathlib.Path(SkyMapPath).mkdir(parents=True, exist_ok=True)
+            except:
+                SkyMapPath=SYNEX_PATH++"/Skymap_files" ## In case we are now on a cluster or something and older saved files' paths no longer work
+                pathlib.Path(SkyMapPath).mkdir(parents=True, exist_ok=True)
 
         # Extra useful params
         self.true_ra = np.rad2deg(self.lamda+np.pi)   ## In deg
@@ -777,7 +781,7 @@ class SMBH_Merger:
         EM_Flux_Data["r"] = [rad for (rad,time) in zip(r,xray_time) if time>t_start_flux and time<t_end_flux] # r
         EM_Flux_Data["GW_freqs"] = [f/(1.+self.z) for (f,time) in zip(GW_freqs,xray_time) if time>t_start_flux and time<t_end_flux] # [f/(1.+self.z) for f in GW_freqs]
         self.EM_Flux_Data = EM_Flux_Data
-        
+
         # Save it
         self.ExistentialCrisis()
 

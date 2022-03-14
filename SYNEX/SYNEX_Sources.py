@@ -472,7 +472,7 @@ class SMBH_Merger:
                 pathlib.Path(SkyMapPath).mkdir(parents=True, exist_ok=True)
             except:
                 SkyMapPath=SYNEX_PATH+"/Skymap_files" ## In case we are now on a cluster or something and older saved files' paths no longer work
-                self.sky_map=SkyMapPath+self.sky_map.split("/")[-1]
+                self.sky_map=SkyMapPath+"/"+self.sky_map.split("/")[-1]
                 pathlib.Path(SkyMapPath).mkdir(parents=True, exist_ok=True)
 
         # Extra useful params

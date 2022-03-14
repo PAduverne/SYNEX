@@ -366,7 +366,7 @@ def CompleteLisabetaDataAndJsonFileNames(FileName):
         H5FileLocAndName = LisabetaDataPath + H5FileLocAndName
         JsonFileLocAndName = LisabetaJsonPath + JsonFileLocAndName
     elif bool_vec[0] and not bool_vec[1]:
-        JsonFileLocAndName = LisabetaJsonPath + "/" + H5FileLocAndName .split("inference_data")[-1]
+        JsonFileLocAndName = LisabetaJsonPath + H5FileLocAndName .split("inference_data")[-1]
         JsonFileLocAndName = ".".join(JsonFileLocAndName.split(".")[:-1])+".json"
     elif not bool_vec[0] and bool_vec[1]:
         H5FileLocAndName = LisabetaDataPath + JsonFileLocAndName.split("inference_param_files")[-1]

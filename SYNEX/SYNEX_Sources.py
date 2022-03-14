@@ -887,6 +887,10 @@ class SMBH_Merger:
         MyExistentialDict["lambda"]=self.lamda
         del MyExistentialDict["lamda"]
 
+        del MyExistentialDict["map_struct"]
+        del MyExistentialDict["CTR_Data"]
+        del MyExistentialDict["EM_Flux_Data"]
+
         # Save to file...
         print("Saving source attributes to:",self.ExistentialFileName)
         with open(self.ExistentialFileName, 'wb') as f:

@@ -366,15 +366,26 @@ def CompleteLisabetaDataAndJsonFileNames(FileName):
         H5FileLocAndName = LisabetaDataPath + H5FileLocAndName
         JsonFileLocAndName = LisabetaJsonPath + JsonFileLocAndName
     elif bool_vec[0] and not bool_vec[1]:
-        JsonFileLocAndName = LisabetaJsonPath + JsonFileLocAndName.split("inference_data")[-1]
+        JsonFileLocAndName = LisabetaJsonPath + "/" + H5FileLocAndName .split("inference_data")[-1]
+        JsonFileLocAndName = ".".join(JsonFileLocAndName.split(".")[:-1])+".json"
     elif not bool_vec[0] and bool_vec[1]:
-        H5FileLocAndName = LisabetaDataPath + H5FileLocAndName.split("inference_param_files")[-1]
+        H5FileLocAndName = LisabetaDataPath + JsonFileLocAndName.split("inference_param_files")[-1]
+        H5FileLocAndName = ".".join(H5FileLocAndName.split(".")[:-1])+".h5"
 
     # Check if the subdirectories exist for both data and json files
     JsonPathOnly="/".join(JsonFileLocAndName.split("/")[:-1])
     DataPathOnly="/".join(H5FileLocAndName.split("/")[:-1])
-    pathlib.Path(JsonPathOnly).mkdir(parents=True, exist_ok=True)
-    pathlib.Path(DataPathOnly).mkdir(parents=True, exist_ok=True)
+    try:
+        # See if the directories exist in case we load ource from savefile or something
+        pathlib.Path(JsonPathOnly).mkdir(parents=True, exist_ok=True)
+        pathlib.Path(DataPathOnly).mkdir(parents=True, exist_ok=True)
+    except:
+        JsonPathOnly=LisabetaJsonPath
+        DataPathOnly=LisabetaDataPath
+        JsonFileLocAndName=JsonPathOnly+JsonFileLocAndName.split("inference_param_files")[-1]
+        H5FileLocAndName=DataPathOnly+H5FileLocAndName.split("inference_data")[-1]
+        pathlib.Path(JsonPathOnly).mkdir(parents=True, exist_ok=True)
+        pathlib.Path(DataPathOnly).mkdir(parents=True, exist_ok=True)
 
     # Return full paths and names all harmonious and what not
     return JsonFileLocAndName,H5FileLocAndName

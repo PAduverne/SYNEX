@@ -437,7 +437,7 @@ class SMBH_Merger:
             if os.path.isfile(JsonFileLocAndName):
                 print("Using similar Json file found \n"+JsonFileLocAndName)
                 self.JsonFile=JsonFileLocAndName
-        
+
         # If we resurrected with mutation, keep a reference to where this class came from
         if MUTATED:
             self.MutatedFromSourceFile = self.ExistentialFileName

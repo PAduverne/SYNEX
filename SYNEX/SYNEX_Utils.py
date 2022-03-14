@@ -2010,11 +2010,11 @@ def WriteSkymapToFile(map_struct,SkyMapFileName,go_params=None,PermissionToWrite
     # Write to fits file
     if "distmu" in map_struct:
         data_to_save = np.vstack((map_struct["prob"],map_struct["distmu"],map_struct["distsigma"],map_struct["distnorm"]))
-        if IsMaster:
+        if PermissionToWrite:
             hp.write_map(SkyMapFileName, data_to_save, overwrite=True) # dtype=np.dtype('float64'))
         if go_params!=None:
             go_params["do3D"]=True
-    elif IsMaster:
+    elif PermissionToWrite:
         hp.write_map(SkyMapFileName, map_struct["prob"], overwrite=True) # dtype=np.dtype('float64'))
 
     if go_params!=None:

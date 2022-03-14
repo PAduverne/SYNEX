@@ -22,6 +22,12 @@ import lalsimulation as lalsim
 import lisabeta.pyconstants as pyconstants
 import lisabeta.lisa.lisa as lisa
 
+# mpi stuff
+try:
+    from mpi4py import MPI
+except ModuleNotFoundError:
+    MPI = None
+
 ################### Define base classes and add useful properties/function ###################
 
 # This is where we will add supernova and other source classes when we get around to it.

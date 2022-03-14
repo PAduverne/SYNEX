@@ -94,6 +94,20 @@ class SMBH_Merger:
 
         But both frames should be stored in h5 file... need to make sure we are reading in the right ones.
         """
+        # Make sure only master node is writting files if running on cluster
+        ####### Need to address this in case where we inject a series of sources with gwemopt...
+        if MPI is not None:
+            MPI_size = MPI.COMM_WORLD.Get_size()
+            MPI_rank = MPI.COMM_WORLD.Get_rank()
+            comm = MPI.COMM_WORLD
+            use_mpi=True
+            if (MPI_size > 1):
+                use_mpi=False
+        else:
+            use_mpi=False
+            MPI_rank=0
+        self.PermissionToWrite=MPI_rank==0
+
         # Default assume class is not mutated from another saved class
         # "MUTATED" = key to force new savefile
         MUTATED=False
@@ -651,7 +665,7 @@ class SMBH_Merger:
         self.map_struct=map_struct
 
         # Save to file
-        SYU.WriteSkymapToFile(self.map_struct,self.sky_map,None)
+        SYU.WriteSkymapToFile(self.map_struct,self.sky_map,None,self.PermissionToWrite)
 
     def GenerateEMFlux(self,fstart22=1e-4,**EM_kwargs):
         # Empty LALParams dict

@@ -1980,7 +1980,7 @@ def GetCoverageInfo(go_params, map_struct, tile_structs, coverage_struct, detect
     # Return values
     return detector
 
-def WriteSkymapToFile(map_struct,SkyMapFileName,go_params=None):
+def WriteSkymapToFile(map_struct,SkyMapFileName,go_params=None,PermissionToWrite=True):
     """
     So far have not included case where this is 3D. This will be updated soon - we have
     distance posteriors... Just need to understand how GWEMOPT expects this to be tabulated.
@@ -2010,10 +2010,11 @@ def WriteSkymapToFile(map_struct,SkyMapFileName,go_params=None):
     # Write to fits file
     if "distmu" in map_struct:
         data_to_save = np.vstack((map_struct["prob"],map_struct["distmu"],map_struct["distsigma"],map_struct["distnorm"]))
-        hp.write_map(SkyMapFileName, data_to_save,overwrite=True) # dtype=np.dtype('float64'))
+        if IsMaster:
+            hp.write_map(SkyMapFileName, data_to_save, overwrite=True) # dtype=np.dtype('float64'))
         if go_params!=None:
             go_params["do3D"]=True
-    else:
+    elif IsMaster:
         hp.write_map(SkyMapFileName, map_struct["prob"], overwrite=True) # dtype=np.dtype('float64'))
 
     if go_params!=None:

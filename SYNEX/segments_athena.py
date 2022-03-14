@@ -33,6 +33,7 @@ def get_telescope_segments(params):
     for telescope in params["telescopes"]:
 
         params["config"][telescope]["segmentlist"] = get_segments(params, params["config"][telescope])
+        print("Athena telescope segments check 1")
 
         params["config"][telescope]["exposurelist"] = gwemopt.utils.get_exposures(params, params["config"][telescope], params["config"][telescope]["segmentlist"])
         if len(params["config"][telescope]["exposurelist"]) == 0:
@@ -40,10 +41,14 @@ def get_telescope_segments(params):
             params["config"][telescope]["tot_obs_time"] = 0.0
             continue
 
-        nexp, junk = np.array(params["config"][telescope]["exposurelist"]).shape
+        print("Athena telescope segments check 2")
+
+        nexp,_ = np.array(params["config"][telescope]["exposurelist"]).shape
         params["config"][telescope]["n_windows"] = nexp
         tot_obs_time = np.sum(np.diff(np.array(params["config"][telescope]["exposurelist"]))) * 86400.
         params["config"][telescope]["tot_obs_time"] = tot_obs_time
+
+        print("Athena telescope segments check 3")
 
     return params
 
@@ -149,7 +154,7 @@ def get_segments_tiles(params, config_struct, tile_struct):
 
     segmentlist = config_struct["segmentlist"]
 
-    print("Generating segments for tiles...")
+    print("Generating Athena segments for tiles...")
 
     keys = tile_struct.keys()
 
@@ -194,7 +199,6 @@ def get_segments_tiles(params, config_struct, tile_struct):
                         tile_struct[key]["segmentlist"] = tilesegmentlist
 
             else:
-                print("tilesegmentlist where I think it's being called:",tilesegmentlist)
                 tilesegmentlist = get_segments_tile(config_struct, radec, segmentlist)
                 tile_struct[key]["segmentlist"] = tilesegmentlist
 

@@ -206,21 +206,38 @@ class SMBH_Merger:
                     self.H5File=H5FileLocAndName
                     self.JsonFile=JsonFileLocAndName
                 elif not os.path.isfile(JsonFileLocAndName) and os.path.isfile(H5FileLocAndName):
-                    print("Warning: no Json file found- setting json and h5 filenames to None...")
+                    print("Warning: H5 found but no- setting json and h5 filenames to None...")
                     self.H5File=None
                     self.JsonFile=None
                 elif os.path.isfile(JsonFileLocAndName) and not os.path.isfile(H5FileLocAndName):
-                    print("Warning: no h5 data file found- setting json and h5 filenames to None...")
+                    print("Warning: Json found but no h5- setting json and h5 filenames to None...")
                     self.H5File=None
                     self.JsonFile=None
                 else:
-                    print("Warning: no json or h5 data file found- setting json and h5 filenames to None...")
+                    print("Warning: no json or h5 found- setting both to None...")
+            elif key=='H5File':
+                if os.path.isfile(value):
+                    self.H5File=value
+                else:
+                    print("Couldn't find H5 file. Searching elsewhere...")
+                _,H5FileLocAndName=SYU.CompleteLisabetaDataAndJsonFileNames(value)
+                if os.path.isfile(H5FileLocAndName):
+                    self.H5File=H5FileLocAndName
+                else:
+                    print("Couldn't find H5 file in ../SYNEX/inference_data/ directory. Setting to None.")
                     self.H5File=None
-                    self.JsonFile=None
-            elif key=='H5File': # need checks here, as in key=='lisabetafile', that H5File and JsonFile exist and are coherent?
-                self.H5File=value
             elif key=='JsonFile':
                 self.JsonFile=value
+                if os.path.isfile(value):
+                    self.JsonFile=value
+                else:
+                    print("Couldn't find H5 file. Searching elsewhere...")
+                JsonFileLocAndName,_=SYU.CompleteLisabetaDataAndJsonFileNames(value)
+                if os.path.isfile(JsonFileLocAndName):
+                    self.JsonFile=JsonFileLocAndName
+                else:
+                    print("Couldn't find Json file in ../SYNEX/inference_param_files/ directory. Setting to None.")
+                    self.JsonFile=None
             elif key=='sky_map':
                 self.sky_map=value
             elif key=='ExistentialFileName':
@@ -409,6 +426,18 @@ class SMBH_Merger:
         if not hasattr(self,"gpstime"):
                 self.gpstime=None # Will be synced with detectors at EM observation stage
 
+        # Check h5 and Json files are congruent...
+        if self.JsonFile and not self.H5File:
+            JsonFileLocAndName,H5FileLocAndName=SYU.CompleteLisabetaDataAndJsonFileNames(self.JsonFile)
+            if os.path.isfile(H5FileLocAndName):
+                print("Using similar H5 file found \n"+H5FileLocAndName)
+                self.H5File=H5FileLocAndName
+        if not self.JsonFile and self.H5File:
+            JsonFileLocAndName,H5FileLocAndName=SYU.CompleteLisabetaDataAndJsonFileNames(self.H5File)
+            if os.path.isfile(JsonFileLocAndName):
+                print("Using similar Json file found \n"+JsonFileLocAndName)
+                self.JsonFile=JsonFileLocAndName
+        
         # If we resurrected with mutation, keep a reference to where this class came from
         if MUTATED:
             self.MutatedFromSourceFile = self.ExistentialFileName
@@ -442,7 +471,8 @@ class SMBH_Merger:
                 SkyMapPath="/".join(self.sky_map.split("/")[:-1])
                 pathlib.Path(SkyMapPath).mkdir(parents=True, exist_ok=True)
             except:
-                SkyMapPath=SYNEX_PATH++"/Skymap_files" ## In case we are now on a cluster or something and older saved files' paths no longer work
+                SkyMapPath=SYNEX_PATH+"/Skymap_files" ## In case we are now on a cluster or something and older saved files' paths no longer work
+                self.sky_map=SkyMapPath+self.sky_map.split("/")[-1]
                 pathlib.Path(SkyMapPath).mkdir(parents=True, exist_ok=True)
 
         # Extra useful params

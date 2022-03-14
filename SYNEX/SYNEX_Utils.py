@@ -2011,11 +2011,11 @@ def WriteSkymapToFile(map_struct,SkyMapFileName,go_params=None,PermissionToWrite
     if "distmu" in map_struct:
         data_to_save = np.vstack((map_struct["prob"],map_struct["distmu"],map_struct["distsigma"],map_struct["distnorm"]))
         if PermissionToWrite:
-            hp.write_map(SkyMapFileName, data_to_save, overwrite=True) # dtype=np.dtype('float64'))
+            hp.write_map(SkyMapFileName, data_to_save, overwrite=os.path.isfile(SkyMapFileName)) # overwrite will always happen here but I think it bugs when the file doesn't already exist and we ask it to overwrite...
         if go_params!=None:
             go_params["do3D"]=True
     elif PermissionToWrite:
-        hp.write_map(SkyMapFileName, map_struct["prob"], overwrite=True) # dtype=np.dtype('float64'))
+        hp.write_map(SkyMapFileName, map_struct["prob"], overwrite=os.path.isfile(SkyMapFileName)) # overwrite will always happen here but I think it bugs when the file doesn't already exist and we ask it to overwrite...
 
     if go_params!=None:
         # update the filename stored in go_params

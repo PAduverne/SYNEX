@@ -136,7 +136,18 @@ class Athena:
         detector_source_coverage=None
 
         # Make sure to handle case where we are in cluster so we don't write too many files and exceed disk quota
-        self.use_mpi=kwargs["use_mpi"] if "use_mpi" in kwargs else False
+        # self.use_mpi=kwargs["use_mpi"] if "use_mpi" in kwargs else False
+        if MPI is not None:
+            MPI_size = MPI.COMM_WORLD.Get_size()
+            MPI_rank = MPI.COMM_WORLD.Get_rank()
+            comm = MPI.COMM_WORLD
+            use_mpi=True
+            if (MPI_size > 1):
+                use_mpi=False
+        else:
+            use_mpi=False
+            MPI_rank=0
+        self.PermissionToWrite=not use_mpi # MPI_rank==0 # This will not write orbit file since it is memory instensive
 
         # Check if we are resurrecting a class from a save file
         if "ExistentialFileName" in kwargs.keys():
@@ -188,7 +199,7 @@ class Athena:
                 detector_go_params[key]=value
             elif key in detector_config_struct:
                 detector_config_struct[key]=value
-            elif key not in ["NewExistentialFileName","NeworbitFile","use_mpi"]: # Kept like this in case more non-gwemopt keys are added
+            elif key not in ["NewExistentialFileName","NeworbitFile"]: # Kept like this in case more non-gwemopt keys are added
                 print("Setting new keys '",key,"' in detector_config_struct...")
                 print_reminder = True
                 detector_config_struct[key]=value
@@ -263,8 +274,8 @@ class Athena:
                     detector_config_struct["orbitFile"] = "_".join(detector_config_struct["orbitFile"].split("_")[:-1]) + "_" + str(orbitFileExt) + "." + detector_config_struct["orbitFile"].split(".")[-1]
 
         # NB : SAVETOFILE=True will force it to recalculate and overwrite any existing 'orbitFile'
-        # Unless use_mpi is True, in which case never save so we don't overrun disk quota.
-        if self.use_mpi:
+        # Unless use_mpi is True (then PermissionToWrite=False), in which case never save so we don't overrun disk quota.
+        if not self.PermissionToWrite:
             SAVETOFILE=False
         elif MUTATED or not os.path.isfile(detector_config_struct["orbitFile"]):
             SAVETOFILE=True

@@ -1692,8 +1692,7 @@ def TileSkyArea(source,detectors=None,base_telescope_params=None,cloning_params=
                     dict_list = [{"ExistentialFileName":base_detector.ExistentialFileName,
                                   "NewExistentialFileName":".".join(base_detector.ExistentialFileName.split(".")[:-1])+"_"+key+"_"+str(ii+1)+"."+base_detector.ExistentialFileName.split(".")[-1],
                                   key:values[ii],
-                                  "telescope":base_detector.detector_config_struct["telescope"]+"_"+key+"_"+str(ii+1),
-                                  "use_mpi":use_mpi} for ii in range(len(values))] # Make sure detectors know there is MPI or not so they don't save everything to file and exceed mempry quota
+                                  "telescope":base_detector.detector_config_struct["telescope"]+"_"+key+"_"+str(ii+1)} for ii in range(len(values))]
                     detectors+=[SYDs.Athena(**dict_ii) for dict_ii in dict_list]
                     out_dirs+=[key]*len(dict_list)
                     check_vals_tmp=[detector.detector_config_struct[key] for detector in detectors]
@@ -2016,7 +2015,7 @@ def WriteSkymapToFile(map_struct,SkyMapFileName,go_params=None,PermissionToWrite
         if go_params!=None:
             go_params["do3D"]=True
     elif PermissionToWrite:
-        print("Permissions check:",PermissionToWrite,PermissionToWrite==0)
+        print("Permissions check:",PermissionToWrite)
         hp.write_map(SkyMapFileName, map_struct["prob"], overwrite=True)
 
     if go_params!=None:

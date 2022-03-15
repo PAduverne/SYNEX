@@ -100,8 +100,8 @@ class SMBH_Merger:
 
         But both frames should be stored in h5 file... need to make sure we are reading in the right ones.
         """
-        # Make sure only master node is writting files if running on cluster
-        ####### Need to address this in case where we inject a series of sources with gwemopt...
+        # Make sure to handle case where we are in cluster so we don't write too many files and exceed disk quota
+        # self.use_mpi=kwargs["use_mpi"] if "use_mpi" in kwargs else False
         if MPI is not None:
             MPI_size = MPI.COMM_WORLD.Get_size()
             MPI_rank = MPI.COMM_WORLD.Get_rank()
@@ -112,7 +112,7 @@ class SMBH_Merger:
         else:
             use_mpi=False
             MPI_rank=0
-        self.PermissionToWrite=not use_mpi # MPI_rank==0 # This will not write skymap file since it is memory instensive
+        self.PermisionToWrite=not use_mpi # MPI_rank==0 # This will not write skymap file since it is memory instensive
 
         # Default assume class is not mutated from another saved class
         # "MUTATED" = key to force new savefile

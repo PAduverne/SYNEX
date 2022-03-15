@@ -1691,6 +1691,7 @@ def TileSkyArea(source,detectors=None,base_telescope_params=None,cloning_params=
                                   "NewExistentialFileName":".".join(base_detector.ExistentialFileName.split(".")[:-1])+"_"+key+"_"+str(ii+1)+"."+base_detector.ExistentialFileName.split(".")[-1],
                                   key:values[ii],
                                   "telescope":base_detector.detector_config_struct["telescope"]+"_"+key+"_"+str(ii+1)} for ii in range(len(values))]
+                    print("Memory checks:",sys.getsizeof(dict_list),sys.getsizeof(base_detector))
                     detectors+=[SYDs.Athena(**dict_ii) for dict_ii in dict_list]
                     out_dirs+=[key]*len(dict_list)
                     check_vals_tmp=[detector.detector_config_struct[key] for detector in detectors]
@@ -2004,7 +2005,7 @@ def WriteSkymapToFile(map_struct,SkyMapFileName,go_params=None,PermissionToWrite
     # Check if directory exists and create if it doesnt
     SkyMapFilePath = "/".join(SkyMapFileName.split("/")[:-1])
     pathlib.Path(SkyMapFilePath).mkdir(parents=True, exist_ok=True)
-    
+
     # Write to fits file
     if "distmu" in map_struct:
         data_to_save = np.vstack((map_struct["prob"],map_struct["distmu"],map_struct["distsigma"],map_struct["distnorm"]))

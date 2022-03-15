@@ -112,7 +112,7 @@ class SMBH_Merger:
         else:
             use_mpi=False
             MPI_rank=0
-        self.PermissionToWrite=MPI_rank==0
+        self.PermissionToWrite=not use_mpi # MPI_rank==0 # This will not write skymap file since it is memory instensive
 
         # Default assume class is not mutated from another saved class
         # "MUTATED" = key to force new savefile

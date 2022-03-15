@@ -886,7 +886,7 @@ class SMBH_Merger:
         MyExistentialDict = dict(self.__dict__)
         MyExistentialDict["lambda"]=self.lamda
         del MyExistentialDict["lamda"]
-        
+
         if "map_struct" in MyExistentialDict: del MyExistentialDict["map_struct"]
         if "CTR_Data" in MyExistentialDict: del MyExistentialDict["CTR_Data"]
         if "EM_Flux_Data" in MyExistentialDict: del MyExistentialDict["EM_Flux_Data"]

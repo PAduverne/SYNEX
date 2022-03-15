@@ -135,6 +135,9 @@ class Athena:
         # Default coverage dict is None
         detector_source_coverage=None
 
+        # Make sure to handle case where we are in cluster so we don't write too many files and exceed disk quota
+        self.use_mpi=use_mpi if "use_mpi" in kwargs else False
+
         # Check if we are resurrecting a class from a save file
         if "ExistentialFileName" in kwargs.keys():
             self.ExistentialFileName=kwargs["ExistentialFileName"]
@@ -260,7 +263,10 @@ class Athena:
                     detector_config_struct["orbitFile"] = "_".join(detector_config_struct["orbitFile"].split("_")[:-1]) + "_" + str(orbitFileExt) + "." + detector_config_struct["orbitFile"].split(".")[-1]
 
         # NB : SAVETOFILE=True will force it to recalculate and overwrite any existing 'orbitFile'
-        if MUTATED or not os.path.isfile(detector_config_struct["orbitFile"]):
+        # Unless use_mpi is True, in which case never save so we don't overrun disk quota.
+        if self.use_mpi:
+            SAVETOFILE=False
+        elif MUTATED or not os.path.isfile(detector_config_struct["orbitFile"]):
             SAVETOFILE=True
         else:
             SAVETOFILE=False

@@ -1655,7 +1655,7 @@ def TileSkyArea(source,detectors=None,base_telescope_params=None,cloning_params=
         MPI_rank = MPI.COMM_WORLD.Get_rank()
         comm = MPI.COMM_WORLD
         use_mpi=True
-        if (MPI_size > 1):
+        if not (MPI_size > 1):
             use_mpi=False
     else:
         use_mpi=False
@@ -1692,7 +1692,8 @@ def TileSkyArea(source,detectors=None,base_telescope_params=None,cloning_params=
                     dict_list = [{"ExistentialFileName":base_detector.ExistentialFileName,
                                   "NewExistentialFileName":".".join(base_detector.ExistentialFileName.split(".")[:-1])+"_"+key+"_"+str(ii+1)+"."+base_detector.ExistentialFileName.split(".")[-1],
                                   key:values[ii],
-                                  "telescope":base_detector.detector_config_struct["telescope"]+"_"+key+"_"+str(ii+1)} for ii in range(len(values))]
+                                  "telescope":base_detector.detector_config_struct["telescope"]+"_"+key+"_"+str(ii+1)} for ii in range(len(values)),
+                                  "use_mpi":use_mpi] # # Make sure detectors know there is MPI or not so they don't save everything to file and exceed mempry quota
                     detectors+=[SYDs.Athena(**dict_ii) for dict_ii in dict_list]
                     out_dirs+=[key]*len(dict_list)
                     check_vals_tmp=[detector.detector_config_struct[key] for detector in detectors]

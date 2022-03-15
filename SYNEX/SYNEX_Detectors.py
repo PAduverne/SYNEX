@@ -136,7 +136,7 @@ class Athena:
         detector_source_coverage=None
 
         # Make sure to handle case where we are in cluster so we don't write too many files and exceed disk quota
-        self.use_mpi=use_mpi if "use_mpi" in kwargs else False
+        self.use_mpi=kwargs["use_mpi"] if "use_mpi" in kwargs else False
 
         # Check if we are resurrecting a class from a save file
         if "ExistentialFileName" in kwargs.keys():

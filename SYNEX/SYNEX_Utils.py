@@ -406,10 +406,14 @@ def GWEMOPTPathChecks(go_params, config_struct):
     # Check if paths are complete
     for PathVar in PATH_VARS:
         if len(go_params[PathVar].split("SYNEX"))==1:
-            # Needs SYNEX_PATH added
+            # Needs proper gwemopt_output or whatever added...
             go_params[PathVar] = SYNEX_PATH+go_params[PathVar]
         # Check if it exists
-        pathlib.Path(go_params[PathVar]).mkdir(parents=True, exist_ok=True)
+        try:
+            pathlib.Path(go_params[PathVar]).mkdir(parents=True, exist_ok=True)
+        except:
+            go_params[PathVar] = SYNEX_PATH+"/"+go_params[PathVar].split("/SYNEX/")[-1]
+            pathlib.Path(go_params[PathVar]).mkdir(parents=True, exist_ok=True)
 
     # Now specified files
     for FileVar in FILE_VARS:
@@ -422,8 +426,13 @@ def GWEMOPTPathChecks(go_params, config_struct):
         elif go_params[FileVar].split(".")[-1]!="dat":
             go_params[FileVar] = go_params[FileVar].split(".")[0] + ".dat"
         # Check if it exists
-        PathOnly = "/".join(go_params[FileVar].split("/")[:-1])
-        pathlib.Path(PathOnly).mkdir(parents=True, exist_ok=True)
+        try:
+            PathOnly = "/".join(go_params[FileVar].split("/")[:-1])
+            pathlib.Path(PathOnly).mkdir(parents=True, exist_ok=True)
+        except:
+            go_params[FileVar] = SYNEX_PATH+"/"+go_params[FileVar].split("/SYNEX/")[-1]
+            PathOnly = "/".join(go_params[FileVar].split("/")[:-1])
+            pathlib.Path(PathOnly).mkdir(parents=True, exist_ok=True)
 
     # Now config_struct paths
     for FileVar in CONFIG_FILE_VARS:
@@ -436,8 +445,13 @@ def GWEMOPTPathChecks(go_params, config_struct):
         elif config_struct[FileVar].split(".")[-1]!="tess":
             config_struct[FileVar] = ".".join(config_struct[FileVar].split(".")[:-1]) + ".tess"
         # Check if it exists
-        PathOnly = "/".join(config_struct[FileVar].split("/")[:-1])
-        pathlib.Path(PathOnly).mkdir(parents=True, exist_ok=True)
+        try:
+            PathOnly = "/".join(config_struct[FileVar].split("/")[:-1])
+            pathlib.Path(PathOnly).mkdir(parents=True, exist_ok=True)
+        except:
+            config_struct[FileVar] = SYNEX_PATH+"/"+config_struct[FileVar].split("/SYNEX/")[-1]
+            PathOnly = "/".join(config_struct[FileVar].split("/")[:-1])
+            pathlib.Path(PathOnly).mkdir(parents=True, exist_ok=True)
 
     return go_params, config_struct
 

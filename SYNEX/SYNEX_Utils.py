@@ -1679,7 +1679,6 @@ def TileSkyArea(source_or_kwargs,detectors=None,base_telescope_params=None,cloni
             source=SYSs.SMBH_Merger(**source_or_kwargs)
         except:
             source=source_or_kwargs
-        print("Source check:",source)
 
         # Prioritize creating from base params dict
         if not base_telescope_params==None:
@@ -1726,7 +1725,7 @@ def TileSkyArea(source_or_kwargs,detectors=None,base_telescope_params=None,cloni
         if MPI_rank>0:
             source = None
             detectors = None
-
+        
         # Send source to workers
         source = comm.bcast(source, root=0)
 
@@ -1734,14 +1733,15 @@ def TileSkyArea(source_or_kwargs,detectors=None,base_telescope_params=None,cloni
         # pool to run gwemopt in parallel (doParallel and Ncores options in go_params)?
         # #### detectors = comm.scatter(detectors, root=0)
         dict_list = comm.scatter(dict_list, root=0)
+        out_dirs = comm.scatter(out_dirs, root=0)
         if not isinstance(dict_list,list): dict_list=[dict_list] # in case broadcast gives one of each to processors
-        detectors = [SYDs.Athena(**dict_ii) for dict_ii in dict_list] ## Need to treat case where more than one variable is changing in detectors list of lists
-
-        # Finish source EM calculations based on broadcast detectors only if ARF files does not change in detectors
-        if len(set([detector.ARF_file_loc_name for detector in detectors]))==1: source.GenerateCTR(detectors[0].ARF_file_loc_name,gamma=1.7)
 
         # Checks
         print("MPI rank/size: %d / %d" % (MPI_rank, MPI_size),"with 'detectors' shape:",np.shape(detectors), flush=True)
+
+    # Make detectors list and finish source EM calculations based on broadcast detectors only if ARF files does not change in detectors
+    detectors = [SYDs.Athena(**dict_ii) for dict_ii in dict_list]
+    if len(set([detector.ARF_file_loc_name for detector in detectors]))==1: source.GenerateCTR(detectors[0].ARF_file_loc_name,gamma=1.7)
 
     # Loop over list of lists if we need to -- if we cloned more than one param
     for i in range(len(detectors)): go_params, map_struct, tile_structs, coverage_struct, detectors[i] = TileWithGwemopt(source,detectors[i],out_dirs[i])

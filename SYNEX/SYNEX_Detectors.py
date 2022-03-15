@@ -356,15 +356,16 @@ class Athena:
             self.detector_config_struct["magnitude"] = self.detector_config_struct["magnitude"] + nmag
             self.detector_config_struct["exposuretime"] = exposuretime
         if "tesselationFile" in self.detector_config_struct:
-            if not os.path.isfile(self.detector_config_struct["tesselationFile"]):
-                if self.detector_config_struct["FOV_type"] == "circle":
-                    gwemopt.tiles.tesselation_spiral(self.detector_config_struct)
-                elif self.detector_config_struct["FOV_type"] == "square":
-                    gwemopt.tiles.tesselation_packing(self.detector_config_struct)
+            # if not os.path.isfile(self.detector_config_struct["tesselationFile"]):
+            if self.detector_config_struct["FOV_type"] == "circle":
+                ras,decs=gwemopt.tiles.tesselation_spiral(self.detector_config_struct,WriteToFile=self.PermissionToWrite)
+            elif self.detector_config_struct["FOV_type"] == "square":
+                ras,decs=gwemopt.tiles.tesselation_packing(self.detector_config_struct,WriteToFile=self.PermissionToWrite)
             if self.detector_go_params["tilesType"] == "galaxy":
                 self.detector_config_struct["tesselation"] = np.empty((3,))
             else:
-                self.detector_config_struct["tesselation"] = np.loadtxt(self.detector_config_struct["tesselationFile"],usecols=(0,1,2),comments='%')
+                # self.detector_config_struct["tesselation"] = np.loadtxt(self.detector_config_struct["tesselationFile"],usecols=(0,1,2),comments='%')
+                self.detector_config_struct["tesselation"] = np.array([ii,ra,dec for ii,ra,dec in enumerate(zip(ras,decs))])
 
         if "referenceFile" in self.detector_config_struct: ### Not sure what this is but we include it to be complete with GWEMOPT
             from astropy import table

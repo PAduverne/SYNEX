@@ -365,7 +365,7 @@ class Athena:
                 self.detector_config_struct["tesselation"] = np.empty((3,))
             else:
                 # self.detector_config_struct["tesselation"] = np.loadtxt(self.detector_config_struct["tesselationFile"],usecols=(0,1,2),comments='%')
-                self.detector_config_struct["tesselation"] = np.array([ii,radec[0],radec[1] for ii,radec in enumerate(zip(ras,decs))])
+                self.detector_config_struct["tesselation"] = np.array([[ii,radec[0],radec[1]] for ii,radec in enumerate(zip(ras,decs))])
 
         if "referenceFile" in self.detector_config_struct: ### Not sure what this is but we include it to be complete with GWEMOPT
             from astropy import table

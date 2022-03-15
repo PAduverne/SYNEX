@@ -111,7 +111,7 @@ class SMBH_Merger:
             use_mpi=False
             MPI_rank=0
         self.PermissionToWrite=not use_mpi # MPI_rank==0 # This will not write skymap file since it is memory instensive
-        
+
         # Default assume class is not mutated from another saved class
         # "MUTATED" = key to force new savefile
         MUTATED=False
@@ -482,8 +482,13 @@ class SMBH_Merger:
 
         # Check that file paths exist - in case of subdirectory organizational architectures...
         # Json and H5 file paths already checked when names are completed
-        ExistentialPath="/".join(self.ExistentialFileName.split("/")[:-1])
-        pathlib.Path(ExistentialPath).mkdir(parents=True, exist_ok=True)
+        try:
+            ExistentialPath="/".join(self.ExistentialFileName.split("/")[:-1])
+            pathlib.Path(ExistentialPath).mkdir(parents=True, exist_ok=True)
+        except:
+            ExistentialPath=SYNEX_PATH+"/Saved_Source_Dicts/"
+            self.ExistentialFileName=ExistentialPath+self.ExistentialFileName.split("/")[-1] ## In case we are now on a cluster or something and older saved files' paths no longer work
+            pathlib.Path(ExistentialPath).mkdir(parents=True, exist_ok=True)
         if self.sky_map!=None:
             try:
                 SkyMapPath="/".join(self.sky_map.split("/")[:-1])

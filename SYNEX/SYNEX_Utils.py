@@ -2008,6 +2008,7 @@ def WriteSkymapToFile(map_struct,SkyMapFileName,go_params=None,PermissionToWrite
     pathlib.Path(SkyMapFilePath).mkdir(parents=True, exist_ok=True)
 
     # Write to fits file
+    print("Permissions check 1:",PermissionToWrite)
     if "distmu" in map_struct:
         data_to_save = np.vstack((map_struct["prob"],map_struct["distmu"],map_struct["distsigma"],map_struct["distnorm"]))
         if PermissionToWrite:
@@ -2015,7 +2016,7 @@ def WriteSkymapToFile(map_struct,SkyMapFileName,go_params=None,PermissionToWrite
         if go_params!=None:
             go_params["do3D"]=True
     elif PermissionToWrite:
-        print("Permissions check:",PermissionToWrite)
+        print("Permissions check 2:",PermissionToWrite)
         hp.write_map(SkyMapFileName, map_struct["prob"], overwrite=True)
 
     if go_params!=None:

@@ -21,34 +21,20 @@ pylab.rcParams.update(pylab_params)
 try:
     mpl.use('MacOSX')
 except:
-    print("\n")
+    a=1
 
 
 
 
-
-
-########################### Example - Init source and telescope and tile using gwemopt ###########################
-# Source file we want to resurract - note we only specify everything afer .../inference_data or .../inference_param_files and don't need to give suffix either
-# FileName = "Randomized_SYNEX/RemakePaperPlots/Randomized_angles_spins_MRat_10_1wk" # "IdeaPaperSystem_9d"
+########################### Example - Tile using gwemopt on Cluster ###########################
 
 # Merger args
 Merger_kwargs = {"ExistentialFileName":"/Users/baird/Documents/LabEx_PostDoc/SYNEX/Saved_Source_Dicts/IdeaPaperSystem_9d_base.dat",
                  "NewExistentialFileName":"/Users/baird/Documents/LabEx_PostDoc/SYNEX/Saved_Source_Dicts/IdeaPaperSystem_9d_dev.dat"}
-# Merger_kwargs = {"ExistentialFileName":"/Users/baird/Documents/LabEx_PostDoc/SYNEX/Saved_Source_Dicts/TestSystem_9d_base.dat"}
-# Merger_kwargs = {"ExistentialFileName":"/home/baird/SYNEX/Saved_Source_Dicts/IdeaPaperSystem_9d_base.dat",
-#                  "NewExistentialFileName":"/home/baird/SYNEX/Saved_Source_Dicts/IdeaPaperSystem_9d_dev.dat"}
 
-# Resurrect - either from lisabeta data or saved source file
-Merger = SYSs.SMBH_Merger(**Merger_kwargs)
-# Merger = SYU.GetSourceFromLisabetaData(FileName,**Merger_kwargs)
-
-# Make some test telescopes
-###### TO DO -- check when calculating orbit that it is intersecting properly between orbit start and obs times...
+# Base telescope args
 t0 = '2034-01-01T00:00:00.00' # YYYY-MM-DDTHH:mm:SS.MS 01/01/2034
 t = Time(t0, format='isot', scale='utc').gps
-# Athena_kwargs={"FOV":1.,"exposuretime":60.,"slew_rate":1., "telescope":"Athena_base",
-#             "ExistentialFileName":"/Users/baird/Documents/LabEx_PostDoc/SYNEX/Saved_Telescope_Dicts/Athena_base.dat"}
 Athena_kwargs={"ExistentialFileName":"/Users/baird/Documents/LabEx_PostDoc/SYNEX/Saved_Telescope_Dicts/Athena_base.dat",
                 "NewExistentialFileName":"/Users/baird/Documents/LabEx_PostDoc/SYNEX/Saved_Telescope_Dicts/Athena_dev.dat",
                 "orbitFile":"/Users/baird/Documents/LabEx_PostDoc/SYNEX/orbit_files/Athena_20340601_728d_inc60_R750Mkm_ecc4_ArgPeri20_AscNode-10_phi020_P90_frozenFalse_base.dat",
@@ -85,19 +71,18 @@ Athena_kwargs={"ExistentialFileName":"/Users/baird/Documents/LabEx_PostDoc/SYNEX
                 "iterativeOverlap" : 1.0,
                 "maximumOverlap" : 1.0,
                } ### What about doPerturbativeTiling? ### "doPerturbativeTiling" : True
-# Athena_kwargs["ExistentialFileName"]="/home/baird/SYNEX/Saved_Telescope_Dicts/Athena_base.dat"
-# Athena_kwargs["NewExistentialFileName"]="/home/baird/SYNEX/Saved_Telescope_Dicts/Athena_dev.dat"
-# Athena_kwargs["orbitFile"]="/home/baird/SYNEX/orbit_files/Athena_20340601_728d_inc60_R750Mkm_ecc4_ArgPeri20_AscNode-10_phi020_P90_frozenFalse_base.dat"
-# Athena_kwargs["NeworbitFile"]="/home/baird/SYNEX/orbit_files/Athena_20340601_728d_inc60_R750Mkm_ecc4_ArgPeri20_AscNode-10_phi020_P90_frozenFalse_dev.dat"
-Athena=SYDs.Athena(**Athena_kwargs)
+Athena_kwargs["ExistentialFileName"]="/home/baird/SYNEX/Saved_Telescope_Dicts/Athena_base.dat"
+Athena_kwargs["NewExistentialFileName"]="/home/baird/SYNEX/Saved_Telescope_Dicts/Athena_dev.dat"
+Athena_kwargs["orbitFile"]="/home/baird/SYNEX/orbit_files/Athena_20340601_728d_inc60_R750Mkm_ecc4_ArgPeri20_AscNode-10_phi020_P90_frozenFalse_base.dat"
+Athena_kwargs["NeworbitFile"]="/home/baird/SYNEX/orbit_files/Athena_20340601_728d_inc60_R750Mkm_ecc4_ArgPeri20_AscNode-10_phi020_P90_frozenFalse_dev.dat"
 
 # Test tiling with detector cloning
 ex_times=np.logspace(1,4,num=2,endpoint=True,base=10.)
-cloning_params={"exposuretime":ex_times} # {"inc":np.linspace(0., 90., 5)}
+cloning_params={"exposuretime":ex_times}
 tiling_t0=time.time()
-detectors = SYU.TileSkyArea(Merger,detectors=Athena,base_telescope_params=None,cloning_params=cloning_params)
+detectors = SYU.TileSkyArea(Merger_kwargs,detectors=None,base_telescope_params=Athena_kwargs,cloning_params=cloning_params)
 tiling_t1=time.time()
-print("Total time for",len(detectors),"detectors:",tiling_t1-tiling_t0, "s") # 1216 for 5 detectors...
+print("Total time for",len(detectors),"detectors:",tiling_t1-tiling_t0, "s")
 
 for detector in detectors:
     T0_mjd=detector.detector_source_coverage["Start time (mjd)"]
@@ -105,13 +90,97 @@ for detector in detectors:
     for ExT0s,ExTs in zip(detector.detector_source_coverage["Source tile start times (s)"],detector.detector_source_coverage["Source tile exposuretimes (s)"]): Xs+=[ExT0s/86400.,(ExT0s+ExTs)/86400.]
     for CumCounts in np.cumsum(detector.detector_source_coverage["Source photon counts"]): Ys+=[CumCounts,CumCounts]
     print(detector,Xs,Ys,detector.detector_source_coverage["Source tile exposuretimes (s)"])
-    plt.plot(Xs,Ys,label=detector.detector_config_struct["telescope"])
 
-plt.xlabel(r"Time from "+str(T0_mjd)+" (mjd)")
-plt.ylabel(r"Source photons")
-plt.legend()
-plt.grid()
-plt.show()
+
+
+
+
+
+# ########################### Example - Init source and telescope and tile using gwemopt ###########################
+# # Source file we want to resurract - note we only specify everything afer .../inference_data or .../inference_param_files and don't need to give suffix either
+# # FileName = "Randomized_SYNEX/RemakePaperPlots/Randomized_angles_spins_MRat_10_1wk" # "IdeaPaperSystem_9d"
+#
+# # Merger args
+# Merger_kwargs = {"ExistentialFileName":"/Users/baird/Documents/LabEx_PostDoc/SYNEX/Saved_Source_Dicts/IdeaPaperSystem_9d_base.dat",
+#                  "NewExistentialFileName":"/Users/baird/Documents/LabEx_PostDoc/SYNEX/Saved_Source_Dicts/IdeaPaperSystem_9d_dev.dat"}
+# # Merger_kwargs = {"ExistentialFileName":"/Users/baird/Documents/LabEx_PostDoc/SYNEX/Saved_Source_Dicts/TestSystem_9d_base.dat"}
+# # Merger_kwargs = {"ExistentialFileName":"/home/baird/SYNEX/Saved_Source_Dicts/IdeaPaperSystem_9d_base.dat",
+# #                  "NewExistentialFileName":"/home/baird/SYNEX/Saved_Source_Dicts/IdeaPaperSystem_9d_dev.dat"}
+#
+# # Resurrect - either from lisabeta data or saved source file
+# Merger = SYSs.SMBH_Merger(**Merger_kwargs)
+# # Merger = SYU.GetSourceFromLisabetaData(FileName,**Merger_kwargs)
+#
+# # Make some test telescopes
+# ###### TO DO -- check when calculating orbit that it is intersecting properly between orbit start and obs times...
+# t0 = '2034-01-01T00:00:00.00' # YYYY-MM-DDTHH:mm:SS.MS 01/01/2034
+# t = Time(t0, format='isot', scale='utc').gps
+# # Athena_kwargs={"FOV":1.,"exposuretime":60.,"slew_rate":1., "telescope":"Athena_base",
+# #             "ExistentialFileName":"/Users/baird/Documents/LabEx_PostDoc/SYNEX/Saved_Telescope_Dicts/Athena_base.dat"}
+# Athena_kwargs={"ExistentialFileName":"/Users/baird/Documents/LabEx_PostDoc/SYNEX/Saved_Telescope_Dicts/Athena_base.dat",
+#                 "NewExistentialFileName":"/Users/baird/Documents/LabEx_PostDoc/SYNEX/Saved_Telescope_Dicts/Athena_dev.dat",
+#                 "orbitFile":"/Users/baird/Documents/LabEx_PostDoc/SYNEX/orbit_files/Athena_20340601_728d_inc60_R750Mkm_ecc4_ArgPeri20_AscNode-10_phi020_P90_frozenFalse_base.dat",
+#                 "NeworbitFile":"/Users/baird/Documents/LabEx_PostDoc/SYNEX/orbit_files/Athena_20340601_728d_inc60_R750Mkm_ecc4_ArgPeri20_AscNode-10_phi020_P90_frozenFalse_dev.dat",
+#                 "telescope":"Athena",
+#                 "tilesType" : "moc", # "greedy", # "hierarchical", # "ranked", # moc/greedy/hierarchical/ranked/galaxy.
+#                 "timeallocationType" : "powerlaw", # "absmag" / "powerlaw" / "waw" / "manual" / "pem"
+#                 "scheduleType" : "greedy",
+#                 "doCalcTiles" : False, # Calculates the no. of "hierarchical" tiles based on sky area prob threashold and FoV
+#                 "Ntiles" : None, # 50, # Speific to tilesType=hierarchical and greedy. Needs to be set if "doCalcTiles"=False
+#                 "frozenAthena" : False, # False,
+#                 "exposuretime" : 10000., # 6*60*60, # 60., #
+#                 "min_observability_duration" : 10./3600., # in HOURS
+#                 "inc" : 60., # 60., # In DEGREES, incline of orbital plane normal to Sun-Earth axis.
+#                 "MeanRadius" : 750000000., # 750000000., # meters (from earth-orbit normal axis)
+#                 "semi_maj" : 750000000., # 750000000., # equivalent to MeanRadius axis ONLY IF we say we are really orbiting the centre and not the focal point
+#                 "eccentricity" : 0.4, # 0.8
+#                 "ArgPeriapsis" : 20., # 0., # In DEGREES, angle of point of closest approach to FOCAL POINT IN ORBIT PLANE
+#                 "AscendingNode" : -10., # 0., # In DEGREES
+#                 "phi_0" : 10., # 0., # in DEGREES, initial phase of Athena when measurments start
+#                 "period" : 90., # 180., # In days, for one complete halo orbit about L2
+#                 "gps_science_start" : t, # 1703721618.0, # 01/01/2034 00:00:00.000 UTC -- gps start time of science meaasurements
+#                 "mission_duration" : 2., # In years
+#                 "filt_change_time" : 0., # In seconds?
+#                 "overhead_per_exposure" : 0., # In seconds?
+#                 "latitude" : 0., # None, # 20.7204,       ### None if we want a telesscopic orbit?
+#                 "longitude" : 0., # None, # -156.1552,    ### None if we want a telesscopic orbit?
+#                 "elevation" : 0., # None, # 3055.0,       ### None if we want a telesscopic orbit? GWEMOPT uses these for airmass calcs... Ask to raise flag for this?
+#                 "slew_rate" : 100., # 1., # in deg/s -- Idea paper has 1 deg/sec
+#                 "horizon" : 0., # 30.,                    ### None if we want a telesscopic orbit?
+#                 "doMinimalTiling" : True, #  True,
+#                 "readout" : 0.0001, # 6
+#                 "doSingleExposure" : True, # False
+#                 "iterativeOverlap" : 1.0,
+#                 "maximumOverlap" : 1.0,
+#                } ### What about doPerturbativeTiling? ### "doPerturbativeTiling" : True
+# # Athena_kwargs["ExistentialFileName"]="/home/baird/SYNEX/Saved_Telescope_Dicts/Athena_base.dat"
+# # Athena_kwargs["NewExistentialFileName"]="/home/baird/SYNEX/Saved_Telescope_Dicts/Athena_dev.dat"
+# # Athena_kwargs["orbitFile"]="/home/baird/SYNEX/orbit_files/Athena_20340601_728d_inc60_R750Mkm_ecc4_ArgPeri20_AscNode-10_phi020_P90_frozenFalse_base.dat"
+# # Athena_kwargs["NeworbitFile"]="/home/baird/SYNEX/orbit_files/Athena_20340601_728d_inc60_R750Mkm_ecc4_ArgPeri20_AscNode-10_phi020_P90_frozenFalse_dev.dat"
+# Athena=SYDs.Athena(**Athena_kwargs)
+#
+# # Test tiling with detector cloning
+# ex_times=np.logspace(1,4,num=2,endpoint=True,base=10.)
+# cloning_params={"exposuretime":ex_times} # {"inc":np.linspace(0., 90., 5)}
+# tiling_t0=time.time()
+# detectors = SYU.TileSkyArea(Merger,detectors=Athena,base_telescope_params=None,cloning_params=cloning_params)
+# # detectors = SYU.TileSkyArea(Merger,detectors=None,base_telescope_params=Athena_kwargs,cloning_params=cloning_params)
+# tiling_t1=time.time()
+# print("Total time for",len(detectors),"detectors:",tiling_t1-tiling_t0, "s") # 1216 for 5 detectors...
+#
+# for detector in detectors:
+#     T0_mjd=detector.detector_source_coverage["Start time (mjd)"]
+#     Xs,Ys=[],[]
+#     for ExT0s,ExTs in zip(detector.detector_source_coverage["Source tile start times (s)"],detector.detector_source_coverage["Source tile exposuretimes (s)"]): Xs+=[ExT0s/86400.,(ExT0s+ExTs)/86400.]
+#     for CumCounts in np.cumsum(detector.detector_source_coverage["Source photon counts"]): Ys+=[CumCounts,CumCounts]
+#     print(detector,Xs,Ys,detector.detector_source_coverage["Source tile exposuretimes (s)"])
+#     plt.plot(Xs,Ys,label=detector.detector_config_struct["telescope"])
+#
+# plt.xlabel(r"Time from "+str(T0_mjd)+" (mjd)")
+# plt.ylabel(r"Source photons")
+# plt.legend()
+# plt.grid()
+# plt.show()
 
 
 

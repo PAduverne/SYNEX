@@ -71,7 +71,7 @@ pylab.rcParams.update(pylab_params)
 try:
     mpl.use('MacOSX')
 except:
-    print("\n")
+    a=1
 
 # Stop warnings about deprecated methods...
 import warnings
@@ -1653,7 +1653,7 @@ def GetSourceFromLisabetaData(FileName, **kwargs):
 #                 ##########################################
 
 
-def TileSkyArea(source,detectors=None,base_telescope_params=None,cloning_params=None):
+def TileSkyArea(source_or_kwargs,detectors=None,base_telescope_params=None,cloning_params=None):
     """
     Global function to tile skyarea. This will handle all extra tiling we might add,
     including handling series inputs over lists of sources and/or detectors.
@@ -1674,6 +1674,12 @@ def TileSkyArea(source,detectors=None,base_telescope_params=None,cloning_params=
         MPI_rank=0
 
     if MPI_rank==0:
+        # See if we have a source class or kwargs
+        try:
+            source=SYDs.SMBH_Merger(**source_or_kwargs)
+        except:
+            source=source_or_kwargs
+
         # Prioritize creating from base params dict
         if not base_telescope_params==None:
             detectors=[SYDs.Athena(**base_telescope_params)]

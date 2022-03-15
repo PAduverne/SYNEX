@@ -1654,9 +1654,7 @@ def TileSkyArea(source,detectors=None,base_telescope_params=None,cloning_params=
         MPI_size = MPI.COMM_WORLD.Get_size()
         MPI_rank = MPI.COMM_WORLD.Get_rank()
         comm = MPI.COMM_WORLD
-        use_mpi=True
-        if not (MPI_size > 1):
-            use_mpi=False
+        use_mpi=(MPI_size > 1)
     else:
         use_mpi=False
         MPI_rank=0
@@ -2006,9 +2004,8 @@ def WriteSkymapToFile(map_struct,SkyMapFileName,go_params=None,PermissionToWrite
     # Check if directory exists and create if it doesnt
     SkyMapFilePath = "/".join(SkyMapFileName.split("/")[:-1])
     pathlib.Path(SkyMapFilePath).mkdir(parents=True, exist_ok=True)
-
+    
     # Write to fits file
-    print("Permissions check 1:",PermissionToWrite)
     if "distmu" in map_struct:
         data_to_save = np.vstack((map_struct["prob"],map_struct["distmu"],map_struct["distsigma"],map_struct["distnorm"]))
         if PermissionToWrite:
@@ -2016,7 +2013,6 @@ def WriteSkymapToFile(map_struct,SkyMapFileName,go_params=None,PermissionToWrite
         if go_params!=None:
             go_params["do3D"]=True
     elif PermissionToWrite:
-        print("Permissions check 2:",PermissionToWrite)
         hp.write_map(SkyMapFileName, map_struct["prob"], overwrite=True)
 
     if go_params!=None:

@@ -141,9 +141,7 @@ class Athena:
             MPI_size = MPI.COMM_WORLD.Get_size()
             MPI_rank = MPI.COMM_WORLD.Get_rank()
             comm = MPI.COMM_WORLD
-            use_mpi=True
-            if (MPI_size > 1):
-                use_mpi=False
+            use_mpi=(MPI_size > 1)
         else:
             use_mpi=False
             MPI_rank=0

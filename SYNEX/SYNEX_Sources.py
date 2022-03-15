@@ -106,15 +106,12 @@ class SMBH_Merger:
             MPI_size = MPI.COMM_WORLD.Get_size()
             MPI_rank = MPI.COMM_WORLD.Get_rank()
             comm = MPI.COMM_WORLD
-            use_mpi=True
-            if (MPI_size > 1):
-                use_mpi=False
+            use_mpi=(MPI_size > 1)
         else:
             use_mpi=False
             MPI_rank=0
         self.PermissionToWrite=not use_mpi # MPI_rank==0 # This will not write skymap file since it is memory instensive
-        print("Permissions check 1a:",self.PermissionToWrite,use_mpi)
-
+        
         # Default assume class is not mutated from another saved class
         # "MUTATED" = key to force new savefile
         MUTATED=False

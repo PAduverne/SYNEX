@@ -1675,10 +1675,11 @@ def TileSkyArea(source_or_kwargs,detectors=None,base_telescope_params=None,cloni
 
     if MPI_rank==0:
         # See if we have a source class or kwargs
-        # try:
-        source=SYSs.SMBH_Merger(**source_or_kwargs)
-        # except:
-        #     source=source_or_kwargs
+        try:
+            source=SYSs.SMBH_Merger(**source_or_kwargs)
+        except:
+            source=source_or_kwargs
+        print("Source check:",source)
 
         # Prioritize creating from base params dict
         if not base_telescope_params==None:
@@ -1712,16 +1713,13 @@ def TileSkyArea(source_or_kwargs,detectors=None,base_telescope_params=None,cloni
                                   key:values[ii],
                                   "telescope":base_detector.detector_config_struct["telescope"]+"_"+key+"_"+str(ii+1)} for ii in range(len(values))]
                     print("Memory checks:",sys.getsizeof(dict_list),sys.getsizeof(base_detector))
-                    detectors+=[SYDs.Athena(**dict_ii) for dict_ii in dict_list]
+                    # detectors+=[SYDs.Athena(**dict_ii) for dict_ii in dict_list]
                     out_dirs+=[key]*len(dict_list)
-                    check_vals_tmp=[detector.detector_config_struct[key] for detector in detectors]
-                    check_tels_tmp=[detector.detector_config_struct["telescope"] for detector in detectors]
                 else:
                     print("key:",key,"not found in either detector_go_params or detector_config_struct...")
 
         # Calculate source flux data -- NB CTR is telescope dependent so included inside loop for coverage info later if ARF file changes
         if not hasattr(source,"EM_Flux_Data"): source.GenerateEMFlux(fstart22=1e-4,**{})
-        if len(set([detector.ARF_file_loc_name for detector in detectors]))==1: source.GenerateCTR(detectors[0].ARF_file_loc_name,gamma=1.7)
 
     if use_mpi:
         # Clear objects in worker processes just in case
@@ -1734,8 +1732,15 @@ def TileSkyArea(source_or_kwargs,detectors=None,base_telescope_params=None,cloni
 
         # Scatter detectors to processors -- can we formulate a trade off between processes per detectors and partitioning
         # pool to run gwemopt in parallel (doParallel and Ncores options in go_params)?
-        detectors = comm.scatter(detectors, root=0)
+        # #### detectors = comm.scatter(detectors, root=0)
+        dict_list = comm.scatter(dict_list, root=0)
+        if not isinstance(dict_list,list): dict_list=[dict_list] # in case broadcast gives one of each to processors
+        detectors = [SYDs.Athena(**dict_ii) for dict_ii in dict_list] ## Need to treat case where more than one variable is changing in detectors list of lists
 
+        # Finish source EM calculations based on broadcast detectors only if ARF files does not change in detectors
+        if len(set([detector.ARF_file_loc_name for detector in detectors]))==1: source.GenerateCTR(detectors[0].ARF_file_loc_name,gamma=1.7)
+
+        # Checks
         print("MPI rank/size: %d / %d" % (MPI_rank, MPI_size),"with 'detectors' shape:",np.shape(detectors), flush=True)
 
     # Loop over list of lists if we need to -- if we cloned more than one param

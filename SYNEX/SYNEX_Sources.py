@@ -112,7 +112,7 @@ class SMBH_Merger:
         else:
             use_mpi=False
             MPI_rank=0
-        self.PermissionToWrite=MPI_rank# ==0
+        self.PermissionToWrite=MPI_rank==0
 
         # Default assume class is not mutated from another saved class
         # "MUTATED" = key to force new savefile

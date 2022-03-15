@@ -188,7 +188,7 @@ class Athena:
                 detector_go_params[key]=value
             elif key in detector_config_struct:
                 detector_config_struct[key]=value
-            elif key not in ["NewExistentialFileName","NeworbitFile"]: # Kept like this in case more non-gwemopt keys are added
+            elif key not in ["NewExistentialFileName","NeworbitFile","use_mpi"]: # Kept like this in case more non-gwemopt keys are added
                 print("Setting new keys '",key,"' in detector_config_struct...")
                 print_reminder = True
                 detector_config_struct[key]=value

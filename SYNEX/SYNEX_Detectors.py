@@ -16,6 +16,14 @@ import matplotlib.pyplot as plt
 import scipy
 import copy
 
+# mpi stuff
+try:
+    from mpi4py import MPI
+except ModuleNotFoundError:
+    MPI = None
+
+
+
 class LISA:
     """
     Class to make a Space Based Instrument using the Interferometer base class

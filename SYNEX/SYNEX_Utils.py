@@ -1676,7 +1676,7 @@ def TileSkyArea(source,detectors=None,base_telescope_params=None,cloning_params=
     if MPI_rank==0:
         # Prioritize creating from base params dict
         if not base_telescope_params==None:
-            detectors=[SYDs.Athena(base_telescope_params)]
+            detectors=[SYDs.Athena(**base_telescope_params)]
 
         # Create default detector if still nothing there
         if detectors==None:
@@ -1692,7 +1692,7 @@ def TileSkyArea(source,detectors=None,base_telescope_params=None,cloning_params=
         # Populate detectors if kwargs has directed to do so
         if not cloning_params==None:
             # Init telescope
-            base_detector=detectors[0] if isinstance(detectors, list) else detectors
+            base_detector=detectors[0]
 
             # Start populating detector list -- list of lists, each embedded list corresponds to each requested cloning parameter
             out_dirs=[]

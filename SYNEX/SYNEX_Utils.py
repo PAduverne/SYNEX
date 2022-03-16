@@ -1675,7 +1675,6 @@ def TileSkyArea(source_or_kwargs,detectors=None,base_telescope_params=None,cloni
 
     if MPI_rank==0:
         # See if we have a source class or kwargs
-        for key,value in source_or_kwargs.items(): print(key,value)
         source=SYSs.SMBH_Merger(**source_or_kwargs) if isinstance(source_or_kwargs,dict) else source_or_kwargs
 
         # Prioritize creating from base params dict
@@ -1709,7 +1708,6 @@ def TileSkyArea(source_or_kwargs,detectors=None,base_telescope_params=None,cloni
                                   "NewExistentialFileName":".".join(base_detector.ExistentialFileName.split(".")[:-1])+"_"+key+"_"+str(ii+1)+"."+base_detector.ExistentialFileName.split(".")[-1],
                                   key:values[ii],
                                   "telescope":base_detector.detector_config_struct["telescope"]+"_"+key+"_"+str(ii+1)} for ii in range(len(values))]
-                    print("Memory checks:",sys.getsizeof(dict_list),sys.getsizeof(base_detector))
                     # detectors+=[SYDs.Athena(**dict_ii) for dict_ii in dict_list]
                     out_dirs+=[key]*len(dict_list)
                 else:

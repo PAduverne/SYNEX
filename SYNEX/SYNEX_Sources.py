@@ -682,6 +682,7 @@ class SMBH_Merger:
         SYU.WriteSkymapToFile(self.map_struct,self.sky_map,None,self.PermissionToWrite)
 
     def GenerateEMFlux(self,fstart22=1e-4,**EM_kwargs):
+
         # Empty LALParams dict
         LALParams = lal.CreateDict();
         modearray = lalsim.SimInspiralCreateModeArray()
@@ -721,7 +722,7 @@ class SMBH_Merger:
         #     hplus, hcross, hIlm, hJlm, dyn_Low, dyn_Hi, dyn_all, t_vec_modes, hP22_amp, hP22_phase, hP21_amp, hP21_phase, hP33_amp, hP33_phase, hP44_amp, hP44_phase, hP55_amp, hP55_phase, alphaJ2P, betaJ2P, gammaJ2P, AttachPars = lalsim.SimIMRSpinPrecEOBWaveformAll(self.phi, 1.5, self.m1*pyconstants.MSUN_SI/(1.+self.z), self.m2*pyconstants.MSUN_SI/(1.+self.z), fstart22/(1.+self.z), self.dist*1e6*pyconstants.PC_SI, self.inc, chi1_x, chi1_y, self.chi1, chi2_x, chi2_y , self.chi2, modearray, seobflags)
         # else:
         #     hplus, hcross, hIlm, hJlm, dyn_Low, dyn_Hi, dyn_all, t_vec_modes, hP22_amp, hP22_phase, hP21_amp, hP21_phase, hP33_amp, hP33_phase, hP44_amp, hP44_phase, hP55_amp, hP55_phase, alphaJ2P, betaJ2P, gammaJ2P, AttachPars = lalsim.SimIMRSpinPrecEOBWaveformAll(self.phi, 1.5, self.m1*pyconstants.MSUN_SI, self.m2*pyconstants.MSUN_SI, fstart22, self.dist*1e6*pyconstants.PC_SI, self.inc, chi1_x, chi1_y, self.chi1, chi2_x, chi2_y , self.chi2, modearray, seobflags)
-        hplus, hcross, hIlm, hJlm, dyn_Low, dyn_Hi, dyn_all, t_vec_modes, hP22_amp, hP22_phase, hP21_amp, hP21_phase, hP33_amp, hP33_phase, hP44_amp, hP44_phase, hP55_amp, hP55_phase, alphaJ2P, betaJ2P, gammaJ2P, AttachPars = lalsim.SimIMRSpinPrecEOBWaveformAll(self.phi, 1.5, self.m1*pyconstants.MSUN_SI, self.m2*pyconstants.MSUN_SI, fstart22, self.dist*1e6*pyconstants.PC_SI, self.inc, chi1_x, chi1_y, self.chi1, chi2_x, chi2_y , self.chi2, modearray, seobflags)
+        _, _, _, _, _, _, dyn_all, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _ = lalsim.SimIMRSpinPrecEOBWaveformAll(self.phi, 1.5, self.m1*pyconstants.MSUN_SI, self.m2*pyconstants.MSUN_SI, fstart22, self.dist*1e6*pyconstants.PC_SI, self.inc, chi1_x, chi1_y, self.chi1, chi2_x, chi2_y , self.chi2, modearray, seobflags)
         # The output here is a single REAL8Vector (I assume in the source frame...?), to be reshaped into the format:
         # t, x, y, z, px, py, pz, s1x, s1y, s1z, s2x, s2y, s2z, phiD, phi, vx, vy, vz, r, phi, pr, pphi, Omega, s1dotZ, s2dotZ, H
         # Spins in units of M^2

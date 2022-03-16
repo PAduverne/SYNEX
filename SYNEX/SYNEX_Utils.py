@@ -1629,8 +1629,8 @@ def GetSourceFromLisabetaData(FileName, **kwargs):
     f.close()
 
     # check if it was run on a different system, e.g. the cluster, so paths are wrong
-    check_path = input_params["run_params"]["out_dir"].split("SYNEX")[-1]
-    check_path_true = H5FileLocAndName.split("SYNEX")[-1]
+    check_path = input_params["run_params"]["out_dir"].split("/SYNEX/")[-1]
+    check_path_true = H5FileLocAndName.split("/SYNEX/")[-1]
     if check_path!=check_path_true:
         input_params["run_params"]["out_dir"] = "/".join(H5FileLocAndName.split("/")[:-1])+"/" # Needs trailing slash...
     # For now we do not re-write the file because this might break stuff...

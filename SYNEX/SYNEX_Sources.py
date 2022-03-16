@@ -247,6 +247,7 @@ class SMBH_Merger:
                 else:
                     print("Warning: no json or h5 found- setting both to None...")
             elif key=='H5File':
+                print(key,value)
                 try:
                     if os.path.isfile(value):
                         self.H5File=value

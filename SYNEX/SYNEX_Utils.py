@@ -1721,6 +1721,7 @@ def TileSkyArea(source_or_kwargs,detectors=None,base_telescope_params=None,cloni
         if MPI_rank>0:
             source = None
             detectors = None
+            dict_list=None
 
         # Send source to workers
         source = comm.bcast(source, root=0)

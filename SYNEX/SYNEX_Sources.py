@@ -112,6 +112,24 @@ class SMBH_Merger:
             MPI_rank=0
         self.PermissionToWrite=not use_mpi # MPI_rank==0 # This will not write skymap file since it is memory instensive
 
+        # Check sav file paths incase we are loading on a new system eg cluster
+        if "ExistentialFileName" in kwargs_in.keys():
+            try:
+                ExistentialPath="/".join(kwargs_in["ExistentialFileName"].split("/")[:-1])
+                pathlib.Path(ExistentialPath).mkdir(parents=True, exist_ok=True)
+            except:
+                ExistentialPath=SYNEX_PATH+"/Saved_Source_Dicts/"
+                kwargs_in["ExistentialFileName"]=ExistentialPath+kwargs_in["ExistentialFileName"].split("/")[-1] ## In case we are now on a cluster or something and older saved files' paths no longer work
+                pathlib.Path(ExistentialPath).mkdir(parents=True, exist_ok=True)
+        if "NewExistentialFileName" in kwargs_in.keys():
+            try:
+                ExistentialPath="/".join(kwargs_in["NewExistentialFileName"].split("/")[:-1])
+                pathlib.Path(ExistentialPath).mkdir(parents=True, exist_ok=True)
+            except:
+                ExistentialPath=SYNEX_PATH+"/Saved_Source_Dicts/"
+                kwargs_in["NewExistentialFileName"]=ExistentialPath+kwargs_in["NewExistentialFileName"].split("/")[-1] ## In case we are now on a cluster or something and older saved files' paths no longer work
+                pathlib.Path(ExistentialPath).mkdir(parents=True, exist_ok=True)
+
         # Default assume class is not mutated from another saved class
         # "MUTATED" = key to force new savefile
         MUTATED=False
@@ -123,12 +141,7 @@ class SMBH_Merger:
             del kwargs_in["MUTATED"]
             kwargs=kwargs_in
         elif "ExistentialFileName" in kwargs_in.keys() and os.path.isfile(kwargs_in["ExistentialFileName"]):
-            # Check if we automatically sav to newfile because somthing has changed
-            #
-            # FUSE THIS WITH JSON_FILE IN LISABETA? Currently saves in two files so we
-            # respect gwemopt conventions using numpy arrays for some stuff that aren't
-            # serializable to json... Maybe we can file a way to put the two together
-            # and alter SYNEX_PTMC to load from pickle instead?
+            # Need to check existential file names before this point...
             self.ExistentialFileName=kwargs_in["ExistentialFileName"]
 
             # Load saved dictionary
@@ -479,16 +492,9 @@ class SMBH_Merger:
                     self.ExistentialFileName = "_".join(self.ExistentialFileName.split("_")[:-1]) + "_" + str(ExistentialFileExt) + "." + self.ExistentialFileName.split(".")[-1]
             print("Successfully mutated source:", self.MutatedFromSourceFile)
             print("New savefile for mutation:", self.ExistentialFileName)
-
-        # Check that file paths exist - in case of subdirectory organizational architectures...
-        # Json and H5 file paths already checked when names are completed
-        try:
-            ExistentialPath="/".join(self.ExistentialFileName.split("/")[:-1])
-            pathlib.Path(ExistentialPath).mkdir(parents=True, exist_ok=True)
-        except:
-            ExistentialPath=SYNEX_PATH+"/Saved_Source_Dicts/"
-            self.ExistentialFileName=ExistentialPath+self.ExistentialFileName.split("/")[-1] ## In case we are now on a cluster or something and older saved files' paths no longer work
-            pathlib.Path(ExistentialPath).mkdir(parents=True, exist_ok=True)
+        
+        # Check that Skymap file path exists - in case of subdirectory organizational architectures...
+        # Json and H5 file paths already checked when names are completed, Existential and NewExistential checks at top of init function
         if self.sky_map!=None:
             try:
                 SkyMapPath="/".join(self.sky_map.split("/")[:-1])

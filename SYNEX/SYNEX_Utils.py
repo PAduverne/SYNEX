@@ -1675,8 +1675,8 @@ def TileSkyArea(source_or_kwargs,detectors=None,base_telescope_params=None,cloni
 
     if MPI_rank==0:
         # See if we have a source class or kwargs
+        for key,value in source_or_kwargs.items(): print(key,value)
         try:
-            for key,value in source_or_kwargs.items(): print(key,value)
             source=SYSs.SMBH_Merger(**source_or_kwargs)
         except:
             source=source_or_kwargs

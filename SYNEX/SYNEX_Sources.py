@@ -255,12 +255,13 @@ class SMBH_Merger:
                     print("Couldn't find H5 file. Searching elsewhere...")
                     try:
                         _,H5FileLocAndName=SYU.CompleteLisabetaDataAndJsonFileNames(value)
+                        print("Setting H5File check 2:",key,H5FileLocAndName)
                         if os.path.isfile(H5FileLocAndName):
                             self.H5File=H5FileLocAndName
                     except:
                         print("Couldn't find H5 file in ../SYNEX/inference_data/ directory. Setting to None.")
                         self.H5File=None
-                print("Setting H5File check 2:",key,self.H5File)
+                print("Setting H5File check 3:",key,self.H5File)
             elif key=='JsonFile':
                 try:
                     if os.path.isfile(value):

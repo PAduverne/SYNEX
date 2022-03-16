@@ -1676,6 +1676,7 @@ def TileSkyArea(source_or_kwargs,detectors=None,base_telescope_params=None,cloni
     if MPI_rank==0:
         # See if we have a source class or kwargs
         try:
+            for key,value in source_or_kwargs.items(): print(key,value)
             source=SYSs.SMBH_Merger(**source_or_kwargs)
         except:
             source=source_or_kwargs
@@ -1725,7 +1726,7 @@ def TileSkyArea(source_or_kwargs,detectors=None,base_telescope_params=None,cloni
         if MPI_rank>0:
             source = None
             detectors = None
-        
+
         # Send source to workers
         source = comm.bcast(source, root=0)
 

@@ -247,7 +247,7 @@ class SMBH_Merger:
                 else:
                     print("Warning: no json or h5 found- setting both to None...")
             elif key=='H5File':
-                print(key,value)
+                print("Setting H5File check 1:",key,value)
                 try:
                     if os.path.isfile(value):
                         self.H5File=value
@@ -260,6 +260,7 @@ class SMBH_Merger:
                     except:
                         print("Couldn't find H5 file in ../SYNEX/inference_data/ directory. Setting to None.")
                         self.H5File=None
+                print("Setting H5File check 2:",key,self.H5File)
             elif key=='JsonFile':
                 try:
                     if os.path.isfile(value):

@@ -514,11 +514,11 @@ class SMBH_Merger:
         self.true_distance = self.dist                ## in Mpc
 
         # Now check if sky_map needs creating or reading -- adaptation for 3D case needed here...
-        if MUTATED:
+        if MUTATED and self.H5File!=None:
             self.CreateSkyMapStruct()
         elif self.sky_map!=None and os.path.isfile(self.sky_map):
             self.LoadSkymap()
-        elif self.sky_map!=None and not os.path.isfile(self.sky_map):
+        elif self.sky_map!=None and not os.path.isfile(self.sky_map) and self.H5File!=None:
             self.CreateSkyMapStruct()
         elif self.sky_map==None and self.H5File!=None:
             # Default name

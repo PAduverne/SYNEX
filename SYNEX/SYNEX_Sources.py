@@ -247,33 +247,27 @@ class SMBH_Merger:
                 else:
                     print("Warning: no json or h5 found- setting both to None...")
             elif key=='H5File':
-                print("Setting H5File check 1:",key,value)
                 if value!=None and os.path.isfile(value):
                     self.H5File=value
                 else:
                     print("Couldn't find H5 file. Searching elsewhere...")
                     _,H5FileLocAndName=SYU.CompleteLisabetaDataAndJsonFileNames(value)
-                    print("Setting H5File check 2:",key,H5FileLocAndName)
                     if os.path.isfile(H5FileLocAndName):
                         self.H5File=H5FileLocAndName
                     else:
                         print("Couldn't find H5 file in ../SYNEX/inference_data/ directory. Setting to None.")
                         self.H5File=None
-                print("Setting H5File check 3:",key,self.H5File)
             elif key=='JsonFile':
-                print("Setting JsonFile check 1:",key,value)
                 if value!=None and os.path.isfile(value):
                     self.JsonFile=value
                 else:
                     print("Couldn't find Json file. Searching elsewhere...")
                     JsonFileLocAndName,_=SYU.CompleteLisabetaDataAndJsonFileNames(value)
-                    print("Setting JsonFile check 2:",key,JsonFileLocAndName)
                     if os.path.isfile(JsonFileLocAndName):
                         self.JsonFile=JsonFileLocAndName
                     else:
                         print("Couldn't find Json file in ../SYNEX/inference_param_files/ directory. Setting to None.")
                         self.JsonFile=None
-                print("Setting JsonFile check 3:",key,self.JsonFile)
             elif key=='sky_map':
                 self.sky_map=value
             elif key=='ExistentialFileName':

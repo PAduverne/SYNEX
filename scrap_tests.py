@@ -96,7 +96,7 @@ Athena_kwargs={"ExistentialFileName":"/Users/baird/Documents/LabEx_PostDoc/SYNEX
 # Athena_kwargs["NeworbitFile"]="/home/baird/SYNEX/orbit_files/Athena_20340601_728d_inc60_R750Mkm_ecc4_ArgPeri20_AscNode-10_phi020_P90_frozenFalse_dev.dat"
 
 # Test tiling with detector cloning
-ex_times=np.logspace(1,4,num=2,endpoint=True,base=10.)
+ex_times=np.logspace(1,4,num=5,endpoint=True,base=10.)
 cloning_params={"exposuretime":ex_times}
 tiling_t0=time.time()
 detectors = SYU.TileSkyArea(Merger_kwargs,detectors=None,base_telescope_params=Athena_kwargs,cloning_params=cloning_params)

@@ -1676,10 +1676,7 @@ def TileSkyArea(source_or_kwargs,detectors=None,base_telescope_params=None,cloni
     if MPI_rank==0:
         # See if we have a source class or kwargs
         for key,value in source_or_kwargs.items(): print(key,value)
-        try:
-            source=SYSs.SMBH_Merger(**source_or_kwargs)
-        except:
-            source=source_or_kwargs
+        source=SYSs.SMBH_Merger(**source_or_kwargs) if isinstance(source_or_kwargs,dict) else source_or_kwargs
 
         # Prioritize creating from base params dict
         if not base_telescope_params==None:

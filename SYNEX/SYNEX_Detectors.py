@@ -155,10 +155,23 @@ class Athena:
             MPI_rank=0
         self.PermissionToWrite=not use_mpi # MPI_rank==0 # This will not write orbit file since it is memory instensive
 
+        # Check filename paths to SYNEX
+        if "NewExistentialFileName" in kwargs.keys():
+            ExPath="/".join(kwargs["NewExistentialFileName"].split("/")[:-1])
+            try:
+                pathlib.Path(ExPath).mkdir(parents=True, exist_ok=True)
+            except:
+                kwargs["NewExistentialFileName"]=SYNEX_PATH+"/"+kwargs["NewExistentialFileName"].split("/SYNEX/")[-1]
+
         # Check if we are resurrecting a class from a save file
         if "ExistentialFileName" in kwargs.keys():
             self.ExistentialFileName=kwargs["ExistentialFileName"]
             del kwargs["ExistentialFileName"]
+            ExPath="/".join(self.ExistentialFileName.split("/")[:-1])
+            try:
+                pathlib.Path(ExPath).mkdir(parents=True, exist_ok=True)
+            except:
+                self.ExistentialFileName=SYNEX_PATH+"/"+self.ExistentialFileName.split("/SYNEX/")[-1]
             if os.path.isfile(self.ExistentialFileName):
                 # FUSE THIS WITH CONFIG KEY IN GO_PARAMS... Save in two files so we
                 # respect gwemopt conventions? Seems overkill but 'gwemop.utils.readParamsFromFile(file)'

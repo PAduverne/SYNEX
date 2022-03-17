@@ -12,6 +12,7 @@ import pickle
 # import statistics
 from scipy import stats
 from scipy.stats import norm
+from scipy import integrate
 
 import SYNEX.SYNEX_Utils as SYU
 from SYNEX.SYNEX_Utils import SYNEX_PATH
@@ -681,158 +682,199 @@ class SMBH_Merger:
         # Save to file
         SYU.WriteSkymapToFile(self.map_struct,self.sky_map,None,self.PermissionToWrite)
 
-    def GenerateEMFlux(self,fstart22=1e-4,**EM_kwargs):
+    def GenerateEMFlux(self,fstart22=1e-4,TYPE="const",**EM_kwargs):
+        """
+        Function to calculate EM flux of source.
 
-        # Empty LALParams dict
-        LALParams = lal.CreateDict();
-        modearray = lalsim.SimInspiralCreateModeArray()
-        lalsim.SimInspiralModeArrayActivateMode(modearray, 2, 2);
-        lalsim.SimInspiralModeArrayActivateMode(modearray, 2, 1);
-        seobflags = lal.CreateDict();
-        lal.DictInsertINT4Value(seobflags, "SEOBNRv4P_SpinAlignedEOBversion", 4);
-        # Generate P-frame modes m<0 with the symmetry hP_l-m ~ (-1)^l hP_lm*
-        lal.DictInsertINT4Value(seobflags, "SEOBNRv4P_SymmetrizehPlminusm", 1);
-        # Use numerical or analytical derivatives of the Hamiltonian
-        # Default is numerical with the flag 1
-        NumericalOrAnalyticalHamiltonianDerivative = lalsim.SimInspiralWaveformParamsLookupEOBChooseNumOrAnalHamDer(LALParams);
-        # Removed test of value of NumericalOrAnalyticalHamiltonianDerivative
-        if (NumericalOrAnalyticalHamiltonianDerivative == lalsim.FLAG_SEOBNRv4P_HAMILTONIAN_DERIVATIVE_NUMERICAL):
-            lal.DictInsertINT4Value(seobflags, "SEOBNRv4P_HamiltonianDerivative", lalsim.FLAG_SEOBNRv4P_HAMILTONIAN_DERIVATIVE_NUMERICAL)
-        else:
-            lal.DictInsertINT4Value(seobflags, "SEOBNRv4P_HamiltonianDerivative", NumericalOrAnalyticalHamiltonianDerivative)
-        # Extension of Euler angles post-merger: simple precession around final J at a rate set by QNMs
-        lal.DictInsertINT4Value(seobflags, "SEOBNRv4P_euler_extension", lalsim.FLAG_SEOBNRv4P_EULEREXT_QNM_SIMPLE_PRECESSION);
-        # Z-axis of the radiation frame L
-        lal.DictInsertINT4Value(seobflags, "SEOBNRv4P_Zframe", lalsim.FLAG_SEOBNRv4P_ZFRAME_L);
-        # No debug output
-        lal.DictInsertINT4Value(seobflags, "SEOBNRv4P_debug", 0);
-        chi1_x=0.
-        chi1_y=0.
-        chi2_x=0.
-        chi2_y=0. # assuming aligned spins with orbital momentum...
-        # print(type(phi_c), type(self.Deltat), type(self.m1*pyconstants.MSUN_SI), type(self.m2*pyconstants.MSUN_SI), type(fstart22), type(self.dist*1e6*pyconstants.PC_SI), type(self.inc), type(chi1_x), type(chi1_y), type(self.chi1), type(chi2_x), type(chi2_y), type(self.chi2), type(modearray), type(seobflags))
-        # print((phi_c), (self.Deltat), (self.m1*pyconstants.MSUN_SI), (self.m2*pyconstants.MSUN_SI), (fstart22))
-        # print((self.dist*1e6*pyconstants.PC_SI), (self.inc))
-        # print(chi1_x, chi1_y, self.chi1)
-        # print(chi2_x, chi2_y, self.chi2)
-        # print((modearray), (seobflags))
-        # I assume it takes parameters in the source frame...?
-        # if self.Lframe: # second input var (delta_t) was set to 1.5... can we increase this? Should 1st parameter be self.psi?
-        #     print("Lframe; rescaling to source fram using z =",self.z)
-        #     hplus, hcross, hIlm, hJlm, dyn_Low, dyn_Hi, dyn_all, t_vec_modes, hP22_amp, hP22_phase, hP21_amp, hP21_phase, hP33_amp, hP33_phase, hP44_amp, hP44_phase, hP55_amp, hP55_phase, alphaJ2P, betaJ2P, gammaJ2P, AttachPars = lalsim.SimIMRSpinPrecEOBWaveformAll(self.phi, 1.5, self.m1*pyconstants.MSUN_SI/(1.+self.z), self.m2*pyconstants.MSUN_SI/(1.+self.z), fstart22/(1.+self.z), self.dist*1e6*pyconstants.PC_SI, self.inc, chi1_x, chi1_y, self.chi1, chi2_x, chi2_y , self.chi2, modearray, seobflags)
-        # else:
-        #     hplus, hcross, hIlm, hJlm, dyn_Low, dyn_Hi, dyn_all, t_vec_modes, hP22_amp, hP22_phase, hP21_amp, hP21_phase, hP33_amp, hP33_phase, hP44_amp, hP44_phase, hP55_amp, hP55_phase, alphaJ2P, betaJ2P, gammaJ2P, AttachPars = lalsim.SimIMRSpinPrecEOBWaveformAll(self.phi, 1.5, self.m1*pyconstants.MSUN_SI, self.m2*pyconstants.MSUN_SI, fstart22, self.dist*1e6*pyconstants.PC_SI, self.inc, chi1_x, chi1_y, self.chi1, chi2_x, chi2_y , self.chi2, modearray, seobflags)
-        _, _, _, _, _, _, dyn_all, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _ = lalsim.SimIMRSpinPrecEOBWaveformAll(self.phi, 1.5, self.m1*pyconstants.MSUN_SI, self.m2*pyconstants.MSUN_SI, fstart22, self.dist*1e6*pyconstants.PC_SI, self.inc, chi1_x, chi1_y, self.chi1, chi2_x, chi2_y , self.chi2, modearray, seobflags)
-        # The output here is a single REAL8Vector (I assume in the source frame...?), to be reshaped into the format:
-        # t, x, y, z, px, py, pz, s1x, s1y, s1z, s2x, s2y, s2z, phiD, phi, vx, vy, vz, r, phi, pr, pphi, Omega, s1dotZ, s2dotZ, H
-        # Spins in units of M^2
-        nptdyn = int(len(dyn_all.data) / 26)
-        dyn_arr = np.reshape(dyn_all.data, (26, nptdyn))
+        PARAMS:
+        -------
 
-        # Take out the relevant parameters
-        t = dyn_arr[0]
-        x = dyn_arr[1]
-        y = dyn_arr[2]
-        z = dyn_arr[3]
-        px = dyn_arr[4]
-        py = dyn_arr[5]
-        pz = dyn_arr[6]
-        s1x = dyn_arr[7]
-        s1y = dyn_arr[8]
-        s1z = dyn_arr[9]
-        s2x = dyn_arr[10]
-        s2y = dyn_arr[11]
-        s2z = dyn_arr[12]
-        r = dyn_arr[18]
-        phi = dyn_arr[19]
-        pr = dyn_arr[20]
-        pphi = dyn_arr[21]
-        Omega = dyn_arr[22]
-        H = dyn_arr[25]
+        TYPE : string {"const","lalsim"}
+            Type of EM calculation to do.
+             -- "const" calculates a rough approx based on a typical
+                binary with seperation 10 times sum of Schwartzchild radii
+             -- "lalsim" uses lalsimulation to calculate a full time dependent
+                waveform and use an approximation similar to idea paper for
+                variable flux. NB: This method is HUGELY memory intensive so avoid
+                if possible when on a cluster with restrictive memory limits (<several GB per source calculation)
+        """
 
-        # Binary orbit properties
-        t = [time for time in t] # *(1.+self.z) for time in t] # Assume time is in source frame and need to convert to detector frame?!
-        dt = np.diff(t)
-        dr = np.diff(r)
-        r = r.tolist()
-        r_dot = [(dr[ii]/dt[ii])/2. for ii in range(len(dr))]
-        x_dot = px.tolist()
-        y_dot = py.tolist()
-        z_dot = pz.tolist()
+        if TYPE="const":
+            # Calculate flux - xray_flux formula is *DETECTOR* frame using *SOURCE* frame properties
+            NPoints=1000
+            xray_time=[ii*(self.DeltatL_cut)/NPoints for ii in range(NPoints)] # seconds to merger
+            t_start_flux=xray_time[0]-1.
+            t_end_flux=xray_time[-1]+1.
+            r_sch_1 = 2950.*self.m1 # Schwartzchild rad of primary in meters using m1 in SOLAR MASSES
+            r_sch_2 = 2950.*self.m2 # Schwartzchild rad of primary in meters using m2 in SOLAR MASSES
+            r=[(r_sch_1+r_sch_2)*10. for _ in range(NPoints)] ### 10 equivalent Sch. radii
+            Period=[np.sqrt(4.*np.pi*np.pi*r_i**3/(pyconstants.G_SI*(self.M))) for r_i in r] # Kepler approx
+            GW_freqs = [1./T for T in Period]
+            GW_Omega=[2.*np.pi/T for T in Period]
+            v=[r_i*om_i for r_i,om_i in zip(r,GW_Omega)] # in m/s
+            GW_phi=(integrate.cumtrapz(GW_Omega, [-t for t in xray_time], initial=0.))
+            GW_phi_mod=self.psi-(GW_phi[-1]%(2*np.pi)) # psi is GW polarization at merger in range [0,2*pi]
+            GW_phi=[(ph+GW_phi_mod)%(2*np.pi)) for ph in GW_phi]
+            BolFac = [0.1+(r_sch_1+r_sch_2)/r_i for r_i in r] # This should be normalized as per idea paper but is this a sum of radii or average or equivalent for EoB?
+            mu_dopp = [3.*np.sin(self.inc)*np.cos(GW_phi[ii]/2.)*v[ii]/pyconstants.PC_SI+1. for ii in range(len(GW_phi))] # Speed normalized to c=1
+            if self.Lframe:
+                M_tot = self.M/(1.+self.z)
+            else:
+                M_tot = self.M
+            EddLum = (1.26e38)*M_tot*(1.+self.z) # /(918.*2.) # https://en.wikipedia.org/wiki/Eddington_luminosity -- total mass in solar mass units
+            xray_flux = [mu_dopp[ii]*BolFac[ii]*EddLum/(4.*np.pi*self.dist*1e6*pyconstants.PC_SI*self.dist*1e6*pyconstants.PC_SI*10000.) for ii in range(len(BolFac))] # erg/s/cm^2
+        elif TYPE="lalsim":
+            # Empty LALParams dict
+            LALParams = lal.CreateDict();
+            modearray = lalsim.SimInspiralCreateModeArray()
+            lalsim.SimInspiralModeArrayActivateMode(modearray, 2, 2);
+            lalsim.SimInspiralModeArrayActivateMode(modearray, 2, 1);
+            seobflags = lal.CreateDict();
+            lal.DictInsertINT4Value(seobflags, "SEOBNRv4P_SpinAlignedEOBversion", 4);
+            # Generate P-frame modes m<0 with the symmetry hP_l-m ~ (-1)^l hP_lm*
+            lal.DictInsertINT4Value(seobflags, "SEOBNRv4P_SymmetrizehPlminusm", 1);
+            # Use numerical or analytical derivatives of the Hamiltonian
+            # Default is numerical with the flag 1
+            NumericalOrAnalyticalHamiltonianDerivative = lalsim.SimInspiralWaveformParamsLookupEOBChooseNumOrAnalHamDer(LALParams);
+            # Removed test of value of NumericalOrAnalyticalHamiltonianDerivative
+            if (NumericalOrAnalyticalHamiltonianDerivative == lalsim.FLAG_SEOBNRv4P_HAMILTONIAN_DERIVATIVE_NUMERICAL):
+                lal.DictInsertINT4Value(seobflags, "SEOBNRv4P_HamiltonianDerivative", lalsim.FLAG_SEOBNRv4P_HAMILTONIAN_DERIVATIVE_NUMERICAL)
+            else:
+                lal.DictInsertINT4Value(seobflags, "SEOBNRv4P_HamiltonianDerivative", NumericalOrAnalyticalHamiltonianDerivative)
+            # Extension of Euler angles post-merger: simple precession around final J at a rate set by QNMs
+            lal.DictInsertINT4Value(seobflags, "SEOBNRv4P_euler_extension", lalsim.FLAG_SEOBNRv4P_EULEREXT_QNM_SIMPLE_PRECESSION);
+            # Z-axis of the radiation frame L
+            lal.DictInsertINT4Value(seobflags, "SEOBNRv4P_Zframe", lalsim.FLAG_SEOBNRv4P_ZFRAME_L);
+            # No debug output
+            lal.DictInsertINT4Value(seobflags, "SEOBNRv4P_debug", 0);
+            chi1_x=0.
+            chi1_y=0.
+            chi2_x=0.
+            chi2_y=0. # assuming aligned spins with orbital momentum...
+            # print(type(phi_c), type(self.Deltat), type(self.m1*pyconstants.MSUN_SI), type(self.m2*pyconstants.MSUN_SI), type(fstart22), type(self.dist*1e6*pyconstants.PC_SI), type(self.inc), type(chi1_x), type(chi1_y), type(self.chi1), type(chi2_x), type(chi2_y), type(self.chi2), type(modearray), type(seobflags))
+            # print((phi_c), (self.Deltat), (self.m1*pyconstants.MSUN_SI), (self.m2*pyconstants.MSUN_SI), (fstart22))
+            # print((self.dist*1e6*pyconstants.PC_SI), (self.inc))
+            # print(chi1_x, chi1_y, self.chi1)
+            # print(chi2_x, chi2_y, self.chi2)
+            # print((modearray), (seobflags))
+            # I assume it takes parameters in the source frame...?
+            # if self.Lframe: # second input var (delta_t) was set to 1.5... can we increase this? Should 1st parameter be self.psi?
+            #     print("Lframe; rescaling to source fram using z =",self.z)
+            #     hplus, hcross, hIlm, hJlm, dyn_Low, dyn_Hi, dyn_all, t_vec_modes, hP22_amp, hP22_phase, hP21_amp, hP21_phase, hP33_amp, hP33_phase, hP44_amp, hP44_phase, hP55_amp, hP55_phase, alphaJ2P, betaJ2P, gammaJ2P, AttachPars = lalsim.SimIMRSpinPrecEOBWaveformAll(self.phi, 1.5, self.m1*pyconstants.MSUN_SI/(1.+self.z), self.m2*pyconstants.MSUN_SI/(1.+self.z), fstart22/(1.+self.z), self.dist*1e6*pyconstants.PC_SI, self.inc, chi1_x, chi1_y, self.chi1, chi2_x, chi2_y , self.chi2, modearray, seobflags)
+            # else:
+            #     hplus, hcross, hIlm, hJlm, dyn_Low, dyn_Hi, dyn_all, t_vec_modes, hP22_amp, hP22_phase, hP21_amp, hP21_phase, hP33_amp, hP33_phase, hP44_amp, hP44_phase, hP55_amp, hP55_phase, alphaJ2P, betaJ2P, gammaJ2P, AttachPars = lalsim.SimIMRSpinPrecEOBWaveformAll(self.phi, 1.5, self.m1*pyconstants.MSUN_SI, self.m2*pyconstants.MSUN_SI, fstart22, self.dist*1e6*pyconstants.PC_SI, self.inc, chi1_x, chi1_y, self.chi1, chi2_x, chi2_y , self.chi2, modearray, seobflags)
+            _, _, _, _, _, _, dyn_all, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _ = lalsim.SimIMRSpinPrecEOBWaveformAll(self.phi, 1.5, self.m1*pyconstants.MSUN_SI, self.m2*pyconstants.MSUN_SI, fstart22, self.dist*1e6*pyconstants.PC_SI, self.inc, chi1_x, chi1_y, self.chi1, chi2_x, chi2_y , self.chi2, modearray, seobflags)
+            # The output here is a single REAL8Vector (I assume in the source frame...?), to be reshaped into the format:
+            # t, x, y, z, px, py, pz, s1x, s1y, s1z, s2x, s2y, s2z, phiD, phi, vx, vy, vz, r, phi, pr, pphi, Omega, s1dotZ, s2dotZ, H
+            # Spins in units of M^2
+            nptdyn = int(len(dyn_all.data) / 26)
+            dyn_arr = np.reshape(dyn_all.data, (26, nptdyn))
 
-        # GW properties are in *DETECTOR* frame
-        GW_Omega = [Om*(1.+self.z) for Om in Omega] # [Om*2.*(1.+self.z) for Om in Omega]
-        GW_freqs = [Om/(2.*np.pi) for Om in Omega]
-        GW_phi = [phi_i for phi_i in phi] # [phi_i*2. for phi_i in phi]
+            # Take out the relevant parameters
+            t = dyn_arr[0]
+            x = dyn_arr[1]
+            y = dyn_arr[2]
+            z = dyn_arr[3]
+            px = dyn_arr[4]
+            py = dyn_arr[5]
+            pz = dyn_arr[6]
+            s1x = dyn_arr[7]
+            s1y = dyn_arr[8]
+            s1z = dyn_arr[9]
+            s2x = dyn_arr[10]
+            s2y = dyn_arr[11]
+            s2z = dyn_arr[12]
+            r = dyn_arr[18]
+            phi = dyn_arr[19]
+            pr = dyn_arr[20]
+            pphi = dyn_arr[21]
+            Omega = dyn_arr[22]
+            H = dyn_arr[25]
 
-        # Orbital velocity
-        v = [np.sqrt(x_dot[ii]**2 + y_dot[ii]**2 + z_dot[ii]**2) for ii in range(len(x_dot))] # [np.sqrt(x_dot[ii]**2 + y_dot[ii]**2 + z_dot[ii]**2) for ii in range(len(x_dot))]
-        v_vec = [[x_dot[ii],y_dot[ii],z_dot[ii]] for ii in range(len(x_dot))] # nx3 list
+            # Binary orbit properties
+            t = [time for time in t] # *(1.+self.z) for time in t] # Assume time is in source frame and need to convert to detector frame?!
+            dt = np.diff(t)
+            dr = np.diff(r)
+            r = r.tolist()
+            r_dot = [(dr[ii]/dt[ii])/2. for ii in range(len(dr))]
+            x_dot = px.tolist()
+            y_dot = py.tolist()
+            z_dot = pz.tolist()
 
-        # take out the largest component in v_vec
-        v_abs = [np.abs(v_comp) for v_comp in v_vec]
-        sign_comp = [np.sign(v_comp) for v_comp in v_vec]
-        v_max = np.max(v_abs,axis=1)
-        v_max = [v_max[ii]*np.sign(v_vec[ii][np.where(v_abs[ii]==v_max[ii])[0][0]]) for ii in range(np.shape(v_vec)[0])]
-        import copy
-        v_nomax = copy.deepcopy(v_vec)
-        for ii in range(len(v_max)):
-            v_nomax[ii].remove(v_max[ii])
+            # GW properties are in *DETECTOR* frame
+            GW_Omega = [Om*(1.+self.z) for Om in Omega] # [Om*2.*(1.+self.z) for Om in Omega]
+            GW_freqs = [Om/(2.*np.pi) for Om in Omega]
+            GW_phi = [phi_i for phi_i in phi] # [phi_i*2. for phi_i in phi]
 
-        # set the sign of total speed depending on what the components of velocity are doing
-        tmp = [np.sign(v_comp)==-1. for v_comp in v_vec]
-        for ii in range(len(v_max)):
-            if all([np.sign(v_comp)==-1. for v_comp in v_vec[ii]]):
-                v[ii] = -v[ii]
-            elif all([np.sign(v_comp)==-1. for v_comp in v_nomax[ii]]) and np.sign(v_max[ii])==1. and (np.mean(v_nomax[ii])>np.abs(v_max[ii])):
-                v[ii] = -v[ii]
-            elif all([np.sign(v_comp)==1. for v_comp in v_nomax[ii]]) and np.sign(v_max[ii])==-1. and (np.mean(v_nomax[ii])<np.abs(v_max[ii])):
-                v[ii] = -v[ii]
+            # Orbital velocity
+            v = [np.sqrt(x_dot[ii]**2 + y_dot[ii]**2 + z_dot[ii]**2) for ii in range(len(x_dot))] # [np.sqrt(x_dot[ii]**2 + y_dot[ii]**2 + z_dot[ii]**2) for ii in range(len(x_dot))]
+            v_vec = [[x_dot[ii],y_dot[ii],z_dot[ii]] for ii in range(len(x_dot))] # nx3 list
 
-        # Calculate flux - xray_flux formula is *DETECTOR* frame using *SOURCE* frame properties
-        BolFac = [0.1+1./r_i for r_i in r]
-        # mu_dopp = [3.*np.sin(self.inc)*np.cos(GW_phi[ii]/2.)*v[ii]+1. for ii in range(len(GW_phi))] # phi and v here are *orbital* phase and velocity
-        mu_dopp = [3.*np.sin(self.inc)*np.cos(GW_phi[ii]/2.)*v[ii]+1. for ii in range(len(GW_phi))]
-        if self.Lframe:
-            M_tot = self.M/(1.+self.z)
-        else:
-            M_tot = self.M
-        EddLum = (1.26e38)*M_tot*(1.+self.z) # /(918.*2.) # https://en.wikipedia.org/wiki/Eddington_luminosity -- total mass in solar mass units
-        xray_time = [(t[ii]-t[-1])*(M_tot*pyconstants.MSUN_SI*(pyconstants.G_SI/(pyconstants.C_SI**3))) for ii in range(len(t))] # corrected for diff's taken for velocity To be really accurate we should also interpolate phi and r to the right times...
-        xray_flux = [mu_dopp[ii]*BolFac[ii]*EddLum/(4.*np.pi*self.dist*1e6*pyconstants.PC_SI*self.dist*1e6*pyconstants.PC_SI*10000.) for ii in range(len(BolFac))] # erg/s/cm^2 - this is orbital properties in *SOURCE* frame, then scaled by lum dist to account for redshifting to *DETECTOR* frame
+            # take out the largest component in v_vec
+            v_abs = [np.abs(v_comp) for v_comp in v_vec]
+            sign_comp = [np.sign(v_comp) for v_comp in v_vec]
+            v_max = np.max(v_abs,axis=1)
+            v_max = [v_max[ii]*np.sign(v_vec[ii][np.where(v_abs[ii]==v_max[ii])[0][0]]) for ii in range(np.shape(v_vec)[0])]
+            import copy
+            v_nomax = copy.deepcopy(v_vec)
+            for ii in range(len(v_max)):
+                v_nomax[ii].remove(v_max[ii])
 
-        # Start time - LISABETA takes the Lframe flag appropriately. Need to convert to *SOURCE* frame
-        param_dict,waveform_params,extra_params = SYU.ClassesToParams(self,detector=None,**EM_kwargs) ## Do we need to change the approximant here from the saved one in source to EOB one?
-        waveform_params["DeltatL_cut"] = None # Need to set this to 0 to get the remaining signal for photon phases
-        # print("Params from 'ClassesToParams':",param_dict,waveform_params,extra_params)
-        if param_dict["m1"]==param_dict["m2"]:
-            param_dict["m1"] = param_dict["m1"]*(1.+1e-6) # lisabeta needs q>1, so just adjust lightly so that m1>m2...
-        waveform_params["modes"]=[(2,2)] # cumulative SNR functions work for 22 mode only right now
-        cumulsnr = lisa.CumulSNRLISATDI_SMBH(param_dict, **waveform_params)
-        tf = cumulsnr['tf']
-        cumul_SNR = cumulsnr['SNRcumul']
-        # t_start_flux = -7.5*24.*60.*60. #
-        t_start_flux = [time for (time,SNR) in zip(tf,cumul_SNR) if SNR<10][-1] # Grab the last time before we reach SNR detection threshold - this is negative seconds to merger
-        # Return is always Lframe, now decide if this is larger or smaller than the cut time
-        t_start_flux/=(1.+self.z) # This is slightly off - can you look up their relation between time and frequency they quote from the paper? Bottom of page 3
-        if self.DeltatL_cut != None:
-            print(r"T$_{SNR=10}$",(1.+self.z)*t_start_flux/(24.*60.*60.),r"t$_{cut}$", self.DeltatL_cut/(24.*60.*60.))
-            if (1.+self.z)*t_start_flux<self.DeltatL_cut:
-                t_start_flux = self.DeltatL_cut # Because we don't start at a time that is before the sky area is provided
-            # Here we can either code the latency time to be the period of the GW wave or we can start when the period is comparable with the latency time requested...
+            # set the sign of total speed depending on what the components of velocity are doing
+            tmp = [np.sign(v_comp)==-1. for v_comp in v_vec]
+            for ii in range(len(v_max)):
+                if all([np.sign(v_comp)==-1. for v_comp in v_vec[ii]]):
+                    v[ii] = -v[ii]
+                elif all([np.sign(v_comp)==-1. for v_comp in v_nomax[ii]]) and np.sign(v_max[ii])==1. and (np.mean(v_nomax[ii])>np.abs(v_max[ii])):
+                    v[ii] = -v[ii]
+                elif all([np.sign(v_comp)==1. for v_comp in v_nomax[ii]]) and np.sign(v_max[ii])==-1. and (np.mean(v_nomax[ii])<np.abs(v_max[ii])):
+                    v[ii] = -v[ii]
 
-        # End Time - *SOURCE* frame
-        ISCO_freq = 4400.*(1.+self.z)/self.M # 4400Hz is *DETECTOR* frame GW ISCO frequency
-        if self.Lframe:
-            ISCO_freq*=(1.+self.z) # extra factor for total mass in Lframe
-        t_end_flux = [time for (time,GW_freq) in zip(xray_time,GW_freqs) if GW_freq<=ISCO_freq]
-        if isinstance(t_end_flux,list) and len(t_end_flux)>0:
-            t_end_flux = t_end_flux[-1]
-        elif isinstance(t_end_flux,list):
-            t_end_flux=xray_time[-1]
+            # Calculate flux - xray_flux formula is *DETECTOR* frame using *SOURCE* frame properties
+            BolFac = [0.1+1./r_i for r_i in r]
+            # mu_dopp = [3.*np.sin(self.inc)*np.cos(GW_phi[ii]/2.)*v[ii]+1. for ii in range(len(GW_phi))] # phi and v here are *orbital* phase and velocity
+            mu_dopp = [3.*np.sin(self.inc)*np.cos(GW_phi[ii]/2.)*v[ii]+1. for ii in range(len(GW_phi))]
+            if self.Lframe:
+                M_tot = self.M/(1.+self.z)
+            else:
+                M_tot = self.M
+            EddLum = (1.26e38)*M_tot*(1.+self.z) # /(918.*2.) # https://en.wikipedia.org/wiki/Eddington_luminosity -- total mass in solar mass units
+            xray_time = [(t[ii]-t[-1])*(M_tot*pyconstants.MSUN_SI*(pyconstants.G_SI/(pyconstants.C_SI**3))) for ii in range(len(t))] # corrected for diff's taken for velocity To be really accurate we should also interpolate phi and r to the right times...
+            xray_flux = [mu_dopp[ii]*BolFac[ii]*EddLum/(4.*np.pi*self.dist*1e6*pyconstants.PC_SI*self.dist*1e6*pyconstants.PC_SI*10000.) for ii in range(len(BolFac))] # erg/s/cm^2 - this is orbital properties in *SOURCE* frame, then scaled by lum dist to account for redshifting to *DETECTOR* frame
+
+            # Start time - LISABETA takes the Lframe flag appropriately. Need to convert to *SOURCE* frame
+            param_dict,waveform_params,extra_params = SYU.ClassesToParams(self,detector=None,**EM_kwargs) ## Do we need to change the approximant here from the saved one in source to EOB one?
+            waveform_params["DeltatL_cut"] = None # Need to set this to 0 to get the remaining signal for photon phases
+            # print("Params from 'ClassesToParams':",param_dict,waveform_params,extra_params)
+            if param_dict["m1"]==param_dict["m2"]:
+                param_dict["m1"] = param_dict["m1"]*(1.+1e-6) # lisabeta needs q>1, so just adjust lightly so that m1>m2...
+            waveform_params["modes"]=[(2,2)] # cumulative SNR functions work for 22 mode only right now
+            cumulsnr = lisa.CumulSNRLISATDI_SMBH(param_dict, **waveform_params)
+            tf = cumulsnr['tf']
+            cumul_SNR = cumulsnr['SNRcumul']
+            # t_start_flux = -7.5*24.*60.*60. #
+            t_start_flux = [time for (time,SNR) in zip(tf,cumul_SNR) if SNR<10][-1] # Grab the last time before we reach SNR detection threshold - this is negative seconds to merger
+            # Return is always Lframe, now decide if this is larger or smaller than the cut time
+            t_start_flux/=(1.+self.z) # This is slightly off - can you look up their relation between time and frequency they quote from the paper? Bottom of page 3
+            if self.DeltatL_cut != None:
+                print(r"T$_{SNR=10}$",(1.+self.z)*t_start_flux/(24.*60.*60.),r"t$_{cut}$", self.DeltatL_cut/(24.*60.*60.))
+                if (1.+self.z)*t_start_flux<self.DeltatL_cut:
+                    t_start_flux = self.DeltatL_cut # Because we don't start at a time that is before the sky area is provided
+                # Here we can either code the latency time to be the period of the GW wave or we can start when the period is comparable with the latency time requested...
+
+            # End Time - *SOURCE* frame
+            ISCO_freq = 4400.*(1.+self.z)/self.M # 4400Hz is *DETECTOR* frame GW ISCO frequency
+            if self.Lframe:
+                ISCO_freq*=(1.+self.z) # extra factor for total mass in Lframe
+            t_end_flux = [time for (time,GW_freq) in zip(xray_time,GW_freqs) if GW_freq<=ISCO_freq]
+            if isinstance(t_end_flux,list) and len(t_end_flux)>0:
+                t_end_flux = t_end_flux[-1]
+            elif isinstance(t_end_flux,list):
+                t_end_flux=xray_time[-1]
 
         # Set the class variables using the start and end times - convert everything *EXCEPT* xray_flux to *DETECTOR* frame
         EM_Flux_Data={}
+        EM_Flux_Data["EM_Approx"] = Type
         EM_Flux_Data["xray_flux"] = [flux for (flux,time) in zip(xray_flux,xray_time) if time>t_start_flux and time<t_end_flux] # if time>t_start_flux and time<t_end_flux else 0. for (flux,time) in zip(xray_flux,xray_time)]
         EM_Flux_Data["xray_time"] = [time*(1.+self.z) for time in xray_time if time>t_start_flux and time<t_end_flux]
         EM_Flux_Data["GW_phi"] = [phi for (phi,time) in zip(GW_phi,xray_time) if time>t_start_flux and time<t_end_flux] # GW_phi

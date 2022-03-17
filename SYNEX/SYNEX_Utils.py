@@ -1707,16 +1707,16 @@ def TileSkyArea(source_or_kwargs,detectors=None,base_telescope_params=None,cloni
             NValsPerCore=int(Nvals//MPI_size)
             CoreLenVals=[NValsPerCore+1 if ii<len(values)%MPI_size else NValsPerCore for ii in range(MPI_size)]
             CPU_ENDs=list(np.cumsum(CoreLenVals))
-            CPU_STARTs=[0]+CPU_END[:-1]
+            CPU_STARTs=[0]+CPU_ENDs[:-1]
             # Make list of detector properties depending on MPI_rank
             dict_list = [{"ExistentialFileName":BaseExFileName,
                           "NewExistentialFileName":".".join(BaseExFileName.split(".")[:-1])+"_"+key+"_"+str(ii+1)+"."+BaseExFileName.split(".")[-1],
                           key:values[ii],
                           "telescope":BaseTelescopeName+"_"+key+"_"+str(ii+1)} for ii in range(CPU_STARTs[MPI_rank],CPU_ENDs[MPI_rank])]
-            print("Rank",MPI_rank,"/",MPI_size,"has",len(dict_list),"detector objects for",key,flush=True)
+            print("CPU",MPI_rank+1,"/",MPI_size,"has",len(dict_list),"detector objects for",key,flush=True)
             detectors+=[SYDs.Athena(**dict_ii) for dict_ii in dict_list]
             out_dirs+=[key]*len(dict_list)
-        print("Rank",MPI_rank,"/",MPI_size,"has",len(dict_list),"total detector objects.",flush=True)
+        print("CPU",MPI_rank+1,"/",MPI_size,"has",len(dict_list),"total detector objects.",flush=True)
     else:
         # No cloning params so see if we have input detectors
         if detectors==None and base_telescope_params==None:
@@ -1731,7 +1731,7 @@ def TileSkyArea(source_or_kwargs,detectors=None,base_telescope_params=None,cloni
             NValsPerCore=int(Nvals//MPI_size)
             CoreLenVals=[NValsPerCore+1 if ii<len(values)%MPI_size else NValsPerCore for ii in range(MPI_size)]
             CPU_ENDs=list(np.cumsum(CoreLenVals))
-            CPU_STARTs=[0]+CPU_END[:-1]
+            CPU_STARTs=[0]+CPU_ENDs[:-1]
             detectors=[detectors[ii] for ii in range(CPU_STARTs[MPI_rank],CPU_ENDs[MPI_rank])]
 
         # Default of no output directory extension
@@ -1748,7 +1748,7 @@ def TileSkyArea(source_or_kwargs,detectors=None,base_telescope_params=None,cloni
     source = comm.bcast(source, root=0)
 
     # Calculate source flux data -- NB CTR is telescope dependent so included inside loop for coverage info later if ARF file changes
-    if source!=None and not hasattr(source,"EM_Flux_Data"): source.GenerateEMFlux(fstart22=1e-4,**{})
+    if source!=None and not hasattr(source,"EM_Flux_Data"): source.GenerateEMFlux(fstart22=1e-4,TYPE="const",**{})
 
     # Make sure only cases where detectors and source are defined are run (i.e. if we handed cluster one object with many cluster).
     # We will optimise this later to ask gwemopt to run in parallel once we understand if this will speed up calculations for a single
@@ -1988,7 +1988,7 @@ def GetCoverageInfo(go_params, map_struct, tile_structs, coverage_struct, detect
     # Now add cuts to coverage info depending on photon flux
     if not source==None and len(cov_source_tile)>0:
         # Make sure source has relevant data and create it if not
-        if not hasattr(source,"EM_Flux_Data"): source.GenerateEMFlux(fstart22=1e-4,**{})
+        if not hasattr(source,"EM_Flux_Data"): source.GenerateEMFlux(fstart22=1e-4,TYPE="const",**{})
         if not hasattr(source,"CTR_Data"): source.GenerateCTR(detector.ARF_file_loc_name,gamma=1.7) # Should be include gamma as a source param? Would we ever want to change this at run time?
 
         # Calculate the exposuretimes for each tile that covers source

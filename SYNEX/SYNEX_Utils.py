@@ -1687,9 +1687,14 @@ def TileSkyArea(source_or_kwargs,detectors=None,base_telescope_params=None,cloni
             else:
                 base_telescope_params=detectors.__dict__
 
-        # Base savefiles
-        BaseExFileName=base_telescope_params["ExistentialFileName"]
-        BaseTelescopeName=base_telescope_params["detector_config_struct"]["telescope"]
+        # Base detector savefile and name
+        BaseExFileName=base_telescope_params["ExistentialFileName"] if "ExistentialFileName" in base_telescope_params else "Athena_Base"
+        if 'detector_config_struct' in base_telescope_params:
+            BaseTelescopeName=base_telescope_params["detector_config_struct"]["telescope"]
+        elif "telescope" in base_telescope_params:
+            BaseTelescopeName=base_telescope_params["telescope"]
+        else:
+            BaseTelescopeName="Athena"
 
         # Start populating detector list -- list of lists, each embedded list corresponds to each requested cloning parameter
         out_dirs=[]

@@ -699,10 +699,11 @@ class SMBH_Merger:
                 if possible when on a cluster with restrictive memory limits (<several GB per source calculation)
         """
 
-        if TYPE="const":
+        if TYPE=="const":
             # Calculate flux - xray_flux formula is *DETECTOR* frame using *SOURCE* frame properties
-            NPoints=1000
+            NPoints=int(-self.DeltatL_cut//0.5) if self.DeltatL_cut!=None else 100000
             xray_time=[ii*(self.DeltatL_cut)/NPoints for ii in range(NPoints)] # seconds to merger
+            print("Times check:",xray_time[:5],xray_time[-5:],NPoints)
             t_start_flux=xray_time[0]-1.
             t_end_flux=xray_time[-1]+1.
             r_sch_1 = 2950.*self.m1 # Schwartzchild rad of primary in meters using m1 in SOLAR MASSES
@@ -714,7 +715,7 @@ class SMBH_Merger:
             v=[r_i*om_i for r_i,om_i in zip(r,GW_Omega)] # in m/s
             GW_phi=(integrate.cumtrapz(GW_Omega, [-t for t in xray_time], initial=0.))
             GW_phi_mod=self.psi-(GW_phi[-1]%(2*np.pi)) # psi is GW polarization at merger in range [0,2*pi]
-            GW_phi=[(ph+GW_phi_mod)%(2*np.pi)) for ph in GW_phi]
+            GW_phi=[(ph+GW_phi_mod)%(2*np.pi) for ph in GW_phi]
             BolFac = [0.1+(r_sch_1+r_sch_2)/r_i for r_i in r] # This should be normalized as per idea paper but is this a sum of radii or average or equivalent for EoB?
             mu_dopp = [3.*np.sin(self.inc)*np.cos(GW_phi[ii]/2.)*v[ii]/pyconstants.PC_SI+1. for ii in range(len(GW_phi))] # Speed normalized to c=1
             if self.Lframe:
@@ -723,7 +724,15 @@ class SMBH_Merger:
                 M_tot = self.M
             EddLum = (1.26e38)*M_tot*(1.+self.z) # /(918.*2.) # https://en.wikipedia.org/wiki/Eddington_luminosity -- total mass in solar mass units
             xray_flux = [mu_dopp[ii]*BolFac[ii]*EddLum/(4.*np.pi*self.dist*1e6*pyconstants.PC_SI*self.dist*1e6*pyconstants.PC_SI*10000.) for ii in range(len(BolFac))] # erg/s/cm^2
-        elif TYPE="lalsim":
+            # import matplotlib.pyplot as plt
+            # plt.plot([t/(24.*60.*60.) for t in xray_time],xray_flux)
+            # ax=plt.gca()
+            # ax.set_yscale('log')
+            # plt.show()
+            # plt.ylabel(r"Flux [erg s$^{-1}$ cm$^{-2}$]")
+            # plt.xlabel(r"Time [days]")
+            # plt.grid()
+        elif TYPE=="lalsim":
             # Empty LALParams dict
             LALParams = lal.CreateDict();
             modearray = lalsim.SimInspiralCreateModeArray()
@@ -874,7 +883,7 @@ class SMBH_Merger:
 
         # Set the class variables using the start and end times - convert everything *EXCEPT* xray_flux to *DETECTOR* frame
         EM_Flux_Data={}
-        EM_Flux_Data["EM_Approx"] = Type
+        EM_Flux_Data["EM_Approx"] = TYPE
         EM_Flux_Data["xray_flux"] = [flux for (flux,time) in zip(xray_flux,xray_time) if time>t_start_flux and time<t_end_flux] # if time>t_start_flux and time<t_end_flux else 0. for (flux,time) in zip(xray_flux,xray_time)]
         EM_Flux_Data["xray_time"] = [time*(1.+self.z) for time in xray_time if time>t_start_flux and time<t_end_flux]
         EM_Flux_Data["GW_phi"] = [phi for (phi,time) in zip(GW_phi,xray_time) if time>t_start_flux and time<t_end_flux] # GW_phi

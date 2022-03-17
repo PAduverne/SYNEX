@@ -1661,89 +1661,99 @@ def TileSkyArea(source_or_kwargs,detectors=None,base_telescope_params=None,cloni
     TO DO:
     ------
     1. Case where we inject a list of sources...
-    2. parallelize code if there are nodes available to do so
+    2. Sort 'out_dirs' list if we have an injected long list of detectors where
+       more than one variable is changing. Maybe a variable for cloning_params?
     """
     # Using MPI or not
     if MPI is not None:
         MPI_size = MPI.COMM_WORLD.Get_size()
         MPI_rank = MPI.COMM_WORLD.Get_rank()
         comm = MPI.COMM_WORLD
-        use_mpi=(MPI_size > 1)
     else:
-        use_mpi=False
+        MPI_size=1
         MPI_rank=0
 
-    if MPI_rank==0:
-        # See if we have a source class or kwargs
-        source=SYSs.SMBH_Merger(**source_or_kwargs) if isinstance(source_or_kwargs,dict) else source_or_kwargs
+    # Populate detectors if we have cloning parameters
+    if cloning_params!=None:
+        # Create base_telescope_params from default vals or whatever was handed to us
+        # We preferentially choose base_telescope_params that was handed to us
+        if base_telescope_params==None:
+            if detectors==None:
+                base_telescope_params=SYDs.Athena().__dict__
+            elif isinstance(detectors,list):
+                if len(detectors)>1:
+                    print("Cloning first detector in list only...")
+                base_telescope_params=detectors[0].__dict__
+            else:
+                base_telescope_params=detectors.__dict__
 
-        # Prioritize creating from base params dict
-        if not base_telescope_params==None:
-            detectors=[SYDs.Athena(**base_telescope_params)]
+        # Base savefiles
+        BaseExFileName=base_telescope_params["ExistentialFileName"]
+        BaseTelescopeName=base_telescope_params["detector_config_struct"]["telescope"]
 
-        # Create default detector if still nothing there
-        if detectors==None:
-            detectors=[SYDs.Athena()]
-
-        # Make sure detectors variable is a list(in case single det input)
-        if not isinstance(detectors,list):
-            detectors=[detectors]
+        # Start populating detector list -- list of lists, each embedded list corresponds to each requested cloning parameter
+        out_dirs=[]
+        detectors=[]
+        for key,values in cloning_params.items():
+            # In case single value
+            if not isinstance(values,(list,np.ndarray)): values=[values]
+            # Work out how many per cpu if we are on cluster
+            Nvals=len(values)
+            NValsPerCore=int(Nvals//MPI_size)
+            CoreLenVals=[NValsPerCore+1 if ii<len(values)%MPI_size for ii in range(MPI_size) else NValsPerCore]
+            CPU_ENDs=list(np.cumsum(CoreLenVals))
+            CPU_STARTs=[0]+CPU_END[:-1]
+            # Make list of detector properties depending on MPI_rank
+            dict_list = [{"ExistentialFileName":BaseExFileName,
+                          "NewExistentialFileName":".".join(BaseExFileName.split(".")[:-1])+"_"+key+"_"+str(ii+1)+"."+BaseExFileName.split(".")[-1],
+                          key:values[ii],
+                          "telescope":BaseTelescopeName+"_"+key+"_"+str(ii+1)} for ii in range(CPU_STARTs[MPI_rank],CPU_ENDs[MPI_rank])]
+            print("Rank",MPI_rank,"/",MPI_size,"has",len(dict_list),"detector objects for",key,flush=True)
+            detectors+=[SYDs.Athena(**dict_ii) for dict_ii in dict_list]
+            out_dirs+=[key]*len(dict_list)
+        print("Rank",MPI_rank,"/",MPI_size,"has",len(dict_list),"total detector objects.",flush=True)
+    else:
+        # No cloning params so see if we have input detectors
+        if detectors==None and base_telescope_params==None:
+            detectors=[SYDs.Athena()] if MPI_rank==0 else None
+        elif detectors==None and base_telescope_params!=None:
+            detectors=[SYDs.Athena(**base_telescope_params)] if MPI_rank==0 else None
+        elif detectors!=None and not isinstance(detectors,list):
+            detectors=[detectors] if MPI_rank==0 else None # if only one detector given
+        elif detectors!=None and isinstance(detectors,list):
+             # List of detectors given: split over all cpu.
+            Nvals=len(detectors)
+            NValsPerCore=int(Nvals//MPI_size)
+            CoreLenVals=[NValsPerCore+1 if ii<len(values)%MPI_size for ii in range(MPI_size) else NValsPerCore]
+            CPU_ENDs=list(np.cumsum(CoreLenVals))
+            CPU_STARTs=[0]+CPU_END[:-1]
+            detectors=[detectors[ii] for ii in range(CPU_STARTs[MPI_rank],CPU_ENDs[MPI_rank])]
 
         # Default of no output directory extension
-        out_dirs=[None]*len(detectors)
+        out_dirs=[None]*len(detectors) if isinstance(detectors,list) else None
 
-        # Populate detectors if kwargs has directed to do so
-        if not cloning_params==None:
-            # Init telescope
-            base_detector=detectors[0]
+    # Init source if we need to
+    if MPI_rank==0:
+        # See if we have a source class or kwargs -- only master node since this can get memory heavy
+        source=SYSs.SMBH_Merger(**source_or_kwargs) if isinstance(source_or_kwargs,dict) else source_or_kwargs
+    else:
+        source=None # So we only have master node running later if one source and/or detector given
 
-            # Start populating detector list -- list of lists, each embedded list corresponds to each requested cloning parameter
-            out_dirs=[]
-            detectors=[]
-            for key,values in cloning_params.items():
-                # In case single value
-                if not isinstance(values,(list,np.ndarray)): values=[values]
-                if key in base_detector.detector_go_params or key in base_detector.detector_config_struct:
-                    dict_list = [{"ExistentialFileName":base_detector.ExistentialFileName,
-                                  "NewExistentialFileName":".".join(base_detector.ExistentialFileName.split(".")[:-1])+"_"+key+"_"+str(ii+1)+"."+base_detector.ExistentialFileName.split(".")[-1],
-                                  key:values[ii],
-                                  "telescope":base_detector.detector_config_struct["telescope"]+"_"+key+"_"+str(ii+1)} for ii in range(len(values))]
-                    # detectors+=[SYDs.Athena(**dict_ii) for dict_ii in dict_list]
-                    out_dirs+=[key]*len(dict_list)
-                else:
-                    print("key:",key,"not found in either detector_go_params or detector_config_struct...")
+    # Send source to workers
+    source = comm.bcast(source, root=0)
 
-        # Calculate source flux data -- NB CTR is telescope dependent so included inside loop for coverage info later if ARF file changes
-        if not hasattr(source,"EM_Flux_Data"): source.GenerateEMFlux(fstart22=1e-4,**{})
+    # Calculate source flux data -- NB CTR is telescope dependent so included inside loop for coverage info later if ARF file changes
+    if source!=None and not hasattr(source,"EM_Flux_Data"): source.GenerateEMFlux(fstart22=1e-4,**{})
 
-    if use_mpi:
-        # Clear objects in worker processes just in case
-        if MPI_rank>0:
-            source = None
-            detectors = None
-            dict_list=None
-            out_dirs=None
+    # Make sure only cases where detectors and source are defined are run (i.e. if we handed cluster one object with many cluster).
+    # We will optimise this later to ask gwemopt to run in parallel once we understand if this will speed up calculations for a single
+    # telescope or if they employ parallel code only when you ask it to consider several (unique!) telescopes in the coverage scheme.
+    if detectors!=None and source!=None:
+        # Finish source EM calculations based on broadcast detectors only if ARF file does not change in detectors
+        if len(set([detector.ARF_file_loc_name for detector in detectors]))==1: source.GenerateCTR(detectors[0].ARF_file_loc_name,gamma=1.7)
 
-        # Send source to workers
-        source = comm.bcast(source, root=0)
-
-        # Scatter detectors to processors -- can we formulate a trade off between processes per detectors and partitioning
-        # pool to run gwemopt in parallel (doParallel and Ncores options in go_params)?
-        # #### detectors = comm.scatter(detectors, root=0)
-        dict_list = comm.scatter(dict_list, root=0)
-        out_dirs = comm.scatter(out_dirs, root=0)
-        if not isinstance(dict_list,list): dict_list=[dict_list] # in case broadcast gives one of each to processors
-        if not isinstance(out_dirs,list): out_dirs=[out_dirs] # in case broadcast gives one of each to processors
-
-        # Checks
-        print("MPI rank/size: %d / %d" % (MPI_rank, MPI_size),"with 'dict_list' shape:",np.shape(dict_list), flush=True)
-
-    # Make detectors list and finish source EM calculations based on broadcast detectors only if ARF files does not change in detectors
-    detectors = [SYDs.Athena(**dict_ii) for dict_ii in dict_list]
-    if len(set([detector.ARF_file_loc_name for detector in detectors]))==1: source.GenerateCTR(detectors[0].ARF_file_loc_name,gamma=1.7)
-
-    # Loop over list of lists if we need to -- if we cloned more than one param
-    for i in range(len(detectors)): go_params, map_struct, tile_structs, coverage_struct, detectors[i] = TileWithGwemopt(source,detectors[i],out_dirs[i])
+        # Loop over list of detectors
+        for i in range(len(detectors)): go_params, map_struct, tile_structs, coverage_struct, detectors[i] = TileWithGwemopt(source,detectors[i],out_dirs[i])
 
     return detectors
 

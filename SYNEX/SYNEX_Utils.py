@@ -1700,7 +1700,7 @@ def TileSkyArea(source_or_kwargs,detectors=None,base_telescope_params=None,cloni
             # Work out how many per cpu if we are on cluster
             Nvals=len(values)
             NValsPerCore=int(Nvals//MPI_size)
-            CoreLenVals=[NValsPerCore+1 if ii<len(values)%MPI_size for ii in range(MPI_size) else NValsPerCore]
+            CoreLenVals=[NValsPerCore+1 for ii in range(MPI_size) if ii<len(values)%MPI_size else NValsPerCore]
             CPU_ENDs=list(np.cumsum(CoreLenVals))
             CPU_STARTs=[0]+CPU_END[:-1]
             # Make list of detector properties depending on MPI_rank
@@ -1724,7 +1724,7 @@ def TileSkyArea(source_or_kwargs,detectors=None,base_telescope_params=None,cloni
              # List of detectors given: split over all cpu.
             Nvals=len(detectors)
             NValsPerCore=int(Nvals//MPI_size)
-            CoreLenVals=[NValsPerCore+1 if ii<len(values)%MPI_size for ii in range(MPI_size) else NValsPerCore]
+            CoreLenVals=[NValsPerCore+1 for ii in range(MPI_size) if ii<len(values)%MPI_size else NValsPerCore]
             CPU_ENDs=list(np.cumsum(CoreLenVals))
             CPU_STARTs=[0]+CPU_END[:-1]
             detectors=[detectors[ii] for ii in range(CPU_STARTs[MPI_rank],CPU_ENDs[MPI_rank])]

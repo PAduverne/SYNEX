@@ -33,7 +33,6 @@ def get_telescope_segments(params):
     for telescope in params["telescopes"]:
 
         params["config"][telescope]["segmentlist"] = get_segments(params, params["config"][telescope])
-        print("Athena telescope segments check 1")
 
         params["config"][telescope]["exposurelist"] = gwemopt.utils.get_exposures(params, params["config"][telescope], params["config"][telescope]["segmentlist"])
         if len(params["config"][telescope]["exposurelist"]) == 0:
@@ -41,15 +40,11 @@ def get_telescope_segments(params):
             params["config"][telescope]["tot_obs_time"] = 0.0
             continue
 
-        print("Athena telescope segments check 2")
-
         nexp,_ = np.array(params["config"][telescope]["exposurelist"]).shape
         params["config"][telescope]["n_windows"] = nexp
         tot_obs_time = np.sum(np.diff(np.array(params["config"][telescope]["exposurelist"]))) * 86400.
         params["config"][telescope]["tot_obs_time"] = tot_obs_time
-
-        print("Athena telescope segments check 3")
-
+    
     return params
 
 def get_segments(params, config_struct):

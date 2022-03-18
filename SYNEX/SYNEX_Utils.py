@@ -1831,7 +1831,7 @@ def TileWithGwemopt(source,detector,outDirExtension=None):
     tile_structs, coverage_struct = gwemopt.coverage.timeallocation(go_params, map_struct, tile_structs)
 
     # Get info for run
-    detector = GetCoverageInfo(go_params, map_struct, tile_structs, coverage_struct, detector, source, verbose=True)
+    detector = GetCoverageInfo(go_params, map_struct, tile_structs, coverage_struct, detector, source, verbose=False)
 
     # Add info about source to coverage summary
     SourceInfo={
@@ -1999,7 +1999,7 @@ def GetCoverageInfo(go_params, map_struct, tile_structs, coverage_struct, detect
         CTRs=source.CTR_Data["CTR"]
         CTR_times=list(86400.*(-np.array(source.EM_Flux_Data["xray_time"])/86400. - Time(source.gpstime, format='gps', scale='utc').mjd + Time(go_params["gpstime"], format='gps', scale='utc').mjd)) # Just in case these are different -- i.e. if we have a run with multiple sources within Tobs
         CTRs=[CTR for CTR,t in zip(CTRs,CTR_times) if t>=go_params["Tobs"][0]*86400. and t<=go_params["Tobs"][-1]*86400.]
-        CTR_times=[t for t in CTR_times if t>=go_params["Tobs"][0]*86400. and t<=go_params["Tobs"][-1]*86400.]
+        CTR_times=[t for t in CTR_times if t>=(go_params["Tobs"][0]-go_params["Tobs"][-1])*86400. and t<=0.] # because times are seconds TO MERGER (-ve)
 
         # Integrate CTR for each tile covering source to check no. of source photons received
         TileListTimes=[[ts+i*dur/49 for i in range(50)] for ts,dur in zip(SourceTileStartTimes,SourceTileExpTimes)]

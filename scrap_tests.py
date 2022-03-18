@@ -108,7 +108,7 @@ for detector in detectors:
     Xs,Ys=[],[]
     for ExT0s,ExTs in zip(detector.detector_source_coverage["Source tile start times (s)"],detector.detector_source_coverage["Source tile exposuretimes (s)"]): Xs+=[ExT0s/86400.,(ExT0s+ExTs)/86400.]
     for CumCounts in np.cumsum(detector.detector_source_coverage["Source photon counts"]): Ys+=[CumCounts,CumCounts]
-    print(detector.detector_config_struct["telescope"],Xs,Ys,detector.detector_source_coverage["Source tile exposuretimes (s)"])
+    print(detector.detector_config_struct["telescope"],Xs,Ys,detector.detector_source_coverage["Source tile exposuretimes (s)"],detector.detector_coverage_struct["unique tile exposure times"])
 
 
 

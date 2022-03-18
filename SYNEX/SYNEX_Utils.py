@@ -1998,8 +1998,10 @@ def GetCoverageInfo(go_params, map_struct, tile_structs, coverage_struct, detect
         # Get CTR data out from source and cut to Tobs -- times here are seconds to merger (<0)
         CTRs=source.CTR_Data["CTR"]
         CTR_times=list(86400.*(-np.array(source.EM_Flux_Data["xray_time"])/86400. - Time(source.gpstime, format='gps', scale='utc').mjd + Time(go_params["gpstime"], format='gps', scale='utc').mjd)) # Just in case these are different -- i.e. if we have a run with multiple sources within Tobs
-        CTRs=[CTR for CTR,t in zip(CTRs,CTR_times) if t>=go_params["Tobs"][0]*86400. and t<=go_params["Tobs"][-1]*86400.]
-        CTR_times=[t for t in CTR_times if t>=(go_params["Tobs"][0]-go_params["Tobs"][-1])*86400. and t<=0.] # because times are seconds TO MERGER (-ve)
+        print("CTR_times checks 1:",CTR_times[:5],CTRs[:5],go_params["Tobs"][0]*86400.,go_params["Tobs"][-1]*86400.)
+        print("CTR_times checks 2:",len(source.EM_Flux_Data["xray_time"]),source.EM_Flux_Data["xray_time"][:5],len(source.CTR_Data["CTR"]),source.CTR_Data["CTR"][:5])
+        CTRs=[CTR for CTR,t in zip(CTRs,CTR_times) if t>=(go_params["Tobs"][0]*86400.) and t<=(go_params["Tobs"][-1]*86400.)]
+        CTR_times=[t for t in CTR_times if t>=(go_params["Tobs"][0]*86400.) and t<=(go_params["Tobs"][-1]*86400.)] # because times are seconds TO MERGER (-ve)
 
         # Integrate CTR for each tile covering source to check no. of source photons received
         TileListTimes=[[ts+i*dur/49 for i in range(50)] for ts,dur in zip(SourceTileStartTimes,SourceTileExpTimes)]

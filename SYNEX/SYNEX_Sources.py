@@ -702,8 +702,7 @@ class SMBH_Merger:
         if TYPE=="const":
             # Calculate flux - xray_flux formula is *DETECTOR* frame using *SOURCE* frame properties
             NPoints=int(-self.DeltatL_cut//0.5) if self.DeltatL_cut!=None else 100000
-            xray_time=[ii*(self.DeltatL_cut)/NPoints for ii in range(NPoints)] # seconds to merger
-            print("Times check:",xray_time[:5],xray_time[-5:],NPoints)
+            xray_time=[(NPoints-ii)*(self.DeltatL_cut)/NPoints for ii in range(NPoints)] # seconds to merger
             t_start_flux=xray_time[0]-1.
             t_end_flux=xray_time[-1]+1.
             r_sch_1 = 2950.*self.m1 # Schwartzchild rad of primary in meters using m1 in SOLAR MASSES

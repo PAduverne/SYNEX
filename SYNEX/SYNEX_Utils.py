@@ -1831,7 +1831,7 @@ def TileWithGwemopt(source,detector,outDirExtension=None):
     tile_structs, coverage_struct = gwemopt.coverage.timeallocation(go_params, map_struct, tile_structs)
 
     # Get info for run
-    detector = GetCoverageInfo(go_params, map_struct, tile_structs, coverage_struct, detector, source, verbose=False)
+    detector = GetCoverageInfo(go_params, map_struct, tile_structs, coverage_struct, detector, source, verbose=True)
 
     # Add info about source to coverage summary
     SourceInfo={
@@ -1986,7 +1986,7 @@ def GetCoverageInfo(go_params, map_struct, tile_structs, coverage_struct, detect
         print("Source tile accumulated p:",SourceTile_accum_prob1,SourceTile_accum_prob2)
 
     # Now add cuts to coverage info depending on photon flux
-    if not source==None and len(cov_source_tile)>0:
+    if source!=None and len(cov_source_tile)>0:
         # Make sure source has relevant data and create it if not
         if not hasattr(source,"EM_Flux_Data"): source.GenerateEMFlux(fstart22=1e-4,TYPE="const",**{})
         if not hasattr(source,"CTR_Data"): source.GenerateCTR(detector.ARF_file_loc_name,gamma=1.7) # Should be include gamma as a source param? Would we ever want to change this at run time?
@@ -2011,7 +2011,7 @@ def GetCoverageInfo(go_params, map_struct, tile_structs, coverage_struct, detect
                                                   "Start time (mjd)":Time(go_params["gpstime"], format='gps', scale='utc').mjd})
     else:
         detector.detector_source_coverage.update({"Source tile exposuretimes (s)":[],
-                                                  "Source photon counts":[],
+                                                  "Source photon counts":[0],
                                                   "Source tile start times (s)":[],
                                                   "Start time (mjd)":Time(go_params["gpstime"], format='gps', scale='utc').mjd})
 

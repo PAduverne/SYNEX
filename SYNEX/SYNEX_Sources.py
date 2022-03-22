@@ -723,14 +723,6 @@ class SMBH_Merger:
                 M_tot = self.M
             EddLum = (1.26e38)*M_tot*(1.+self.z) # /(918.*2.) # https://en.wikipedia.org/wiki/Eddington_luminosity -- total mass in solar mass units
             xray_flux = [mu_dopp[ii]*BolFac[ii]*EddLum/(4.*np.pi*self.dist*1e6*pyconstants.PC_SI*self.dist*1e6*pyconstants.PC_SI*10000.) for ii in range(len(BolFac))] # erg/s/cm^2
-            # import matplotlib.pyplot as plt
-            # plt.plot([t/(24.*60.*60.) for t in xray_time],xray_flux)
-            # ax=plt.gca()
-            # ax.set_yscale('log')
-            # plt.show()
-            # plt.ylabel(r"Flux [erg s$^{-1}$ cm$^{-2}$]")
-            # plt.xlabel(r"Time [days]")
-            # plt.grid()
         elif TYPE=="lalsim":
             # Empty LALParams dict
             LALParams = lal.CreateDict();
@@ -904,7 +896,7 @@ class SMBH_Merger:
         CTR_Data["xray_phi_0"] = [(6.242e8)*flu*(2.-gamma)/(10.**(2.-gamma)-0.2**(2.-gamma)) for flu in self.EM_Flux_Data["xray_flux"]]
         from astropy.io import fits
         hdul = fits.open(ARF_file_loc_name)
-        hdul.info()
+        # hdul.info()
         ARF = hdul[1].data[:]
         N = len(ARF)
         E_bins = [ARF[ii][0] for ii in range(N)] # Units are keV

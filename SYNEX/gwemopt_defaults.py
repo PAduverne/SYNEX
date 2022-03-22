@@ -51,7 +51,8 @@ go_params_default={
 "doRotate":False,
 "doMindifFilt":False,
 "doAvoidGalacticPlane":False,
-"doTrueLocation":False # Not sure what this is used for...
+"doTrueLocation":False, # Not sure what this is used for...
+"AGN_flag": None    ######### What does this change in GWEMOPT? ----> Only used in catalog.py I think.
 }
 
 
@@ -80,7 +81,7 @@ go_params_default["configDirectory"] = None # SYNEX_PATH+"/gwemopt_conf_files" #
 go_params_default["gpstime"] = None # 1703721618.0 # 01/01/2034 00:00:00.000 UTC -- time of event -- set by source and if not by detectors
 go_params_default["Ninj"] = 1000
 go_params_default["Ndet"] = 1
-go_params_default["Ntiles"] = 50 # Speific to tilesType=hierarchical and greedy
+go_params_default["Ntiles"] = None # 50 # Speific to tilesType=hierarchical and greedy
 go_params_default["Ntiles_cr"] = 0.70 # Speific to tilesType=hierarchical and greedy (I think)
 go_params_default["Dscale"] = 1.0
 go_params_default["nside"] = 128
@@ -104,7 +105,6 @@ go_params_default["iterativeOverlap"] = 0.0 # Only used when 'slicing' tiles (eg
 go_params_default["maximumOverlap"] = 1.0
 go_params_default["catalog_n"] = 1.0
 go_params_default["galaxy_grade"] = "S"
-go_params_default["AGN_flag"] = True    ######### What does this change in GWEMOPT?
 go_params_default["splitType"] = "regional"
 go_params_default["Nregions"] = 768
 go_params_default["Ncores"] = None # parallelizing moc creation where FoV to MoC function is used for whole telescope tesselation.
@@ -115,12 +115,12 @@ go_params_default["treasuremap_status"] = ["planned","completed"]
 go_params_default["graceid"] = "S190426c"
 go_params_default["raslice"] = [0.0,24.0] #### Can we set this to None? or empty list?
 go_params_default["nside_down"] = 2
-go_params_default["max_filter_sets"] = 4
+go_params_default["max_filter_sets"] = None # 4
 go_params_default["absmag"] = -15
 go_params_default["phi"] = 0
 go_params_default["theta"] = 0
 go_params_default["program_id"] = -1
-go_params_default["galactic_limit"] = 15.0
+go_params_default["galactic_limit"] = None, # 15.0
 go_params_default["true_ra"] = None             # Source param to be defined when data file is provided
 go_params_default["true_dec"] = None            # Source param to be defined when data file is provided
 go_params_default["true_distance"] = None       # Source param to be defined when data file is provided
@@ -140,9 +140,11 @@ go_params_default["true_distance"] = None       # Source param to be defined whe
 # FUNCTIONS BUT NEED TO CHECK THIS...
 config_struct_default = {
 "telescope" : "Athena_test",
+"cloning key" : None,
+"cloning value" : None,
 "filt" : "c",
 "magnitude" : 18.7,
-"exposuretime" : 10000.,    ### IN SECONDS, INCLUDES SLEW AND READONOUT TIME!
+"exposuretime" : None, # 10000.,    ### IN SECONDS, INCLUDES SLEW AND READONOUT TIME!
 "min_observability_duration" : 0., ### IN HOURS -- minimum time per time if we set doSingleExposure=False and weight tile times by their probability
 "latitude" : 0., # None, # 20.7204,       ### None if we want a telesscopic orbit?
 "longitude" : 0., # None, # -156.1552,    ### None if we want a telesscopic orbit?
@@ -152,14 +154,14 @@ config_struct_default = {
 "FOV_coverage_type" : "square",
 "FOV_type" : "square",
 "tesselationFile" : None,
-"slew_rate" : 1., # in s/deg
-"readout" : 6,                      ### In seconds?
+"slew_rate" : None, # 1., # in s/deg
+"readout" : None, # 6,                      ### In seconds?
 "horizon" : None, # 30.,            ### None if we want a telesscopic orbit
-"overhead_per_exposure" : 10., # Settle time after each slew/per tile? in seconds or what?
+"overhead_per_exposure" : None, # 10., # Settle time after each slew/per tile? in seconds or what?
 "filt_change_time" : 0.,
-"sat_sun_restriction" : 45.,
-"sat_earth_constraint" : 30.,
-"sat_moon_constraint" : 20.0,
+"sat_sun_restriction" : 5., # 45.,
+"sat_earth_constraint" : 5., # 30.,
+"sat_moon_constraint" : 5., # 20.0,
 "orbitFile" : None, # Where to save orbit to
 "frozenAthena" : False, # Consider stuck at L2 exactly so we only take Earth, Sun and Moon orbital motions into account
 "inc" : 60., # deg incline of orbital plane normal to Sun-Earth axis.

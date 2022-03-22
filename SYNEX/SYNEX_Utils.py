@@ -1709,10 +1709,13 @@ def TileSkyArea(source_or_kwargs,detectors=None,base_telescope_params=None,cloni
             CPU_ENDs=list(np.cumsum(CoreLenVals))
             CPU_STARTs=[0]+CPU_ENDs[:-1]
             # Make list of detector properties depending on MPI_rank
-            dict_list = [{"ExistentialFileName":BaseExFileName,
+            dict_list = [base_telescope_params.copy() for _ in range(CPU_STARTs[MPI_rank],CPU_ENDs[MPI_rank])]
+            for ii in range(CPU_STARTs[MPI_rank],CPU_ENDs[MPI_rank]): dict_list[ii].update({"ExistentialFileName":BaseExFileName,
                           "NewExistentialFileName":".".join(BaseExFileName.split(".")[:-1])+"_"+key+"_"+str(ii+1)+"."+BaseExFileName.split(".")[-1],
                           key:values[ii],
-                          "telescope":BaseTelescopeName+"_"+key+"_"+str(ii+1)} for ii in range(CPU_STARTs[MPI_rank],CPU_ENDs[MPI_rank])]
+                          "cloning key":key,
+                          "cloning value":values[ii],
+                          "telescope":BaseTelescopeName+"_"+key+"_"+str(ii+1)})
             print("CPU",MPI_rank+1,"/",MPI_size,"has",len(dict_list),"detector objects for",key,flush=True)
             detectors+=[SYDs.Athena(**dict_ii) for dict_ii in dict_list]
             out_dirs+=[key]*len(dict_list)
@@ -1745,7 +1748,7 @@ def TileSkyArea(source_or_kwargs,detectors=None,base_telescope_params=None,cloni
         source=None # So we only have master node running later if one source and/or detector given
 
     # Send source to workers
-    source = comm.bcast(source, root=0)
+    if MPI_size>1: source = comm.bcast(source, root=0)
 
     # Calculate source flux data -- NB CTR is telescope dependent so included inside loop for coverage info later if ARF file changes
     if source!=None and not hasattr(source,"EM_Flux_Data"): source.GenerateEMFlux(fstart22=1e-4,TYPE="const",**{})
@@ -1944,7 +1947,9 @@ def GetCoverageInfo(go_params, map_struct, tile_structs, coverage_struct, detect
     prob3=np.sum([map_probs[pix] for pix in cov_ipix_array_unique]) # Same as prob2 but only unique pixels
     ex_Times = cov_data[:,4]
     ex_Times_unique = np.unique(ex_Times)
-    detector.detector_coverage_struct=coverage_struct.update({"tile exposure times":ex_Times,"unique tile exposure times":ex_Times_unique})
+    detector.detector_coverage_struct=coverage_struct
+    detector.detector_coverage_struct.update({"tile exposure times":ex_Times,"unique tile exposure times":ex_Times_unique,
+                                              "normalised tile exposure times":[T_e/detector.detector_config_struct["exposuretime"] for T_e in ex_Times]})
 
     # Print summary if asked for
     if verbose:
@@ -1968,7 +1973,6 @@ def GetCoverageInfo(go_params, map_struct, tile_structs, coverage_struct, detect
     SourceTile_prob2=[map_probs[pix] for pix in cov_source_pix]
     SourceTile_accum_prob1=np.sum(SourceTile_prob1)
     SourceTile_accum_prob2=np.sum(SourceTile_prob2)
-    print("Source tile probability checks:",SourceTile_accum_prob1,SourceTile_accum_prob2)
     detector.detector_source_coverage={"telescope":telescope,"Source Tile Prob (by cov tiles)":SourceTile_prob1,
                         "Source Tile Prob (by cov pixels)":SourceTile_prob2,"tile ID containing source pixel":cov_source_tile,
                         "tile pixels containing source pixel":cov_source_pix, "No. source coverages":len(SourceTile_prob1),
@@ -1998,8 +2002,6 @@ def GetCoverageInfo(go_params, map_struct, tile_structs, coverage_struct, detect
         # Get CTR data out from source and cut to Tobs -- times here are seconds to merger (<0)
         CTRs=source.CTR_Data["CTR"]
         CTR_times=list(86400.*(-np.array(source.EM_Flux_Data["xray_time"])/86400. - Time(source.gpstime, format='gps', scale='utc').mjd + Time(go_params["gpstime"], format='gps', scale='utc').mjd)) # Just in case these are different -- i.e. if we have a run with multiple sources within Tobs
-        print("CTR_times checks 1:",CTR_times[:5],CTRs[:5],go_params["Tobs"][0]*86400.,go_params["Tobs"][-1]*86400.)
-        print("CTR_times checks 2:",len(source.EM_Flux_Data["xray_time"]),source.EM_Flux_Data["xray_time"][:5],len(source.CTR_Data["CTR"]),source.CTR_Data["CTR"][:5])
         CTRs=[CTR for CTR,t in zip(CTRs,CTR_times) if t>=(go_params["Tobs"][0]*86400.) and t<=(go_params["Tobs"][-1]*86400.)]
         CTR_times=[t for t in CTR_times if t>=(go_params["Tobs"][0]*86400.) and t<=(go_params["Tobs"][-1]*86400.)] # because times are seconds TO MERGER (-ve)
 
@@ -3138,87 +3140,6 @@ def PlotLikeRatioFoMFromJson(FoMJsonFileAndPath, BF_lim=20., SaveFig=False):
     else:
         return fig, ax
 
-def ExtraPlotting(source):
-    # Plot exposure photons as function of tiling
-    PLOT_PHOTON_TRACE = False
-    if PLOT_PHOTON_TRACE:
-        Times = [t/(24.*60.*60.) for t in source.tile_times]
-        plt.plot(Times, source.exposure_photons_trace)
-        plt.ylabel(r"Exposure Photons")
-        plt.xlabel("Time [days]")
-        plt.show()
-        plt.grid()
-
-    # Plot exposure photons as function of tiling
-    PLOT_EXP_PHOTON_TRACE = False
-    if PLOT_EXP_PHOTON_TRACE:
-        Times = [t/(24.*60.*60.) for t in source.tile_times]
-        plt.plot(Times, source.accum_exposure_photons_trace)
-        ax = plt.gca()
-        ax.set_yscale('log')
-        plt.ylabel(r"Accumulated Exposure Photons")
-        plt.xlabel("Time [days]")
-        plt.show()
-        plt.grid()
-
-    # Plot Kuiper statistic for exposures as function of tiling
-    PLOT_KUIPERS = False
-    if PLOT_KUIPERS:
-        Times = [t/(24.*60.*60.) for t in source.tile_times]
-        plt.plot(Times, source.exposure_kuiper_trace)
-        plt.ylabel(r"$\mathcal{K}_{exposure}$")
-        plt.xlabel("Time [days]")
-        plt.show()
-        plt.grid()
-
-    # Plot Kuiper p-value for tiles as function of tiling
-    PLOT_TILE_KUIPER_PVAL_TRACE = False
-    if PLOT_TILE_KUIPER_PVAL_TRACE:
-        Times = [t/(24.*60.*60.) for t in source.tile_times]
-        plt.plot(Times,source.tile_kuiper_p_val_trace)
-        ax = plt.gca()
-        ax.set_yscale('log')
-        plt.xlabel("Time [days]")
-        plt.ylabel("Tile Kuiper p-value")
-        plt.show()
-        plt.grid()
-
-    # Plot Detection p-value for tiles as function of tiling
-    PLOT_TILE_DETECTION_PVAL_TRACE = False
-    if PLOT_TILE_DETECTION_PVAL_TRACE:
-        Times = [t/(24.*60.*60.) for t in source.tile_times]
-        plt.plot(Times,source.tile_detection_p_val_trace)
-        ax = plt.gca()
-        ax.set_yscale('log')
-        plt.xlabel("Time [days]")
-        plt.ylabel("Tile Detection Kuiper p-value")
-        plt.show()
-        plt.grid()
-
-    # Plot Kuiper p-value for exposures as function of tiling
-    PLOT_EXP_KUIPER_PVAL_TRACE = False
-    if PLOT_EXP_KUIPER_PVAL_TRACE:
-        Times = [t/(24.*60.*60.) for t in source.tile_times]
-        plt.plot(Times,source.exposure_kuiper_p_val_trace)
-        ax = plt.gca()
-        ax.set_yscale('log')
-        plt.xlabel("Time [days]")
-        plt.ylabel("Exposure Kuiper p-value")
-        plt.show()
-        plt.grid()
-
-    # Plot Kuiper detection p-value for exposures as function of tiling (n_pix and n_exposures)
-    PLOT_DET_KUIPER_PVAL_TRACE = False
-    if PLOT_DET_KUIPER_PVAL_TRACE:
-        Times = [t/(24.*60.*60.) for t in source.tile_times]
-        plt.plot(Times, source.detection_kuiper_p_val_trace)
-        ax = plt.gca()
-        ax.set_yscale('log')
-        plt.ylabel("Detection Kuiper p-value")
-        plt.xlabel("Time [days]")
-        plt.show()
-        plt.grid()
-
 def PlotOrbit(config_struct,MollProj=False,SaveFig=False):
     """
     Plot orbit. Mostly to check we have done things right for orbital
@@ -3438,6 +3359,105 @@ def AnimateSkyProjOrbit(config_struct,MollProj=False,SaveAnim=False):
         strname+="_ArgPeri"+str(int(config_struct["ArgPeriapsis"]//1))+"_AscNode"+str(int(config_struct["AscendingNode"]//1))+"_phi0"+str(int(config_struct["ArgPeriapsis"]//1))
         strname+="_P"+str(int(config_struct["period"]//1))+"_frozen"+str(config_struct["frozenAthena"])+".mp4"
         ani.save(f+strname, writer=animation.FFMpegWriter(fps=60)) # writer=animation.PillowWriter(fps=1)) # writer='imagemagick')
+    plt.show()
+
+def PlotEMFlux(source, SaveFig=False):
+    xray_time=source.EM_Flux_Data["xray_time"]
+    xray_flux=source.EM_Flux_Data["xray_flux"]
+
+    plt.plot([t/(24.*60.*60.) for t in xray_time],xray_flux)
+    ax=plt.gca()
+    ax.set_yscale('log')
+    plt.ylabel(r"Flux [erg s$^{-1}$ cm$^{-2}$]", fontsize="xx-small")
+    plt.xlabel(r"Time [d]", fontsize="xx-small")
+    plt.grid()
+
+    # Save?
+    if SaveFig:
+        strname=SYNEX_PATH+"/Plots/"+".".join(source.ExistentialFileName.split("/Saved_Source_Dicts/")[-1].split(".")[:-1])+".pdf"
+        f="/".join(strname.split("/")[:-1])
+        pathlib.Path(f).mkdir(parents=True, exist_ok=True)
+        plt.savefig(strname)
+
+    plt.show()
+
+def PlotCTR(source, SaveFig=False):
+    xray_time=source.EM_Flux_Data["xray_time"]
+    CTRs=source.CTR_Data["CTR"]
+
+    plt.plot([t/(24.*60.*60.) for t in xray_time],CTRs)
+    ax=plt.gca()
+    ax.set_yscale('log')
+    plt.ylabel(r"CTR [ ]", fontsize="xx-small")
+    plt.xlabel(r"Time [d]", fontsize="xx-small")
+    plt.grid()
+
+    # Save?
+    if SaveFig:
+        strname=SYNEX_PATH+"/Plots/"+".".join(source.ExistentialFileName.split("/Saved_Source_Dicts/")[-1].split(".")[:-1])+".pdf"
+        f="/".join(strname.split("/")[:-1])
+        pathlib.Path(f).mkdir(parents=True, exist_ok=True)
+        plt.savefig(strname)
+
+    plt.show()
+
+def PlotAccumulatedPhotons(detectors, SaveFig=False, SaveFileName=None):
+    """
+    Plot accumulated photons from source only after tiling is run for a list or single detector.
+
+    TO DO:
+    -----
+    --> For case of something changed in a list of sources need to introduce the same
+        dictionary attibute for source class that lists the thing changed and the value for
+        that source.
+    """
+    if not isinstance(detectors,list):
+        detectors=[detectors]
+
+    # Create list of detectors if dicts given or mix of dicts and detector objects given
+    detectors=[detector if not isinstance(detector,dict) else SYDs.Athena(**detector) for detector in detectors]
+
+    # Create list of sources in case we have a mix of stuff like DeltatL_cut
+    sources=[SYSs.SMBH_Merger(**{"ExistentialFileName":detector.detector_source_coverage["source save file"]}) for detector in detectors]
+    t_mergers=[-Merger.DeltatL_cut/86400. for Merger in sources]
+
+    # Find the max height so all bars are even
+    height=max([sum(detector.detector_source_coverage["Source photon counts"]) for detector in detectors])
+
+    for detector,t_merger in zip(detectors,t_mergers):
+        T0_mjd=detector.detector_source_coverage["Start time (mjd)"]
+        Xs=[ExT0s/86400. for ExT0s in detector.detector_source_coverage["Source tile start times (s)"]]
+        Xs_Widths=[ExTs/86400. for ExTs in detector.detector_source_coverage["Source tile exposuretimes (s)"]]
+        Ys=list(np.cumsum(detector.detector_source_coverage["Source photon counts"]))
+
+        # Plot accumulated photons is source was captured
+        if len(detector.detector_source_coverage["Source tile start times (s)"])>0:
+            if detector.detector_config_struct["cloning value"]!=None:
+                label=detector.detector_config_struct["cloning key"]+r"="+str(int(detector.detector_config_struct["cloning value"]//1)) if isinstance(detector.detector_config_struct["cloning value"],(float,int)) else detector.detector_config_struct["cloning value"]
+            elif len(np.unique(t_mergers))>1:
+                label=r"Source time to merger="+str(int(t_merger//1))+r"\,d"
+            else:
+                label=detector.detector_config_struct["telescope"]
+            step_plot=plt.step([t-t_merger+t_exp for t,t_exp in zip(Xs,Xs_Widths)], Ys, where='post', label=label)
+            plt.bar([t-t_merger for t in Xs],height=height,width=Xs_Widths,align="edge",color=step_plot[-1].get_color(),alpha=0.3)
+    ax = plt.gca()
+    ax.set_yscale('log')
+    plt.xlabel(r"Time to Merger [d]",fontsize="xx-small")
+    plt.ylabel(r"Accumulated Photons",fontsize="xx-small")
+    plt.xlim([-max(t_mergers),0.])
+    plt.legend(fontsize="xx-small")
+
+    # Save?
+    if SaveFig:
+        if SaveFileName==None:
+            strname=SYNEX_PATH+"/Plots/"+".".join(source.ExistentialFileName.split("/Saved_Source_Dicts/")[-1].split(".")[:-1])+".pdf"
+        else:
+            SaveFileName=SYNEX_PATH+"/"+SaveFileName.split("/SYNEX/")[-1]
+            SaveFileName=".".join(SaveFileName.split(".")[:-1])+".pdf"
+        f="/".join(strname.split("/")[:-1])
+        pathlib.Path(f).mkdir(parents=True, exist_ok=True)
+        plt.savefig(strname)
+
     plt.show()
 
 

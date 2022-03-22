@@ -136,6 +136,13 @@ class Athena:
     """
 
     def __init__(self, **kwargs):
+        """
+        TO DO:
+        ------
+        --> Need to add a check when loading a source form savefile that there aren't any additional
+            params in defaults that aren't in the savefile and add their defaults. This is why 'Ntiles'
+            isn't being changed when you load older savefiles and add it to them.
+        """
 
         # Default is not to recompute tesselation if the saved '.tess' file exists
         MUTATED=False
@@ -188,6 +195,15 @@ class Athena:
                     detector_source_coverage = SavedDict["detector_source_coverage"] # None if not calculated yet
                 else:
                     detector_source_coverage = None # None if not calculated yet
+                if "detector_tile_struct" in SavedDict:
+                    detector_tile_struct = SavedDict["detector_tile_struct"] # None if not calculated yet
+                else:
+                    detector_tile_struct = None # None if not calculated yet
+                if "detector_coverage_struct" in SavedDict:
+                    detector_coverage_struct = SavedDict["detector_coverage_struct"] # None if not calculated yet
+                else:
+                    detector_coverage_struct = None # None if not calculated yet
+                self.MutatedFromDetectorFile=SavedDict["MutatedFromDetectorFile"] if "MutatedFromDetectorFile" in SavedDict else None
 
                 if "NewExistentialFileName" in kwargs:
                     # save file exists already and have a new one specified so mutate loaded source regardless
@@ -201,6 +217,19 @@ class Athena:
                     if any([ValueCheck1]) or any([ValueCheck2]) or any([KeysCheck1]) or any([KeysCheck2]):
                         # Values are changed or new keys added; recompute tesselation later even if the '.tess' file already exists
                         MUTATED=True
+                # Check now if there is anything being changed that we can't find in the older saved dict
+                from SYNEX.gwemopt_defaults import go_params_default
+                from SYNEX.gwemopt_defaults import config_struct_default
+                for key,value in kwargs.items(): ### I think this loop can be flattened further but can't find an example right now
+                    print("assignment checks:",key,value)
+                    if key in go_params_default and key not in detector_go_params and key not in ["NewExistentialFileName","NeworbitFile"]:
+                        detector_go_params[key]=value
+                    elif key in go_params_default:
+                        detector_go_params[key]=go_params_default[key]
+                    if key in config_struct_default and key not in detector_config_struct and key not in ["NewExistentialFileName","NeworbitFile"]:
+                        detector_config_struct[key]=value
+                    elif key in config_struct_default:
+                        detector_config_struct[key]=config_struct_default[key]
             else:
                 # Import default gwemopt dicts
                 from SYNEX.gwemopt_defaults import go_params_default as detector_go_params
@@ -311,6 +340,16 @@ class Athena:
             self.detector_source_coverage=None
         else:
             self.detector_source_coverage=detector_source_coverage
+        if MUTATED:
+            # Force this to be None if we changed something while resurrecting a class
+            self.detector_tile_struct=None
+        else:
+            self.detector_tile_struct=detector_tile_struct
+        if MUTATED:
+            # Force this to be None if we changed something while resurrecting a class
+            self.detector_coverage_struct=None
+        else:
+            self.detector_coverage_struct=detector_coverage_struct
 
         # Set save file name if not already there
         if not hasattr(self,"ExistentialFileName"):

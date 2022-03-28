@@ -58,8 +58,13 @@ except:
 ########################### Example - Tile using gwemopt on Cluster ###########################
 
 # Merger args
-Merger_kwargs = {"ExistentialFileName":"/Users/baird/Documents/LabEx_PostDoc/SYNEX/Saved_Source_Dicts/IdeaPaperSystem_9d_base.dat",
-                 "NewExistentialFileName":"/Users/baird/Documents/LabEx_PostDoc/SYNEX/Saved_Source_Dicts/IdeaPaperSystem_9d_dev.dat"}
+# Merger_kwargs = {"ExistentialFileName":"/Users/baird/Documents/LabEx_PostDoc/SYNEX/Saved_Source_Dicts/IdeaPaperSystem_9d_base.dat",
+#                  "NewExistentialFileName":"/Users/baird/Documents/LabEx_PostDoc/SYNEX/Saved_Source_Dicts/IdeaPaperSystem_9d_dev.dat"}
+
+# Source
+FileName = "IdeaPaperSystem_9d"
+Merger_kwargs = {"ExistentialFileName":"/Users/baird/Documents/LabEx_PostDoc/SYNEX/Saved_Source_Dicts/TestSystem_9d_base.dat"}
+Merger = SYU.GetSourceFromLisabetaData(FileName,**Merger_kwargs)
 
 # Base telescope args
 t0 = '2034-01-01T00:00:00.00' # YYYY-MM-DDTHH:mm:SS.MS 01/01/2034
@@ -88,16 +93,16 @@ Athena_kwargs={"ExistentialFileName":"/Users/baird/Documents/LabEx_PostDoc/SYNEX
                 "gps_science_start" : t, # 1703721618.0, # 01/01/2034 00:00:00.000 UTC -- gps start time of science meaasurements
                 "mission_duration" : 2., # In years
                 "filt_change_time" : 0., # In seconds?
-                "overhead_per_exposure" : 0., # In seconds?
+                "overhead_per_exposure" : 0., # 0., #  In seconds?
                 "latitude" : 0., # None, # 20.7204,       ### None if we want a telesscopic orbit?
                 "longitude" : 0., # None, # -156.1552,    ### None if we want a telesscopic orbit?
                 "elevation" : 0., # None, # 3055.0,       ### None if we want a telesscopic orbit? GWEMOPT uses these for airmass calcs... Ask to raise flag for this?
-                "slew_rate" : None, # 1., # in deg/s -- Idea paper has 1 deg/sec
+                "slew_rate" : 1., # None, # 1., # in deg/s -- Idea paper has 1 deg/sec
                 "horizon" : 0., # 30.,                    ### None if we want a telesscopic orbit?
                 "doMinimalTiling" : True, #  True,
-                "readout" : None, # 0.0001, # 6
-                "doSingleExposure" : False, # False
-                "iterativeOverlap" : 1.0,
+                "readout" : 0.0001, # 0.0001, #
+                "doSingleExposure" : True, # False
+                "iterativeOverlap" : 0., # 1.0, # Maybe set this to 0? I can't find where this is used...
                 "maximumOverlap" : 1.0,
                 "sat_sun_restriction" : 5., # 45.,
                 "sat_earth_constraint" : 5., # 30.,
@@ -112,19 +117,25 @@ ARF_file=SYNEX_PATH+"/XIFU_CC_BASELINECONF_2018_10_10.arf"
 hdul = fits.open(ARF_file)
 # hdul.info()
 print("ARF file contents:",type(hdul))
-ARF = hdul[1].data[:]
-N = len(ARF)
-print("ARF file contents:",type(ARF),np.shape(ARF),type(ARF[0]),np.shape(ARF[0]),ARF[0:3])
+ARF0 = hdul[0].data
+print("ARF0 file contents:",type(ARF0),np.shape(ARF0),ARF0) # ,type(ARF0[0]),np.shape(ARF0[0]),ARF0[0:3])
+ARF1 = hdul[1].data[:]
+N = len(ARF1)
+print("ARF1 file contents:",type(ARF1),np.shape(ARF1),type(ARF1[0]),np.shape(ARF1[0]),ARF1[0:3])
 
 # Test tiling with detector cloning
-ex_times=np.logspace(2,4,num=20,endpoint=True,base=10.)
+# ex_times=np.logspace(2,4,num=2,endpoint=True,base=10.)
+ex_times=np.logspace(2.8,4.,num=40,endpoint=True,base=10.)
 cloning_params={"exposuretime":ex_times}
 tiling_t0=time.time()
-detectors = SYU.TileSkyArea(Merger_kwargs,detectors=None,base_telescope_params=Athena_kwargs,cloning_params=cloning_params)
+# detectors = SYU.TileSkyArea(Merger_kwargs,detectors=None,base_telescope_params=Athena_kwargs,cloning_params=cloning_params)
+detectors = SYU.TileSkyArea(Merger,detectors=None,base_telescope_params=Athena_kwargs,cloning_params=cloning_params)
 tiling_t1=time.time()
 print("Total time for",len(detectors),"detectors:",tiling_t1-tiling_t0, "s")
 
-
+# Plot something
+# SYU.PlotPhotonAccumulation(detectors, SaveFig=False, SaveFileName=None)
+SYU.PlotSourcePhotons(detectors, labels=None, SaveFig=False, SaveFileName=None)
 
 
 

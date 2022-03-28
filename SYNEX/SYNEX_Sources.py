@@ -229,7 +229,7 @@ class SMBH_Merger:
             elif key == "approximant":
                 self.approximant = value
             elif key == 'DeltatL_cut':
-                self.DeltatL_cut = value
+                self.DeltatL_cut = value # -100.*24.*60.*60. #
             elif key == 'Lframe':
                 self.Lframe = value
             elif key=='lisabetaFile':
@@ -505,8 +505,9 @@ class SMBH_Merger:
                 pathlib.Path(SkyMapPath).mkdir(parents=True, exist_ok=True)
 
         # Extra useful params
-        self.true_ra = np.rad2deg(self.lamda+np.pi)   ## In deg
+        self.true_ra = np.rad2deg(self.lamda) if self.lamda<np.pi else np.rad2deg(self.lamda+2.*np.pi)   ## In deg
         self.true_dec = np.rad2deg(self.beta)         ## In deg
+        print("Source pix checks:",self.true_ra,self.true_dec,self.lamda,self.beta)
         self.true_distance = self.dist                ## in Mpc
 
         # Now check if sky_map needs creating or reading -- adaptation for 3D case needed here...
@@ -585,7 +586,7 @@ class SMBH_Merger:
             nsamples = len(infer_params["lambda"])
 
         # Convert post angles to theta,phi
-        post_phis = infer_params["lambda"]+np.pi
+        post_phis = [l if l<np.pi else np.pi-l for l in infer_params["lambda"]]
         post_thetas = np.pi/2.-infer_params["beta"]
 
         # Start with basic pixel resolution
@@ -701,8 +702,10 @@ class SMBH_Merger:
 
         if TYPE=="const":
             # Calculate flux - xray_flux formula is *DETECTOR* frame using *SOURCE* frame properties
+            # NPoints=int(-self.DeltatL_cut//(0.5*(1.+self.z))) if self.DeltatL_cut!=None else 100000
+            # xray_time=[(NPoints-ii)*(self.DeltatL_cut)/(NPoints*(1.+self.z)) for ii in range(NPoints)] # seconds to merger
             NPoints=int(-self.DeltatL_cut//0.5) if self.DeltatL_cut!=None else 100000
-            xray_time=[(NPoints-ii)*(self.DeltatL_cut)/NPoints for ii in range(NPoints)] # seconds to merger
+            xray_time=[(NPoints-ii)*self.DeltatL_cut/NPoints for ii in range(NPoints)] # seconds to merger
             t_start_flux=xray_time[0]-1.
             t_end_flux=xray_time[-1]+1.
             r_sch_1 = 2950.*self.m1 # Schwartzchild rad of primary in meters using m1 in SOLAR MASSES

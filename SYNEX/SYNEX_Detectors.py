@@ -221,7 +221,6 @@ class Athena:
                 from SYNEX.gwemopt_defaults import go_params_default
                 from SYNEX.gwemopt_defaults import config_struct_default
                 for key,value in kwargs.items(): ### I think this loop can be flattened further but can't find an example right now
-                    print("assignment checks:",key,value)
                     if key in go_params_default and key not in detector_go_params and key not in ["NewExistentialFileName","NeworbitFile"]:
                         detector_go_params[key]=value
                     elif key in go_params_default:

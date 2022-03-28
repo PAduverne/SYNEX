@@ -1716,10 +1716,10 @@ def TileSkyArea(source_or_kwargs,detectors=None,base_telescope_params=None,cloni
                           "cloning key":key,
                           "cloning value":values[ii],
                           "telescope":BaseTelescopeName+"_"+key+"_"+str(ii+1)})
-            print("CPU",MPI_rank+1,"/",MPI_size,"has",len(dict_list),"detector objects for",key,flush=True)
+            if MPI_size>1: print("CPU",MPI_rank+1,"/",MPI_size,"has",len(dict_list),"detector objects for",key,flush=True)
             detectors+=[SYDs.Athena(**dict_ii) for dict_ii in dict_list]
             out_dirs+=[key]*len(dict_list)
-        print("CPU",MPI_rank+1,"/",MPI_size,"has",len(dict_list),"total detector objects.",flush=True)
+        if MPI_size>1: print("CPU",MPI_rank+1,"/",MPI_size,"has",len(dict_list),"total detector objects.",flush=True)
     else:
         # No cloning params so see if we have input detectors
         if detectors==None and base_telescope_params==None:
@@ -1834,7 +1834,7 @@ def TileWithGwemopt(source,detector,outDirExtension=None):
     tile_structs, coverage_struct = gwemopt.coverage.timeallocation(go_params, map_struct, tile_structs)
 
     # Get info for run
-    detector = GetCoverageInfo(go_params, map_struct, tile_structs, coverage_struct, detector, source, verbose=False)
+    detector = GetCoverageInfo(go_params, map_struct, tile_structs, coverage_struct, detector, source=source, verbose=False)
 
     # Add info about source to coverage summary
     SourceInfo={
@@ -1916,8 +1916,11 @@ def GetCoverageInfo(go_params, map_struct, tile_structs, coverage_struct, detect
     tiles that cover source with exposure time at least the minimum for a threshold
     photon count.
     """
+    # gwemopt.scheduler.summary(go_params, map_struct, coverage_struct)
+    # gwemopt.plotting.coverage(go_params, map_struct, coverage_struct)
+
     # Extract some data structures
-    source_pix=hp.ang2pix(go_params["nside"],np.deg2rad(90.-go_params["true_dec"]),np.deg2rad(go_params["true_ra"])) # (nside, theta, phi)
+    source_pix = hp.ang2pix(go_params["nside"],np.rad2deg(source.lamda),np.rad2deg(source.beta),lonlat=True)
     cov_data=coverage_struct["data"] # Data is N*9 with columns ra,dec,mjd (exposure start),mag,exposureTime,field,tile_probs,airmass,program_id
     cov_ipix=coverage_struct["ipix"] # list because each sub-list is of variable length
     map_probs=map_struct["prob"]
@@ -1963,12 +1966,16 @@ def GetCoverageInfo(go_params, map_struct, tile_structs, coverage_struct, detect
     UniqueSourceCoverageCount=0
     cov_source_tile=[]
     cov_source_pix=[]
+    TotExpTime=0.
     for tile_ii,tile_pix in enumerate(cov_ipix):
+        TotExpTime+=cov_data[tile_ii,4]
+        print(tile_ii, source_pix, tile_pix, cov_data[tile_ii,4], detector.detector_config_struct["exposuretime"], cov_data[tile_ii,4]/detector.detector_config_struct["exposuretime"])
         if source_pix in tile_pix:
             cov_source_tile += [tile_ii] # [tile_ii for tile_ii,tile_pix in enumerate(cov_ipix) if source_pix in tile_pix]
             cov_source_pix += list(tile_pix)
             if all([pix not in cov_source_pix for pix in tile_pix]):
                 UniqueSourceCoverageCount+=1
+    print("Total exposure time (d):",TotExpTime/(24*60*60))
     SourceTile_prob1=[cov_data[i,6] for i in cov_source_tile]
     SourceTile_prob2=[map_probs[pix] for pix in cov_source_pix]
     SourceTile_accum_prob1=np.sum(SourceTile_prob1)
@@ -1989,11 +1996,16 @@ def GetCoverageInfo(go_params, map_struct, tile_structs, coverage_struct, detect
         print(SourceTile_prob2,"\n")
         print("Source tile accumulated p:",SourceTile_accum_prob1,SourceTile_accum_prob2)
 
+    print("Coverage stuct exposures within range:",Time(cov_data[0,2],format='mjd', scale='utc').isot,Time(cov_data[-1,2],format='mjd', scale='utc').isot)
+    print("start times checks:",Time(source.gpstime, format='gps', scale='utc').isot,Time(go_params["gpstime"], format='gps', scale='utc').isot)
+
     # Now add cuts to coverage info depending on photon flux
     if source!=None and len(cov_source_tile)>0:
         # Make sure source has relevant data and create it if not
-        if not hasattr(source,"EM_Flux_Data"): source.GenerateEMFlux(fstart22=1e-4,TYPE="const",**{})
-        if not hasattr(source,"CTR_Data"): source.GenerateCTR(detector.ARF_file_loc_name,gamma=1.7) # Should be include gamma as a source param? Would we ever want to change this at run time?
+        # if not hasattr(source,"EM_Flux_Data"): source.GenerateEMFlux(fstart22=1e-4,TYPE="const",**{})
+        # if not hasattr(source,"CTR_Data"): source.GenerateCTR(detector.ARF_file_loc_name,gamma=1.7) # Should be include gamma as a source param? Would we ever want to change this at run time?
+        source.GenerateEMFlux(fstart22=1e-4,TYPE="const",**{})
+        source.GenerateCTR(detector.ARF_file_loc_name,gamma=1.7)
 
         # Calculate the exposuretimes for each tile that covers source
         SourceTileExpTimes=[cov_data[tile_ii,4] for tile_ii in cov_source_tile]
@@ -3401,7 +3413,7 @@ def PlotCTR(source, SaveFig=False):
 
     plt.show()
 
-def PlotAccumulatedPhotons(detectors, SaveFig=False, SaveFileName=None):
+def PlotPhotonAccumulation(detectors, SaveFig=False, SaveFileName=None):
     """
     Plot accumulated photons from source only after tiling is run for a list or single detector.
 
@@ -3418,8 +3430,11 @@ def PlotAccumulatedPhotons(detectors, SaveFig=False, SaveFileName=None):
     detectors=[detector if not isinstance(detector,dict) else SYDs.Athena(**detector) for detector in detectors]
 
     # Create list of sources in case we have a mix of stuff like DeltatL_cut
-    sources=[SYSs.SMBH_Merger(**{"ExistentialFileName":detector.detector_source_coverage["source save file"]}) for detector in detectors]
-    t_mergers=[-Merger.DeltatL_cut/86400. for Merger in sources]
+    # sources=[SYSs.SMBH_Merger(**{"ExistentialFileName":detector.detector_source_coverage["source save file"]}) for detector in detectors]
+    FileName = "IdeaPaperSystem_9d"
+    Merger_kwargs = {"ExistentialFileName":"/Users/baird/Documents/LabEx_PostDoc/SYNEX/Saved_Source_Dicts/TestSystem_9d_base.dat"}
+    sources=[GetSourceFromLisabetaData(FileName,**Merger_kwargs) for _ in detectors]
+    t_mergers=[-source.DeltatL_cut/86400. for source in sources]
 
     # Find the max height so all bars are even
     height=max([sum(detector.detector_source_coverage["Source photon counts"]) for detector in detectors])
@@ -3429,6 +3444,7 @@ def PlotAccumulatedPhotons(detectors, SaveFig=False, SaveFileName=None):
         Xs=[ExT0s/86400. for ExT0s in detector.detector_source_coverage["Source tile start times (s)"]]
         Xs_Widths=[ExTs/86400. for ExTs in detector.detector_source_coverage["Source tile exposuretimes (s)"]]
         Ys=list(np.cumsum(detector.detector_source_coverage["Source photon counts"]))
+        print("len Xs etc:",len(Xs),len(Xs_Widths),len(Ys))
 
         # Plot accumulated photons is source was captured
         if len(detector.detector_source_coverage["Source tile start times (s)"])>0:
@@ -3459,6 +3475,93 @@ def PlotAccumulatedPhotons(detectors, SaveFig=False, SaveFileName=None):
         plt.savefig(strname)
 
     plt.show()
+
+def PlotSourcePhotons(detectors, labels=None, SaveFig=False, SaveFileName=None):
+    """
+    Plot total accumulated photons for each list of detectors (in case we
+    have several versions of the same cloned parameter but using eg different
+    gwemopt flags...)
+    """
+    # Check if it's a list
+    if not isinstance(detectors,list):
+        detectors=[detectors]
+
+    # Check if it's a list of lists
+    if any([isinstance(detector,list) for detector in detectors]):
+        detectors=[[detectors_el] if not isinstance(detectors[0],list) else detectors_el for detectors_el in detectors]
+    else:
+        detectors=[detectors]
+
+    # Handle cases where some/all entries are dictionaries instead of detector classes
+    detectors=[detector if not isinstance(detector,dict) else SYDs.Athena(**detector) for detectors_el in detectors for detector in detectors]
+
+    # Handle labels now if not given
+    if labels==None: labels=[None]*len(detectors)
+
+    # Init global figure
+    fig=plt.figure()
+
+    # Get the figure and axes for each list within detectors list
+    Lines2D=[(PlotSourcePhotons_SingleDetList(detectors_el,fig=fig,label=label)) for detectors_el,label in zip(detectors,labels)]
+
+    # Formatting some stuff globally
+    if labels!=None:
+        plt.legend(fontsize="xx-small")
+
+    # Save?
+    if SaveFig:
+        if SaveFileName==None:
+            strname=SYNEX_PATH+"/Plots/"+".".join(source.ExistentialFileName.split("/Saved_Source_Dicts/")[-1].split(".")[:-1])+".pdf"
+        else:
+            SaveFileName=SYNEX_PATH+"/"+SaveFileName.split("/SYNEX/")[-1]
+            SaveFileName=".".join(SaveFileName.split(".")[:-1])+".pdf"
+        f="/".join(strname.split("/")[:-1])
+        pathlib.Path(f).mkdir(parents=True, exist_ok=True)
+        plt.savefig(strname)
+
+    plt.show()
+
+def PlotSourcePhotons_SingleDetList(detectors,fig=None,label=None):
+    """
+    Plot total accumulated photons from source versus cloned parameter.
+    """
+    if not isinstance(detectors,list):
+        detectors=[detectors]
+
+    # Create list of detectors if dicts given or mix of dicts and detector objects given
+    detectors=[detector if not isinstance(detector,dict) else SYDs.Athena(**detector) for detector in detectors]
+
+    # Create list of sources in case we have a mix of stuff like DeltatL_cut
+    # sources=[SYSs.SMBH_Merger(**{"ExistentialFileName":detector.detector_source_coverage["source save file"]}) for detector in detectors]
+    FileName = "IdeaPaperSystem_9d"
+    Merger_kwargs = {"ExistentialFileName":"/Users/baird/Documents/LabEx_PostDoc/SYNEX/Saved_Source_Dicts/TestSystem_9d_base.dat"}
+    sources=[GetSourceFromLisabetaData(FileName,**Merger_kwargs) for _ in detectors]
+    t_mergers=[-source.DeltatL_cut/86400. for source in sources]
+
+    # Get cloned values and photon counts
+    Xs = [detector.detector_config_struct["cloning value"] for detector in detectors] # This will store values cloned for sources too...
+    Ys = [sum(detector.detector_source_coverage["Source photon counts"]) for detector in detectors]
+
+    # Do we need logarithmic axes?
+    ax = plt.gca()
+    if min(Xs)!=0. and np.log10(max(Xs)/min(Xs))>1.5:
+        ax.set_xscale('log')
+    if min(Ys)!=0. and np.log10(max(Ys)/min(Ys))>2.5:
+        ax.set_yscale('log')
+
+    # Label axes
+    plt.xlabel(detectors[0].detector_config_struct["cloning key"],fontsize="xx-small")
+    plt.ylabel(r"Accumulated Photons",fontsize="xx-small")
+
+    # Init figure if it isn't already
+    if fig==None: fig=plt.figure()
+    if label==None: label=''
+
+    # Plot
+    ErrBarCont=plt.errorbar(Xs,Ys,yerr=np.sqrt(Ys), marker='+', linestyle='', markersize=4, figure=fig, label=label)
+
+    # Return
+    return ErrBarCont, ax
 
 
 

@@ -60,12 +60,12 @@ LISA = SYDs.LISA(**LISA_base_kwargs)
 
 # Set the time to merger cut if looking at pre-merger only - 'None' to ignore
 OneHour = 60.*60.
-T_obs_end_to_mergers = [-24.*OneHour] # [-30.*24.*OneHour, -7.*24.*OneHour, -3.*24.*OneHour, -24.*OneHour, -10.*OneHour, -5.*OneHour, -1.*OneHour, -60., None]
-T_obs_labels = ["1d"] # ["1mon", "1wk", "3d", "1d", "10hr", "5hr", "1hr", "1min", "0cut"]
+T_obs_end_to_mergers = [-30.*24.*OneHour, -3.*7.*24.*OneHour, -2.*7.*24.*OneHour, -7.*24.*OneHour, -3.*24.*OneHour, -24.*OneHour, -10.*OneHour, -5.*OneHour, None] # [-24.*OneHour] #
+T_obs_labels = ["1mon", "3wk", "2wk", "1wk", "3d", "1d", "10hr", "5hr", "0cut"] # ["1d"] #
 
 # Create options to Initialize the source object
 # NB Dec = beta and Ra = lambda
-Merger_base_kwargs = {"q": 1.1, "M": 3e6, "z": 1., "chi1": 0.9,
+Merger_base_kwargs = {"q": 1.1, "M": 8e6, "z": 1.3, "chi1": 0.9,
         "chi2": 0.95, "beta" : -3.*np.pi/8., "lambda" : np.pi/3.,
         "inc": np.pi/10., "psi": 0.4,  "approximant" : 'IMRPhenomHM',
         "Lframe":True, "DeltatL_cut":None}
@@ -119,12 +119,12 @@ for iiLoop in range(n):
 
         # Can call everything at once by handing arguments to RunInference function directly
         DoPlots = False
-        OutFileName = "Randomized_angles_spins_MRat_" + str(iiLoop+1+342) + "_" + T_obs_labels[iiCut]
+        OutFileName = "Randomized_angles_spins_MRat_" + str(iiLoop+1) + "_" + T_obs_labels[iiCut]
         try:
-            print("Trying inference on system", str(iiLoop+1+342))
+            print("Trying inference on system", str(iiLoop+1))
             # print("M:", Merger_kwargs["M"], "q:", Merger_kwargs["q"], "chi1:", Merger_kwargs["chi1"], "chi2:", Merger_kwargs["chi2"], ", inc:", Merger_kwargs["inc"], ", phi:", Merger_kwargs["phi"], ", lambda:", Merger_kwargs["lambda"], ", beta:", Merger_kwargs["beta"], ", psi:", Merger_kwargs["psi"])
             SYU.RunInference(Merger, LISA, inference_params=inference_params, Plots=DoPlots, OutFileName=OutFileName,JsonFileAndPath=None,**RunTimekwargs)
         except:
-            print("Error in inference on system", str(iiLoop+1+342), "... Params:")
+            print("Error in inference on system", str(iiLoop+1), "... Params:")
             print("M:", Merger_kwargs["M"], "q:", Merger_kwargs["q"], "chi1:", Merger_kwargs["chi1"], "chi2:", Merger_kwargs["chi2"], ", inc:", Merger_kwargs["inc"], ", phi:", Merger_kwargs["phi"], ", lambda:", Merger_kwargs["lambda"], ", beta:", Merger_kwargs["beta"], ", psi:", Merger_kwargs["psi"])
             print("Skipping to next system...")

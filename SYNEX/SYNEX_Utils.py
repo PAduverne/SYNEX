@@ -1710,7 +1710,7 @@ def TileSkyArea(source_or_kwargs,detectors=None,base_telescope_params=None,cloni
             CPU_STARTs=[0]+CPU_ENDs[:-1]
             # Make list of detector properties depending on MPI_rank
             dict_list = [base_telescope_params.copy() for _ in range(CPU_STARTs[MPI_rank],CPU_ENDs[MPI_rank])]
-            for ii in range(CPU_STARTs[MPI_rank],CPU_ENDs[MPI_rank]): dict_list[ii].update({"ExistentialFileName":BaseExFileName,
+            for ii in range(CPU_STARTs[MPI_rank],CPU_ENDs[MPI_rank]): dict_list[ii-CPU_STARTs[MPI_rank]].update({"ExistentialFileName":BaseExFileName,
                           "NewExistentialFileName":".".join(BaseExFileName.split(".")[:-1])+"_"+key+"_"+str(ii+1)+"."+BaseExFileName.split(".")[-1],
                           key:values[ii],
                           "cloning key":key,

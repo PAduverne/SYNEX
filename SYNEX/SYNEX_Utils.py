@@ -164,7 +164,7 @@ def ClassesToParams(source, detector=None, CollectionMethod="Inference",**kwargs
     # source params
     if hasattr(source,"waveform_params"):
         waveform_params=source.waveform_params
-    elif source.JsonFile:
+    elif source.JsonFile and os.path.isfile(source.JsonFile):
         with open(source.JsonFile, 'r') as f: input_params=json.load(f)
         waveform_params=input_params["waveform_params"]
     else:
@@ -1969,7 +1969,7 @@ def GetCoverageInfo(go_params, map_struct, tile_structs, coverage_struct, detect
     TotExpTime=0.
     for tile_ii,tile_pix in enumerate(cov_ipix):
         TotExpTime+=cov_data[tile_ii,4]
-        print(tile_ii, source_pix, tile_pix, cov_data[tile_ii,4], detector.detector_config_struct["exposuretime"], cov_data[tile_ii,4]/detector.detector_config_struct["exposuretime"])
+        # print(tile_ii, source_pix, tile_pix, cov_data[tile_ii,4], detector.detector_config_struct["exposuretime"], cov_data[tile_ii,4]/detector.detector_config_struct["exposuretime"])
         if source_pix in tile_pix:
             cov_source_tile += [tile_ii] # [tile_ii for tile_ii,tile_pix in enumerate(cov_ipix) if source_pix in tile_pix]
             cov_source_pix += list(tile_pix)

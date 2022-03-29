@@ -874,10 +874,10 @@ def RunInference(source, detector, inference_params, PlotInference=False,PlotSky
     # Write the file if it doesn't exist yet.
     if source.JsonFile!=None and not os.path.isfile(source.JsonFile):
         print("Creating json file...")
-        [JsonFileLocAndName, OutFileLoc, OutFileName] = WriteParamsToJson(source,detector,inference_params,is_master,**RunTimekwargs)
-    elif source.JsonFile==None:
-        print("Creating json file...")
         WriteParamsToJson(source,detector,inference_params,is_master,**RunTimekwargs)
+    # elif source.JsonFile==None:
+    #     print("Creating json file...")
+    #     WriteParamsToJson(source,detector,inference_params,is_master,**RunTimekwargs)
 
     # Start the run. Data will be saved to the 'inference_data' folder by default
     # All processes must execute the run together. mapper (inside ptemcee) will handle coordination between p's.

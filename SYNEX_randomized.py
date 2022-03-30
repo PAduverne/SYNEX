@@ -117,13 +117,16 @@ for iiLoop in range(n):
         # Initialize the source object
         Merger = SYSs.SMBH_Merger(**Merger_kwargs)
 
+        # Set output file names
+        OutFileName = "Randomized_angles_spins_MRat_" + str(iiLoop+1) + "_" + T_obs_labels[iiCut]
+        RunTimekwargs["out_file"]=OutFileName
+
         # Can call everything at once by handing arguments to RunInference function directly
         DoPlots = False
-        OutFileName = "Randomized_angles_spins_MRat_" + str(iiLoop+1) + "_" + T_obs_labels[iiCut]
         try:
             print("Trying inference on system", str(iiLoop+1))
             # print("M:", Merger_kwargs["M"], "q:", Merger_kwargs["q"], "chi1:", Merger_kwargs["chi1"], "chi2:", Merger_kwargs["chi2"], ", inc:", Merger_kwargs["inc"], ", phi:", Merger_kwargs["phi"], ", lambda:", Merger_kwargs["lambda"], ", beta:", Merger_kwargs["beta"], ", psi:", Merger_kwargs["psi"])
-            SYU.RunInference(Merger, LISA, inference_params=inference_params, Plots=DoPlots, OutFileName=OutFileName,JsonFileAndPath=None,**RunTimekwargs)
+            SYU.RunInference(Merger, LISA, inference_params=inference_params, PlotInference=DoPlots,PlotSkyMap=DoPlotsy,**RunTimekwargs)
         except:
             print("Error in inference on system", str(iiLoop+1), "... Params:")
             print("M:", Merger_kwargs["M"], "q:", Merger_kwargs["q"], "chi1:", Merger_kwargs["chi1"], "chi2:", Merger_kwargs["chi2"], ", inc:", Merger_kwargs["inc"], ", phi:", Merger_kwargs["phi"], ", lambda:", Merger_kwargs["lambda"], ", beta:", Merger_kwargs["beta"], ", psi:", Merger_kwargs["psi"])

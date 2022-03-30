@@ -871,16 +871,13 @@ def RunInference(source, detector, inference_params, PlotInference=False,PlotSky
             is_master = True
             mapper = map
 
-    # Write the file if it doesn't exist yet.
-    if source.JsonFile!=None and not os.path.isfile(source.JsonFile):
-        print("Creating json file...")
-        WriteParamsToJson(source,detector,inference_params,is_master,**RunTimekwargs)
-    # elif source.JsonFile==None:
-    #     print("Creating json file...")
-    #     WriteParamsToJson(source,detector,inference_params,is_master,**RunTimekwargs)
+    # Write params to json file ALWAYS
+    print("Creating json file...")
+    WriteParamsToJson(source,detector,inference_params,is_master,**RunTimekwargs)
 
     # Start the run. Data will be saved to the 'inference_data' folder by default
     # All processes must execute the run together. mapper (inside ptemcee) will handle coordination between p's.
+    print("JsonFile checks:",source.JsonFile)
     SYP.RunPTEMCEE(source.JsonFile)
 
     # Create sky_map struct in source object
@@ -905,6 +902,12 @@ def WriteParamsToJson(source, detector, inference_params, IsMaster=True, **RunTi
     Function to save source and GW detector params to json file for lisabeta inference runs,
     using the saved jsoon file name in source class.
     """
+    # See if we have output filenames to asign
+    if "out_file" in RunTimekwargs:
+        JsonFile,H5File=CompleteLisabetaDataAndJsonFileNames(RunTimekwargs["out_file"])
+        source.JsonFile=JsonFile
+        source.H5File=H5File
+        del RunTimekwargs["out_file"]
 
     # double check names and paths are ok
     if source.JsonFile==None and source.H5File==None:

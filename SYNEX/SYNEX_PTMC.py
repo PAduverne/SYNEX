@@ -226,6 +226,9 @@ def RunPTEMCEE(input_file):
             is_master = True
             mapper = map
 
+    # Define globals if using MPI to avoid cluster problems
+    if use_mpi: global lnprior, prior, lnlikelihood
+
     # Load json file with all parameters
     with open(input_file, 'r') as input_file:
         input_params = json.load(input_file)

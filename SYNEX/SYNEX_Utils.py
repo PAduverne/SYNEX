@@ -162,11 +162,11 @@ def ClassesToParams(source, detector=None, CollectionMethod="Inference",**kwargs
 
     # Unwrap the positional arguments and override the source and detector values set
     # source params
+    # elif source.JsonFile and os.path.isfile(source.JsonFile):
+    #     with open(source.JsonFile, 'r') as f: input_params=json.load(f)
+    #     waveform_params=input_params["waveform_params"]
     if hasattr(source,"waveform_params"):
         waveform_params=source.waveform_params
-    elif source.JsonFile and os.path.isfile(source.JsonFile):
-        with open(source.JsonFile, 'r') as f: input_params=json.load(f)
-        waveform_params=input_params["waveform_params"]
     else:
         waveform_params = {}
         if source.timetomerger_max!=None:

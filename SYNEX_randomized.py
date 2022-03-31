@@ -47,7 +47,7 @@ def draw_random_massratio(low=np.log10(0.1), high=np.log10(1.), size=1):
     return np.array([q]).T
 
 # Draw the random values
-n = 1 # 400
+n = 400
 rand_spins = draw_random_spins(size=n)
 rand_angles = draw_random_angles(size=n)
 rand_massratios = draw_random_massratio(size=n)
@@ -60,8 +60,8 @@ LISA = SYDs.LISA(**LISA_base_kwargs)
 
 # Set the time to merger cut if looking at pre-merger only - 'None' to ignore
 OneHour = 60.*60.
-T_obs_end_to_mergers = [None] # [-30.*24.*OneHour, -3.*7.*24.*OneHour, -2.*7.*24.*OneHour, -7.*24.*OneHour, -3.*24.*OneHour, -24.*OneHour, -10.*OneHour, -5.*OneHour, None] # [-24.*OneHour] #
-T_obs_labels = ["0cut"] # ["1mon", "3wk", "2wk", "1wk", "3d", "1d", "10hr", "5hr", "0cut"] # ["1d"] #
+T_obs_end_to_mergers = [-30.*24.*OneHour, -3.*7.*24.*OneHour, -2.*7.*24.*OneHour, -7.*24.*OneHour, -3.*24.*OneHour, -24.*OneHour, -10.*OneHour, -5.*OneHour, None] # [-24.*OneHour] # [None] #
+T_obs_labels = ["1mon", "3wk", "2wk", "1wk", "3d", "1d", "10hr", "5hr", "0cut"] # ["1d"] # ["0cut"] # 
 
 # Create options to Initialize the source object
 # NB Dec = beta and Ra = lambda
@@ -83,9 +83,9 @@ inference_params = {
 # See SYNEX_PTMC.py for default dictionary that you can use as a base for what parameters are modifiable. Can also add a key for
 # any kwarg in source or detector classes and this will be modified in the run, but not updated in the class parameter list.
 RunTimekwargs = {"print_info": True, ### Run param options
-                "n_walkers": 32, # 96, # must be greater than or equal to twice the inference cube dimension
-                "n_iter": 500, # 8000,
-                "burn_in": 335, # 5000, # Throw away at least 2/3 of it
+                "n_walkers": 96, # must be greater than or equal to twice the inference cube dimension
+                "n_iter": 8000,
+                "burn_in": 5000, # Throw away at least 2/3 of it
                 "autocor_method": "autocor_new", # "acor",
                 "thin_samples": True, # for speed set this to False
                 "TDI": "TDIAET", ### waveform param options. These are taken from the source and detector classes first, and then overridden here if specified

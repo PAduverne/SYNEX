@@ -604,14 +604,14 @@ class SMBH_Merger:
         _,minmax,mean,_,_,_=stats.describe(non_zero_counts)
 
         # Do it all again but with better nside resolution, taking account of tiny posterior islands by capping to a max nside=2048
-        max_npix = hp.nside2npix(2048)
-        popCheck = int(mean//10)
-        if popCheck*npix<max_npix:
-            npix*=popCheck
-            nside=hp.npix2nside(npix)
+        max_nside = 2048
+        popCheck = int(np.sqrt((mean//10)/12)//1) ### from npix=12*nside**2
+        if popCheck*nside<max_nside and popCheck*nside>8:
+            nside=popCheck*nside
+            npix=hp.nside2npix(nside)
         else:
-            npix = max_npix
-            nside = 2048
+            nside = max_nside
+            npix=hp.nside2npix(nside)
         post_pix = hp.ang2pix(nside,post_thetas,post_phis)
         probs = np.bincount(post_pix,weights=np.array([1./nsamples]*nsamples), minlength=npix)
 
@@ -687,6 +687,8 @@ class SMBH_Merger:
         """
         Function to calculate EM flux of source.
 
+        https://arxiv.org/pdf/1801.02266.pdf ???
+
         PARAMS:
         -------
 
@@ -711,20 +713,20 @@ class SMBH_Merger:
             r_sch_1 = 2950.*self.m1 # Schwartzchild rad of primary in meters using m1 in SOLAR MASSES
             r_sch_2 = 2950.*self.m2 # Schwartzchild rad of primary in meters using m2 in SOLAR MASSES
             r=[(r_sch_1+r_sch_2)*10. for _ in range(NPoints)] ### 10 equivalent Sch. radii
-            Period=[np.sqrt(4.*np.pi*np.pi*r_i**3/(pyconstants.G_SI*(self.M))) for r_i in r] # Kepler approx
-            GW_freqs = [1./T for T in Period]
-            GW_Omega=[2.*np.pi/T for T in Period]
-            v=[r_i*om_i for r_i,om_i in zip(r,GW_Omega)] # in m/s
-            GW_phi=(integrate.cumtrapz(GW_Omega, [-t for t in xray_time], initial=0.))
-            GW_phi_mod=self.psi-(GW_phi[-1]%(2*np.pi)) # psi is GW polarization at merger in range [0,2*pi]
-            GW_phi=[(ph+GW_phi_mod)%(2*np.pi) for ph in GW_phi]
+            Period=[np.sqrt(4.*np.pi*np.pi*r_i**3/(pyconstants.G_SI*self.M*pyconstants.MSUN_SI)) for r_i in r] # Kepler approx
+            Orb_freqs = [1./T for T in Period]
+            Orb_Omega=[2.*np.pi/T for T in Period]
+            v=[r_i*om_i for r_i,om_i in zip(r,Orb_Omega)] # in m/s
+            Orb_phi=(integrate.cumtrapz(Orb_Omega, [-t for t in xray_time], initial=0.))
+            Orb_phi_mod=self.psi-(Orb_phi[-1]%(2*np.pi)) # psi is GW polarization at merger in range [0,2*pi]
+            Orb_phi=[(ph+Orb_phi_mod)%(2*np.pi) for ph in Orb_phi]
             BolFac = [0.1+(r_sch_1+r_sch_2)/r_i for r_i in r] # This should be normalized as per idea paper but is this a sum of radii or average or equivalent for EoB?
-            mu_dopp = [3.*np.sin(self.inc)*np.cos(GW_phi[ii]/2.)*v[ii]/pyconstants.PC_SI+1. for ii in range(len(GW_phi))] # Speed normalized to c=1
+            mu_dopp = [3.*np.sin(self.inc)*np.cos(Orb_phi[ii])*v[ii]/pyconstants.C_SI+1. for ii in range(len(GW_phi))] # Speed normalized to c=1
             if self.Lframe:
                 M_tot = self.M/(1.+self.z)
             else:
                 M_tot = self.M
-            EddLum = (1.26e38)*M_tot*(1.+self.z) # /(918.*2.) # https://en.wikipedia.org/wiki/Eddington_luminosity -- total mass in solar mass units
+            EddLum = (1.26e38)*M_tot*(1.+self.z) # /(918.*2.) # https://en.wikipedia.org/wiki/Eddington_luminosity -- total mass in solar mass units in source frame
             xray_flux = [mu_dopp[ii]*BolFac[ii]*EddLum/(4.*np.pi*self.dist*1e6*pyconstants.PC_SI*self.dist*1e6*pyconstants.PC_SI*10000.) for ii in range(len(BolFac))] # erg/s/cm^2
         elif TYPE=="lalsim":
             # Empty LALParams dict
@@ -910,8 +912,27 @@ class SMBH_Merger:
         # Now compute the CTR - photons s^-1
         integrand = [dE_bins[ii]*ARF_func[ii]*((E_bins[ii]+E_bins[ii+1])/2.)**(-1.*gamma) for ii in range(N)]
         integral = sum(integrand)/(1.+self.z) # We need another 1/(1+z) here otherwise the photon rate is too high. Maybe this is a redshifting of energy bins?
-        # CTR = [integral*self.xray_phi_0[ii] for ii in range(len(self.xray_phi_0))]
         CTR_Data["CTR"] = [integral*el for el in CTR_Data["xray_phi_0"]] # CTR
+        # print("Integral checks:",np.mean(integrand),integral,1.+self.z)
+        # import matplotlib.pyplot as plt
+        # EBinsPlot=[((E_bins[ii]+E_bins[ii+1])/2.) for ii in range(N)]
+        # plt.loglog(EBinsPlot,integrand,label=r"Convolution")
+        # plt.xlabel(r"Energy [keV]",fontsize="xx-small")
+        # plt.legend(fontsize="xx-small")
+        # plt.show()
+        # plt.loglog(EBinsPlot,ARF_func,label=r"ARF")
+        # plt.loglog(EBinsPlot,[((E_bins[ii]+E_bins[ii+1])/2.)**(-1.*gamma) for ii in range(N)],label=r"Energy relationship")
+        # plt.xlabel(r"Energy [keV]",fontsize="xx-small")
+        # plt.legend(fontsize="xx-small")
+        # plt.show()
+        # plt.semilogy([t/(24.*60.*60.) for t in self.EM_Flux_Data["xray_time"]],CTR_Data["xray_phi_0"],label=r"X-ray $\phi_0$")
+        # plt.xlabel(r"Time to Merger [d]",fontsize="xx-small")
+        # plt.legend(fontsize="xx-small")
+        # plt.show()
+        # plt.semilogy([t/(24.*60.*60.) for t in self.EM_Flux_Data["xray_time"]],CTR_Data["CTR"],label=r"CTR")
+        # plt.xlabel(r"Time to Merger [d]",fontsize="xx-small")
+        # plt.legend(fontsize="xx-small")
+        # plt.show()
 
         # Store data in source object
         self.CTR_Data=CTR_Data

@@ -28,20 +28,28 @@
 
 
 import os
-import sys
-import copy
-import json
 import h5py
-import argparse
+import itertools
+import copy
 import numpy as np
+import json
+
+from tqdm import tqdm as tqdm
+
+from astropy.cosmology import Planck15 as cosmo
 
 import lisabeta
 import lisabeta.pyconstants as pyconstants
 import lisabeta.tools.pytools as pytools
-import lisabeta.lisa.lisatools as lisatools
+import lisabeta.tools.pyspline as pyspline
+import lisabeta.tools.pyoverlap as pyoverlap
+import lisabeta.lisa.pyresponse as pyresponse
 import lisabeta.lisa.snrtools as snrtools
+import lisabeta.lisa.pyLISAnoise as pyLISAnoise
+import lisabeta.lisa.lisatools as lisatools
 import lisabeta.lisa.lisa as lisa
 import lisabeta.lisa.lisa_fisher as lisa_fisher
+import lisabeta.utils.plotutils as plotutils
 import lisabeta.inference.inference as inference
 
 import ptemcee
@@ -53,9 +61,82 @@ try:
 except ModuleNotFoundError:
     MPI = None
 
-# Full list of physical params - infer_params are a subset
-# TODO: generalize to other choices of mass and spin parameters
-# TODO: at the moment, infer_params can only be a subset of this, not flexible
+
+
+# Physical signal parameters
+params = {
+    # Total *redshifted* mass M=m1+m2, solar masses
+    "M": 4e6,
+    # Mass ratio q=m1/m2
+    "q": 3.0,
+    # Dimensionless spin component 1 along orbital momentum
+    "chi1": 0.5,
+    # Dimensionless spin component 2 along orbital momentum
+    "chi2": 0.2,
+    # Time shift of coalescence, s -- coalescence is at t0*yr + Deltat*s, t0 in waveform_params
+    "Deltat": 0.0,
+    # Luminosity distance, Mpc
+    "dist": 3.65943e+04,
+    # Inclination, observer's colatitude in source-frame
+    "inc": 1.0471975511965976,
+    # Phase, observer's longitude in source-frame
+    "phi": 1.2,
+    # Longitude in the sky
+    "lambda": 0.8,
+    # Latitude in the sky
+    "beta": 0.3,
+    # Polarization angle
+    "psi": 1.7,
+    # Flag indicating whether angles and Deltat pertain to the L-frame or SSB-frame
+    "Lframe": True
+  }
+
+# Parameters for the waveform generation and other options
+waveform_params = {
+    # Frequency range
+    "minf": 1e-5,
+    "maxf": 0.5,
+    # Reference epoch of coalescence, yr -- coalescence is at t0*yr + Deltat*s, Deltat in params
+    "t0": 0.0,
+    # Always cut signals timetomerger_max*yr before merger -- to avoid needlessly long signals using minf
+    "timetomerger_max": 1.0,
+    # Option to cut the signal pre-merger -- must be in L-frame
+    "DeltatL_cut": None,
+    # Further options to cut signals
+    "fend": None,
+    "tmin": None,
+    "tmax": None,
+    # Options for the time and phase alignment -- development/testing
+    "phiref": 0.0,
+    "fref_for_phiref": 0.0,
+    "tref": 0.0,
+    "fref_for_tref": 0.0,
+    "force_phiref_fref": True,
+    "toffset": 0.0,
+    # TDI channels to generate
+    "TDI": "TDIAET",
+    # Internal accuracy params
+    "acc": 1e-4,
+    "order_fresnel_stencil": 0,
+    # Waveform approximant and set of harmonics to use
+    "approximant": "IMRPhenomHM",
+    "modes": None,
+    # LISA response options
+    "LISAconst": "Proposal",
+    "responseapprox": "full",
+    "frozenLISA": False,
+    "TDIrescaled": True,
+    # Noise options -- can also be given as a numpy array for interpolation
+    "LISAnoise": {
+        "InstrumentalNoise": "SciRDv1",
+        "WDbackground": False,
+        "WDduration" : 0.0,
+        "lowf_add_pm_noise_f0": 0.0,
+        "lowf_add_pm_noise_alpha": 2.0
+    }
+  }
+
+run_params_musthave = ['out_dir', 'out_name']
 list_params = [
     "M",
     "q",
@@ -69,9 +150,8 @@ list_params = [
     "beta",
     "psi"]
 
+
 # Default pymultinest params
-# TODO: print_info, n_iter_info very rudimentary at the moment
-run_params_musthave = ['out_dir', 'out_name']
 run_params_default = {
     "sampler": "ptemcee",
     "sample_Lframe": True,
@@ -82,7 +162,7 @@ run_params_default = {
     "n_walkers": 16,
     "n_iter": 1000,
     "burn_in": 300,
-    "autocor_method": "acor",
+    "autocor_method": "autocor_new", # "acor", #
     "thin_samples": False,
     "upsample": 1,
     "seed": None,
@@ -277,12 +357,10 @@ def RunPTEMCEE(input_file):
 
     # Set up likelihood class
     if simple_likelihood:
-        #TODO: check if all options are right (intrinsic params pinned)
-        likelihoodClass = lisa.SimpleLikelihoodLISASMBH(source_params_Lframe,
-                                                        **waveform_params)
+        likelihoodClass = lisa.LikelihoodLISASMBH_LinearResiduals(source_params_Lframe, ngrid=128, **waveform_params)
     else:
-        likelihoodClass = lisa.LikelihoodLISASMBH(source_params_Lframe,
-                                                  **waveform_params)
+        # Historic 0-noise likelihood
+        likelihoodClass = lisa.LikelihoodLISASMBH(source_params_Lframe, **waveform_params)
 
     # Waveform params to be used for template waveforms
     # May differ from the waveform params for injection, given as an update
@@ -445,6 +523,8 @@ def RunPTEMCEE(input_file):
         # A la grace de dieu
         if print_info:
             print('Running ptemcee...')
+        print("outdir checks 4:",run_params["out_dir"], run_params["out_name"])
+        print("outdir checks 5:", run_params["output"], run_params["output_raw"])
         t1 = time.time()
         chain.run(n_iter)
         t2 = time.time()

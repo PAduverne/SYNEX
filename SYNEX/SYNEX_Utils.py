@@ -972,10 +972,14 @@ def WriteParamsToJson(source, detector, inference_params, IsMaster=True, **RunTi
             json_default_dict["source_params"][key] = value
 
     # Set the output file and directory location in the json param list
-    H5FilePath="/".join(source.H5File.split("/")[:-1])
+    H5FilePath="/".join(source.H5File.split("/")[:-1])+"/"
     H5FileName=source.H5File.split("/")[-1]
+    H5FileName=".".join(H5FileName.split(".")[:-1])
     json_default_dict["run_params"]["out_dir"] = H5FilePath
     json_default_dict["run_params"]["out_name"] =  H5FileName # this needs to not have the '.h5' added at the end to work
+    print("outdir checks 1:",json_default_dict["run_params"]["out_dir"], json_default_dict["run_params"]["out_name"])
+    print("outdir checks 2:", source.JsonFile, source.H5File)
+    print("outdir checks 3:", json_default_dict["run_params"]["output"], json_default_dict["run_params"]["output_raw"])
 
     # Write the json file only if master node or not mpi
     if IsMaster:

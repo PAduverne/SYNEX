@@ -150,7 +150,7 @@ if is_master:
             source=SYSs.SMBH_Merger(**Merger_kwargs)
 
             # Write params to json file
-            SYU.WriteParamsToJson(source,detector,inference_params,True,**RunTimekwargs)
+            SYU.WriteParamsToJson(source,LISA,inference_params,True,**RunTimekwargs)
             JsonFiles+=[source.JsonFile]
 else:
     JsonFiles=None

@@ -883,14 +883,14 @@ def RunInference(source, detector, inference_params, PlotInference=False,PlotSky
     command = "python3 " + SYNEX_PATH + "/lisabeta/lisabeta/inference/ptemcee_smbh.py " + source.JsonFile
     os.system(command)
 
-    # Create sky_map struct in source object
-    source.sky_map = source.H5File.split("inference_data")[0] + 'Skymap_files' + source.H5File.split("inference_data")[-1]
-    source.sky_map = source.sky_map[:-3] + '.fits'
-    if is_master:
+    # # Create sky_map struct in source object
+    if not use_mpi and is_master:
+        source.sky_map = source.H5File.split("inference_data")[0] + 'Skymap_files' + source.H5File.split("inference_data")[-1]
+        source.sky_map = source.sky_map[:-3] + '.fits'
         source.CreateSkyMapStruct()
 
     # Update saved source data
-    if is_master:
+    if not use_mpi and is_master:
         source.ExistentialCrisis()
 
     # Call plotter if asked for

@@ -107,7 +107,7 @@ for iiLoop in range(n):
         # Copy then update the source class kwargs
         Merger_kwargs = copy.deepcopy(Merger_base_kwargs)
         Merger_kwargs["DeltatL_cut"] = T_obs_end_to_mergers[iiCut]
-        Merger_kwargs["q"] = rand_massratios[iiLoop][0]
+        Merger_kwargs["q"] = 1./rand_massratios[iiLoop][0]
         Merger_kwargs["chi1"] = rand_spins[iiLoop][0]
         Merger_kwargs["chi2"] = rand_spins[iiLoop][1]
         Merger_kwargs["inc"] = rand_angles[iiLoop][0]
@@ -126,7 +126,7 @@ for iiLoop in range(n):
         # Can call everything at once by handing arguments to RunInference function directly
         DoPlots = False
         # try:
-        print("Trying inference on system", str(iiLoop+1))
+        print("Trying inference on system", str(iiLoop+1), T_obs_labels[iiCut])
         SYU.RunInference(Merger_kwargs, LISA, inference_params=inference_params, PlotInference=DoPlots,PlotSkyMap=DoPlots,**RunTimekwargs)
         # except:
         #     print("Error in inference on system", str(iiLoop+1), "... Params:")

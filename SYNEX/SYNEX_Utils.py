@@ -891,17 +891,23 @@ def RunInference(source_or_kwargs, detector, inference_params, PlotInference=Fal
     # Start the run. Data will be saved to the 'inference_data' folder by default
     # All processes must execute the run together. mapper (inside ptemcee) will handle coordination between p's.
     # SYP.RunPTEMCEE(source.JsonFile)
+    if is_master: print(" --------------- START PTEMCEE --------------- ")
+    t1 = time.time()
     command = "python3 " + SYNEX_PATH + "/lisabeta/lisabeta/inference/ptemcee_smbh.py " + sourceJsonFile
     os.system(command)
+    t2 = time.time()
+    if is_master: print(" ---------------- END PTEMCEE ---------------- ")
+    if is_master: print("Time to execute ptemcee: ", round((t2-t1)*10.)/10., "s")
+    if is_master: print(" --------------------------------------------- ")
 
-    if not use_mpi and is_master:
-        # Create sky_map struct in source object
-        source.sky_map = source.H5File.split("inference_data")[0] + 'Skymap_files' + source.H5File.split("inference_data")[-1]
-        source.sky_map = source.sky_map[:-3] + '.fits'
-        source.CreateSkyMapStruct()
-        # Update saved source data
-        source.ExistentialCrisis()
-
+    # if not use_mpi and is_master:
+    #     # Create sky_map struct in source object
+    #     source.sky_map = source.H5File.split("inference_data")[0] + 'Skymap_files' + source.H5File.split("inference_data")[-1]
+    #     source.sky_map = source.sky_map[:-3] + '.fits'
+    #     source.CreateSkyMapStruct()
+    #     # Update saved source data
+    #     source.ExistentialCrisis()
+    
     # Call plotter if asked for
     if is_master and PlotInference:
         # Automatically save the fig if called within inference.

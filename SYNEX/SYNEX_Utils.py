@@ -875,7 +875,7 @@ def RunInference(source_or_kwargs, detector, inference_params, PlotInference=Fal
             mapper = map
 
     # Init source if we need to
-    if MPI_rank==0:
+    if is_master:
         # See if we have a source class or kwargs -- only master node since this can get memory heavy
         source=SYSs.SMBH_Merger(**source_or_kwargs) if isinstance(source_or_kwargs,dict) else source_or_kwargs
         # Write params to json file
@@ -886,7 +886,7 @@ def RunInference(source_or_kwargs, detector, inference_params, PlotInference=Fal
         sourceJsonFile=None # So we only have master node running later if one source and/or detector given
 
     # Send source to workers
-    if MPI_size>1: sourceJsonFile = comm.bcast(source.JsonFile, root=0)
+    if MPI_size>1: sourceJsonFile = comm.bcast(sourceJsonFile, root=0)
 
     # Start the run. Data will be saved to the 'inference_data' folder by default
     # All processes must execute the run together. mapper (inside ptemcee) will handle coordination between p's.

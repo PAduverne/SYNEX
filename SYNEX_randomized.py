@@ -26,6 +26,11 @@ import copy
 
 from astropy.cosmology import WMAP9 as cosmo
 
+try:
+    from mpi4py import MPI
+except ModuleNotFoundError:
+    MPI = None
+
 
 
 # Using MPI or not

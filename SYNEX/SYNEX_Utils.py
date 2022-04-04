@@ -886,7 +886,9 @@ def RunInference(source_or_kwargs, detector, inference_params, PlotInference=Fal
         sourceJsonFile=None # So we only have master node running later if one source and/or detector given
 
     # Send source to workers
-    if MPI_size>1: sourceJsonFile = comm.bcast(sourceJsonFile, root=0)
+    if use_mpi:
+        comm.Barrier()
+        sourceJsonFile = comm.bcast(sourceJsonFile, root=0)
 
     # Start the run. Data will be saved to the 'inference_data' folder by default
     # All processes must execute the run together. mapper (inside ptemcee) will handle coordination between p's.

@@ -511,13 +511,13 @@ class SMBH_Merger:
         self.true_distance = self.dist                ## in Mpc
 
         # Now check if sky_map needs creating or reading -- adaptation for 3D case needed here...
-        if MUTATED and self.H5File!=None:
+        if MUTATED and self.H5File!=None and os.path.isfile(self.H5File):
             self.CreateSkyMapStruct()
         elif self.sky_map!=None and os.path.isfile(self.sky_map):
             self.LoadSkymap()
-        elif self.sky_map!=None and not os.path.isfile(self.sky_map) and self.H5File!=None:
+        elif self.sky_map!=None and not os.path.isfile(self.sky_map) and self.H5File!=None and os.path.isfile(self.H5File):
             self.CreateSkyMapStruct()
-        elif self.sky_map==None and self.H5File!=None:
+        elif self.sky_map==None and self.H5File!=None and os.path.isfile(self.H5File):
             # Default name
             self.sky_map = self.H5File.split("inference_data")[0] + 'Skymap_files' + self.H5File.split("inference_data")[-1]
             self.sky_map = self.sky_map[:-3] + '.fits'
@@ -533,7 +533,8 @@ class SMBH_Merger:
         # self.sky_map=gou.read_skymap(dummy_go_params,is3D=self.do3D,map_struct=self.sky_map)
 
         # Save it all to file!
-        self.ExistentialCrisis()
+        if self.PermissionToWrite:
+            self.ExistentialCrisis()
 
     def LoadSkymap(self):
         """

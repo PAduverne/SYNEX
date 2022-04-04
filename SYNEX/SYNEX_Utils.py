@@ -851,7 +851,7 @@ def read_h5py_file(FileName):
     # f.close()
     return [infer_params, inj_param_vals, static_params, meta_data]
 
-def RunInference(source, detector, inference_params, PlotInference=False,PlotSkyMap=False,**RunTimekwargs):
+def RunInference(source_or_kwargs, detector, inference_params, PlotInference=False,PlotSkyMap=False,**RunTimekwargs):
     """
     Function to handle lisabeta inference.
     """
@@ -873,24 +873,32 @@ def RunInference(source, detector, inference_params, PlotInference=False,PlotSky
             is_master = True
             mapper = map
 
-    # Write params to json file ALWAYS
-    print("Creating json file...")
-    WriteParamsToJson(source,detector,inference_params,is_master,**RunTimekwargs)
+    # Init source if we need to
+    if MPI_rank==0:
+        # See if we have a source class or kwargs -- only master node since this can get memory heavy
+        source=SYSs.SMBH_Merger(**source_or_kwargs) if isinstance(source_or_kwargs,dict) else source_or_kwargs
+        # Write params to json file
+        print("Creating json file...")
+        WriteParamsToJson(source,detector,inference_params,is_master,**RunTimekwargs)
+        sourceJsonFile=source.JsonFile
+    else:
+        sourceJsonFile=None # So we only have master node running later if one source and/or detector given
+    
+    # Send source to workers
+    if MPI_size>1: sourceJsonFile = comm.bcast(source.JsonFile, root=0)
 
     # Start the run. Data will be saved to the 'inference_data' folder by default
     # All processes must execute the run together. mapper (inside ptemcee) will handle coordination between p's.
     # SYP.RunPTEMCEE(source.JsonFile)
-    command = "python3 " + SYNEX_PATH + "/lisabeta/lisabeta/inference/ptemcee_smbh.py " + source.JsonFile
+    command = "python3 " + SYNEX_PATH + "/lisabeta/lisabeta/inference/ptemcee_smbh.py " + sourceJsonFile
     os.system(command)
 
-    # # Create sky_map struct in source object
     if not use_mpi and is_master:
+        # Create sky_map struct in source object
         source.sky_map = source.H5File.split("inference_data")[0] + 'Skymap_files' + source.H5File.split("inference_data")[-1]
         source.sky_map = source.sky_map[:-3] + '.fits'
         source.CreateSkyMapStruct()
-
-    # Update saved source data
-    if not use_mpi and is_master:
+        # Update saved source data
         source.ExistentialCrisis()
 
     # Call plotter if asked for

@@ -117,7 +117,7 @@ for iiLoop in range(n):
         Merger_kwargs["psi"] = rand_angles[iiLoop][4]
 
         # Initialize the source object
-        Merger = SYSs.SMBH_Merger(**Merger_kwargs)
+        # Merger = SYSs.SMBH_Merger(**Merger_kwargs)
 
         # Set output file names
         OutFileName = "Randomized_angles_spins_MRat_" + str(iiLoop+1) + "_" + T_obs_labels[iiCut]
@@ -127,7 +127,7 @@ for iiLoop in range(n):
         DoPlots = False
         # try:
         print("Trying inference on system", str(iiLoop+1))
-        SYU.RunInference(Merger, LISA, inference_params=inference_params, PlotInference=DoPlots,PlotSkyMap=DoPlots,**RunTimekwargs)
+        SYU.RunInference(Merger_kwargs, LISA, inference_params=inference_params, PlotInference=DoPlots,PlotSkyMap=DoPlots,**RunTimekwargs)
         # except:
         #     print("Error in inference on system", str(iiLoop+1), "... Params:")
         #     print("M:", Merger_kwargs["M"], "q:", Merger_kwargs["q"], "chi1:", Merger_kwargs["chi1"], "chi2:", Merger_kwargs["chi2"], ", inc:", Merger_kwargs["inc"], ", phi:", Merger_kwargs["phi"], ", lambda:", Merger_kwargs["lambda"], ", beta:", Merger_kwargs["beta"], ", psi:", Merger_kwargs["psi"])

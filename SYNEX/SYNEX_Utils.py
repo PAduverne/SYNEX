@@ -892,6 +892,7 @@ def RunInference(source_or_kwargs, detector, inference_params, PlotInference=Fal
     # All processes must execute the run together. mapper (inside ptemcee) will handle coordination between p's.
     # SYP.RunPTEMCEE(source.JsonFile)
     if is_master: print(" --------------- START PTEMCEE --------------- ")
+    print("Does Json exist?",MPI_rank,os.path.isfile(sourceJsonFile))
     t1 = time.time()
     command = "python3 " + SYNEX_PATH + "/lisabeta/lisabeta/inference/ptemcee_smbh.py " + sourceJsonFile
     os.system(command)
@@ -907,7 +908,7 @@ def RunInference(source_or_kwargs, detector, inference_params, PlotInference=Fal
     #     source.CreateSkyMapStruct()
     #     # Update saved source data
     #     source.ExistentialCrisis()
-    
+
     # Call plotter if asked for
     if is_master and PlotInference:
         # Automatically save the fig if called within inference.

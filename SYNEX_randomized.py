@@ -108,6 +108,8 @@ for iiLoop in range(n):
         Merger_kwargs = copy.deepcopy(Merger_base_kwargs)
         Merger_kwargs["DeltatL_cut"] = T_obs_end_to_mergers[iiCut]
         Merger_kwargs["q"] = 1./rand_massratios[iiLoop][0]
+        Merger_kwargs["m1"] = Merger_kwargs["M"]*(Merger_kwargs["q"]/(1.+Merger_kwargs["q"]))
+        Merger_kwargs["m2"] = Merger_kwargs["M"]/(1.+Merger_kwargs["q"])
         Merger_kwargs["chi1"] = rand_spins[iiLoop][0]
         Merger_kwargs["chi2"] = rand_spins[iiLoop][1]
         Merger_kwargs["inc"] = rand_angles[iiLoop][0]

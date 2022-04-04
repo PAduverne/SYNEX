@@ -61,14 +61,16 @@ LISA = SYDs.LISA(**LISA_base_kwargs)
 # Set the time to merger cut if looking at pre-merger only - 'None' to ignore
 OneHour = 60.*60.
 T_obs_end_to_mergers = [-30.*24.*OneHour, -3.*7.*24.*OneHour, -2.*7.*24.*OneHour, -7.*24.*OneHour, -3.*24.*OneHour, -24.*OneHour, -10.*OneHour, -5.*OneHour, None] # [-24.*OneHour] # [None] #
-T_obs_labels = ["1mon", "3wk", "2wk", "1wk", "3d", "1d", "10hr", "5hr", "0cut"] # ["1d"] # ["0cut"] # 
+T_obs_labels = ["1mon", "3wk", "2wk", "1wk", "3d", "1d", "10hr", "5hr", "0cut"] # ["1d"] # ["0cut"] #
 
 # Create options to Initialize the source object
 # NB Dec = beta and Ra = lambda
 Merger_base_kwargs = {"q": 1.1, "M": 8e6, "z": 1.3, "chi1": 0.9,
         "chi2": 0.95, "beta" : -3.*np.pi/8., "lambda" : np.pi/3.,
         "inc": np.pi/10., "psi": 0.4,  "approximant" : 'IMRPhenomHM',
-        "Lframe":True, "DeltatL_cut":None}
+        "Lframe":True, "DeltatL_cut":None,
+        "ExistentialFileName":"/Users/baird/Documents/LabEx_PostDoc/SYNEX/Saved_Source_Dicts/TestSystem_9d_base.dat",
+        "NewExistentialFileName":"/Users/baird/Documents/LabEx_PostDoc/SYNEX/Saved_Source_Dicts/TestSystem_9d_tmp.dat"}
 
 # Create dictionary of inference params along with their prior ranges and prior types
 # Note that there are default prior ranges for the anglular parameters: chi1, chi2, inc, phi, lambda, beta, psi
@@ -83,9 +85,9 @@ inference_params = {
 # See SYNEX_PTMC.py for default dictionary that you can use as a base for what parameters are modifiable. Can also add a key for
 # any kwarg in source or detector classes and this will be modified in the run, but not updated in the class parameter list.
 RunTimekwargs = {"print_info": True, ### Run param options
-                "n_walkers": 96, # must be greater than or equal to twice the inference cube dimension
-                "n_iter": 8000,
-                "burn_in": 5000, # Throw away at least 2/3 of it
+                "n_walkers": 96, # 16, # must be greater than or equal to twice the inference cube dimension
+                "n_iter": 8000, # 400, #
+                "burn_in": 5000, #  1, #  Throw away at least 2/3 of it
                 "autocor_method": "autocor_new", # "acor",
                 "thin_samples": True, # for speed set this to False
                 "TDI": "TDIAET", ### waveform param options. These are taken from the source and detector classes first, and then overridden here if specified

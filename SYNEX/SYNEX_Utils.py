@@ -60,13 +60,15 @@ try:
     cmap = "cylon"
 except:
     cmap = 'PuBuGn'
-pylab_params = {'legend.fontsize': 8, # 'x-large',
-         'axes.labelsize': 8, # 'x-large',
+pylab_params = {'legend.fontsize': 4, # 'x-large',
+         'axes.labelsize': 4, # 'x-large',
+         'axes.titlesize': 4,
          'xtick.labelsize': 4, # 'x-large',
          'ytick.labelsize': 4, # 'x-large'}
          'lines.markersize': 0.7,
          'lines.linewidth': 0.7,
-         'font.size': 8} # 0.1}
+         'font.size': 4} # ,
+#          'font.family':'serif'} # 0.1} #### 'fontname'
 pylab.rcParams.update(pylab_params)
 try:
     mpl.use('MacOSX')
@@ -877,17 +879,19 @@ def RunInference(source, detector, inference_params, PlotInference=False,PlotSky
 
     # Start the run. Data will be saved to the 'inference_data' folder by default
     # All processes must execute the run together. mapper (inside ptemcee) will handle coordination between p's.
-    print("JsonFile checks:",source.JsonFile)
-    SYP.RunPTEMCEE(source.JsonFile)
+    # SYP.RunPTEMCEE(source.JsonFile)
+    command = "python3 " + SYNEX_PATH + "/lisabeta/lisabeta/inference/ptemcee_smbh.py " + source.JsonFile
+    os.system(command)
 
     # Create sky_map struct in source object
     source.sky_map = source.H5File.split("inference_data")[0] + 'Skymap_files' + source.H5File.split("inference_data")[-1]
     source.sky_map = source.sky_map[:-3] + '.fits'
-    print("Saving lisabeta posteriors as sky_map:",source.sky_map)
-    source.CreateSkyMapStruct()
+    if is_master:
+        source.CreateSkyMapStruct()
 
     # Update saved source data
-    source.ExistentialCrisis()
+    if is_master:
+        source.ExistentialCrisis()
 
     # Call plotter if asked for
     if is_master and PlotInference:
@@ -977,9 +981,6 @@ def WriteParamsToJson(source, detector, inference_params, IsMaster=True, **RunTi
     H5FileName=".".join(H5FileName.split(".")[:-1])
     json_default_dict["run_params"]["out_dir"] = H5FilePath
     json_default_dict["run_params"]["out_name"] =  H5FileName # this needs to not have the '.h5' added at the end to work
-    print("outdir checks 1:",json_default_dict["run_params"]["out_dir"], json_default_dict["run_params"]["out_name"])
-    print("outdir checks 2:", source.JsonFile, source.H5File)
-    print("outdir checks 3:", json_default_dict["run_params"]["output"], json_default_dict["run_params"]["output_raw"])
 
     # Write the json file only if master node or not mpi
     if IsMaster:

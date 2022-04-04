@@ -527,8 +527,6 @@ def RunPTEMCEE(input_file):
         # A la grace de dieu
         if print_info:
             print('Running ptemcee...')
-        print("outdir checks 4:",run_params["out_dir"], run_params["out_name"])
-        print("outdir checks 5:", run_params["output"], run_params["output_raw"])
         t1 = time.time()
         chain.run(n_iter)
         t2 = time.time()

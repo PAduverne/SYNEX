@@ -11,13 +11,12 @@ import time
 import astropy.units as u
 
 import lisabeta.lisa.lisatools as lisatools
-# import lisabeta.utils.plotutils as plotutils
+import ptemcee
 
 from SYNEX import SYNEX_Detectors as SYDs
 from SYNEX import SYNEX_Sources as SYSs
 from SYNEX import SYNEX_Utils as SYU
-
-from numpy.random import rand
+from SYNEX_Utils import SYNEX_PATH
 
 import time
 import json

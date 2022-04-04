@@ -16,7 +16,7 @@ import ptemcee
 from SYNEX import SYNEX_Detectors as SYDs
 from SYNEX import SYNEX_Sources as SYSs
 from SYNEX import SYNEX_Utils as SYU
-from SYNEX_Utils import SYNEX_PATH
+from SYNEX.SYNEX_Utils import SYNEX_PATH
 
 import time
 import json
@@ -73,7 +73,7 @@ def draw_random_massratio(low=np.log10(0.1), high=np.log10(1.), size=1):
 
 if is_master:
     # Draw the random values
-    n = 400
+    n = 30
     rand_spins = draw_random_spins(size=n)
     rand_angles = draw_random_angles(size=n)
     rand_massratios = draw_random_massratio(size=n)
@@ -150,7 +150,7 @@ if is_master:
             source=SYSs.SMBH_Merger(**Merger_kwargs)
 
             # Write params to json file
-            WriteParamsToJson(source,detector,inference_params,is_master,**RunTimekwargs)
+            SYU.WriteParamsToJson(source,detector,inference_params,True,**RunTimekwargs)
             JsonFiles+=[source.JsonFile]
 else:
     JsonFiles=None

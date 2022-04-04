@@ -862,6 +862,7 @@ def RunInference(source_or_kwargs, detector, inference_params, PlotInference=Fal
     if MPI is not None:
         MPI_size = MPI.COMM_WORLD.Get_size()
         MPI_rank = MPI.COMM_WORLD.Get_rank()
+        comm = MPI.COMM_WORLD
         use_mpi = (MPI_size > 1)
         if use_mpi:
             print("MPI rank/size: %d / %d" % (MPI_rank, MPI_size), flush=True)
@@ -883,7 +884,7 @@ def RunInference(source_or_kwargs, detector, inference_params, PlotInference=Fal
         sourceJsonFile=source.JsonFile
     else:
         sourceJsonFile=None # So we only have master node running later if one source and/or detector given
-    
+
     # Send source to workers
     if MPI_size>1: sourceJsonFile = comm.bcast(source.JsonFile, root=0)
 

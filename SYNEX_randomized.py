@@ -72,7 +72,15 @@ def draw_random_massratio(low=np.log10(0.1), high=np.log10(1.), size=1):
     q = 10.**(np.random.uniform(low=low, high=high, size=size))
     return np.array([q]).T
 
-if is_master:
+# Check if there are json files to load already
+CHECK_FOR_JSONS=True
+if is_master and CHECK_FOR_JSONS:
+    JsonFiles = glob.glob(SYNEX_PATH+"/inference_param_files/Randomized_angles_spins_MRat_*.json")
+    print("Jsons found...",len(JsonFiles),JsonFiles[0])
+else:
+    JsonFiles=None
+
+if is_master and JsonFiles==None:
     # Draw the random values
     n = 3 # 10
     rand_spins = draw_random_spins(size=n)
@@ -153,8 +161,6 @@ if is_master:
             # Write params to json file
             SYU.WriteParamsToJson(source,LISA,inference_params,True,**RunTimekwargs)
             JsonFiles+=[source.JsonFile]
-else:
-    JsonFiles=None
 
 # Spread the json file names and locations across all processes
 if use_mpi:

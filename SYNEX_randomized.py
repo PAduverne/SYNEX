@@ -22,7 +22,7 @@ import time
 import json
 import glob
 import copy
-import os
+import os,sys
 
 from astropy.cosmology import WMAP9 as cosmo
 
@@ -162,22 +162,27 @@ if is_master and JsonFiles==None:
             SYU.WriteParamsToJson(source,LISA,inference_params,True,**RunTimekwargs)
             JsonFiles+=[source.JsonFile]
 
-# Spread the json file names and locations across all processes
-if use_mpi:
-    JsonFiles = comm_global.bcast(JsonFiles, root=0)
 
-# Begin inference runs by searching for which json files
-for JsonFile in JsonFiles:
-    if is_master: comm_global.Barrier()
-    if is_master: print("\n\n --------------- START PTEMCEE --------------- ")
-    if is_master: print("python3 " + SYNEX_PATH + "/lisabeta/lisabeta/inference/ptemcee_smbh.py " + JsonFile)
-    print(MPI_rank,os.path.isfile(JsonFile),JsonFile)
-    t1 = time.time()
-    os.system("python3 " + SYNEX_PATH + "/lisabeta/lisabeta/inference/ptemcee_smbh.py " + JsonFile)
-    t2 = time.time()
-    if is_master: print(" ---------------- END PTEMCEE ---------------- ")
-    if is_master: print("Time to execute ptemcee: ", round((t2-t1)*10.)/10., "s")
-    if is_master: print(" --------------------------------------------- \n\n")
+# Return the list of jsonfiles to shell script
+print([file for file in JsonFiles])
+sys.exit(0)
+
+# # Spread the json file names and locations across all processes
+# if use_mpi:
+#     JsonFiles = comm_global.bcast(JsonFiles, root=0)
+#
+# # Begin inference runs by searching for which json files
+# for JsonFile in JsonFiles:
+#     if is_master: comm_global.Barrier()
+#     if is_master: print("\n\n --------------- START PTEMCEE --------------- ")
+#     if is_master: print("python3 " + SYNEX_PATH + "/lisabeta/lisabeta/inference/ptemcee_smbh.py " + JsonFile)
+#     print(MPI_rank,os.path.isfile(JsonFile),JsonFile)
+#     t1 = time.time()
+#     os.system("python3 " + SYNEX_PATH + "/lisabeta/lisabeta/inference/ptemcee_smbh.py " + JsonFile)
+#     t2 = time.time()
+#     if is_master: print(" ---------------- END PTEMCEE ---------------- ")
+#     if is_master: print("Time to execute ptemcee: ", round((t2-t1)*10.)/10., "s")
+#     if is_master: print(" --------------------------------------------- \n\n")
 
 
 

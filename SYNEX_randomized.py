@@ -79,7 +79,7 @@ if is_master and CHECK_FOR_JSONS:
 else:
     JsonFiles=None
 
-if is_master and JsonFiles==None:
+if is_master and len(JsonFiles)==0:
     # Draw the random values
     n = 10
     rand_spins = draw_random_spins(size=n)

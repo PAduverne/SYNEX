@@ -163,7 +163,8 @@ if is_master and JsonFiles==None:
 
 
 # Return the list of jsonfiles to shell script
-print([file for file in JsonFiles])
+for JsonFile in JsonFiles: print(JsonFile)
+comm_global.Barrier()
 sys.exit(0)
 
 # # Spread the json file names and locations across all processes

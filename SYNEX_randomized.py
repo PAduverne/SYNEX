@@ -43,12 +43,12 @@ if MPI is not None:
     comm_global = MPI.COMM_WORLD
     use_mpi = (MPI_size > 1)
     if use_mpi:
-        print("MPI rank/size: %d / %d" % (MPI_rank, MPI_size), flush=True)
+        # print("MPI rank/size: %d / %d" % (MPI_rank, MPI_size), flush=True)
         pool = ptemcee.mpi_pool.MPIPool(debug=False)
         is_master = pool.is_master()
         mapper = pool.map
     else:
-        print("No MPI", flush=True)
+        # print("No MPI", flush=True)
         is_master = True
         mapper = map
 
@@ -76,7 +76,6 @@ def draw_random_massratio(low=np.log10(0.1), high=np.log10(1.), size=1):
 CHECK_FOR_JSONS=True
 if is_master and CHECK_FOR_JSONS:
     JsonFiles = glob.glob(SYNEX_PATH+"/inference_param_files/Randomized_angles_spins_MRat_*.json")
-    print("Jsons found...",len(JsonFiles),JsonFiles[0])
 else:
     JsonFiles=None
 

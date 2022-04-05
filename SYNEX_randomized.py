@@ -40,7 +40,7 @@ mapper = map
 if MPI is not None:
     MPI_size = MPI.COMM_WORLD.Get_size()
     MPI_rank = MPI.COMM_WORLD.Get_rank()
-    comm = MPI.COMM_WORLD
+    comm_global = MPI.COMM_WORLD
     use_mpi = (MPI_size > 1)
     if use_mpi:
         print("MPI rank/size: %d / %d" % (MPI_rank, MPI_size), flush=True)
@@ -158,12 +158,11 @@ else:
 
 # Spread the json file names and locations across all processes
 if use_mpi:
-    # comm.Barrier()
-    JsonFiles = comm.bcast(JsonFiles, root=0)
+    JsonFiles = comm_global.bcast(JsonFiles, root=0)
 
 # Begin inference runs by searching for which json files
 for JsonFile in JsonFiles:
-    # if use_mpi: comm.Barrier()
+    if is_master: comm_global.Barrier()
     if is_master: print("\n\n --------------- START PTEMCEE --------------- ")
     if is_master: print("python3 " + SYNEX_PATH + "/lisabeta/lisabeta/inference/ptemcee_smbh.py " + JsonFile)
     print(MPI_rank,os.path.isfile(JsonFile),JsonFile)

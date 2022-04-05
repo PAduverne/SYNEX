@@ -22,6 +22,7 @@ import time
 import json
 import glob
 import copy
+import os
 
 from astropy.cosmology import WMAP9 as cosmo
 
@@ -73,7 +74,7 @@ def draw_random_massratio(low=np.log10(0.1), high=np.log10(1.), size=1):
 
 if is_master:
     # Draw the random values
-    n = 30
+    n = 3 # 10
     rand_spins = draw_random_spins(size=n)
     rand_angles = draw_random_angles(size=n)
     rand_massratios = draw_random_massratio(size=n)
@@ -111,9 +112,9 @@ if is_master:
     # See SYNEX_PTMC.py for default dictionary that you can use as a base for what parameters are modifiable. Can also add a key for
     # any kwarg in source or detector classes and this will be modified in the run, but not updated in the class parameter list.
     RunTimekwargs = {"print_info": True, ### Run param options
-                    "n_walkers": 96, # 16, # must be greater than or equal to twice the inference cube dimension
-                    "n_iter": 8000, # 400, #
-                    "burn_in": 5000, #  1, #  Throw away at least 2/3 of it
+                    "n_walkers":  16, # 96, # must be greater than or equal to twice the inference cube dimension
+                    "n_iter": 400, # 8000, #
+                    "burn_in": 1, # 5000, # Throw away at least 2/3 of it
                     "autocor_method": "autocor_new", # "acor",
                     "thin_samples": True, # for speed set this to False
                     "TDI": "TDIAET", ### waveform param options. These are taken from the source and detector classes first, and then overridden here if specified
@@ -157,13 +158,13 @@ else:
 
 # Spread the json file names and locations across all processes
 if use_mpi:
-    comm.Barrier()
+    # comm.Barrier()
     JsonFiles = comm.bcast(JsonFiles, root=0)
 
 # Begin inference runs by searching for which json files
 for JsonFile in JsonFiles:
-    if use_mpi: comm.Barrier()
-    if is_master: print(" --------------- START PTEMCEE --------------- ")
+    # if use_mpi: comm.Barrier()
+    if is_master: print("\n\n --------------- START PTEMCEE --------------- ")
     if is_master: print("python3 " + SYNEX_PATH + "/lisabeta/lisabeta/inference/ptemcee_smbh.py " + JsonFile)
     print(MPI_rank,os.path.isfile(JsonFile),JsonFile)
     t1 = time.time()
@@ -171,7 +172,7 @@ for JsonFile in JsonFiles:
     t2 = time.time()
     if is_master: print(" ---------------- END PTEMCEE ---------------- ")
     if is_master: print("Time to execute ptemcee: ", round((t2-t1)*10.)/10., "s")
-    if is_master: print(" --------------------------------------------- ")
+    if is_master: print(" --------------------------------------------- \n\n")
 
 
 

@@ -511,7 +511,7 @@ def RunPTEMCEE(input_file):
         pool.wait()
         # Is that exit necessary ? Was in the emcee/schwimmbad example
         # Maybe there to ensure exits if pool.close() is not called
-        sys.exit(0)
+        # sys.exit(0)
 
     # Whether using mpi and being master or simply not using mpi
     # Sampler set-up, running, post-processing and output all done by master
@@ -625,5 +625,5 @@ def RunPTEMCEE(input_file):
                 # f.create_dataset('accept', data=acceptvals)
 
         # If using mpi, close the pool
-        if use_mpi:
-            pool.close()
+        # if use_mpi:
+        #     pool.close()

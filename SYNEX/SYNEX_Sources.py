@@ -321,12 +321,12 @@ class SMBH_Merger:
         if all([hasattr(self,"M"), hasattr(self,"q"), hasattr(self,"m1"), not hasattr(self,"m2")]) or all([hasattr(self,"M"), hasattr(self,"q"), not hasattr(self,"m1"), hasattr(self,"m2")]):
             if hasattr(self,"m1") and self.m1 != self.M*(self.q/(1.+self.q)):
                     print("The primary mass m1 does not match the total mass and mass ratio. Redefining based on M and q")
-                    self.m1 != self.M*(self.q/(1.+self.q))
-                    self.m2 != self.M/(1.+self.q)
+                    self.m1 = self.M*(self.q/(1.+self.q))
+                    self.m2 = self.M/(1.+self.q)
             if hasattr(self,"m2") and self.m2 != self.M/(1.+self.q):
                 print("The secondary mass m2 does not match the total mass and mass ratio. Redefining based on M and q")
-                self.m1 != self.M*(self.q/(1.+self.q))
-                self.m2 != self.M/(1.+self.q)
+                self.m1 = self.M*(self.q/(1.+self.q))
+                self.m2 = self.M/(1.+self.q)
 
         # Default mass parameters if two mass params are givien
         if hasattr(self,"m1") and hasattr(self,"m2"):

@@ -81,7 +81,7 @@ else:
 
 if is_master and JsonFiles==None:
     # Draw the random values
-    n = 3 # 10
+    n = 10
     rand_spins = draw_random_spins(size=n)
     rand_angles = draw_random_angles(size=n)
     rand_massratios = draw_random_massratio(size=n)
@@ -119,9 +119,9 @@ if is_master and JsonFiles==None:
     # See SYNEX_PTMC.py for default dictionary that you can use as a base for what parameters are modifiable. Can also add a key for
     # any kwarg in source or detector classes and this will be modified in the run, but not updated in the class parameter list.
     RunTimekwargs = {"print_info": True, ### Run param options
-                    "n_walkers":  16, # 96, # must be greater than or equal to twice the inference cube dimension
-                    "n_iter": 400, # 8000, #
-                    "burn_in": 1, # 5000, # Throw away at least 2/3 of it
+                    "n_walkers":  96, # 16, # must be greater than or equal to twice the inference cube dimension
+                    "n_iter": 8000, # 400, #
+                    "burn_in": 5000, # 1, # Throw away at least 2/3 of it
                     "autocor_method": "autocor_new", # "acor",
                     "thin_samples": True, # for speed set this to False
                     "TDI": "TDIAET", ### waveform param options. These are taken from the source and detector classes first, and then overridden here if specified

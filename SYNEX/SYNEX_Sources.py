@@ -507,7 +507,6 @@ class SMBH_Merger:
         # Extra useful params
         self.true_ra = np.rad2deg(self.lamda) if self.lamda<np.pi else np.rad2deg(self.lamda+2.*np.pi)   ## In deg
         self.true_dec = np.rad2deg(self.beta)         ## In deg
-        print("Source pix checks:",self.true_ra,self.true_dec,self.lamda,self.beta)
         self.true_distance = self.dist                ## in Mpc
 
         # Now check if sky_map needs creating or reading -- adaptation for 3D case needed here...
@@ -606,11 +605,11 @@ class SMBH_Merger:
 
         # Do it all again but with better nside resolution, taking account of tiny posterior islands by capping to a max nside=2048
         max_nside = 2048
-        popCheck = int(np.sqrt((mean//10)/12)//1) ### from npix=12*nside**2
-        if popCheck*nside<max_nside and popCheck*nside>8:
-            nside=popCheck*nside
+        popCheck = 2**int((np.log10(10.*nside**2/mean)/np.log10(4.))//1) ### from npix=12*nside**2 and nside=2**integer
+        if popCheck<max_nside and popCheck>8:
+            nside=popCheck
             npix=hp.nside2npix(nside)
-        else:
+        elif popCheck>max_nside:
             nside = max_nside
             npix=hp.nside2npix(nside)
         post_pix = hp.ang2pix(nside,post_thetas,post_phis)
@@ -722,13 +721,16 @@ class SMBH_Merger:
             Orb_phi_mod=self.psi-(Orb_phi[-1]%(2*np.pi)) # psi is GW polarization at merger in range [0,2*pi]
             Orb_phi=[(ph+Orb_phi_mod)%(2*np.pi) for ph in Orb_phi]
             BolFac = [0.1+(r_sch_1+r_sch_2)/r_i for r_i in r] # This should be normalized as per idea paper but is this a sum of radii or average or equivalent for EoB?
-            mu_dopp = [3.*np.sin(self.inc)*np.cos(Orb_phi[ii])*v[ii]/pyconstants.C_SI+1. for ii in range(len(GW_phi))] # Speed normalized to c=1
+            mu_dopp = [3.*np.sin(self.inc)*np.cos(Orb_phi[ii])*v[ii]/pyconstants.C_SI+1. for ii in range(len(Orb_phi))] # Speed normalized to c=1
             if self.Lframe:
                 M_tot = self.M/(1.+self.z)
             else:
                 M_tot = self.M
             EddLum = (1.26e38)*M_tot*(1.+self.z) # /(918.*2.) # https://en.wikipedia.org/wiki/Eddington_luminosity -- total mass in solar mass units in source frame
             xray_flux = [mu_dopp[ii]*BolFac[ii]*EddLum/(4.*np.pi*self.dist*1e6*pyconstants.PC_SI*self.dist*1e6*pyconstants.PC_SI*10000.) for ii in range(len(BolFac))] # erg/s/cm^2
+            GW_freqs = [2./T for T in Period]
+            GW_Omega=[4.*np.pi/T for T in Period]
+            GW_phi=[ph*2. for ph in Orb_phi]
         elif TYPE=="lalsim":
             # Empty LALParams dict
             LALParams = lal.CreateDict();

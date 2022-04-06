@@ -3441,52 +3441,54 @@ def PlotCTR(source, SaveFig=False):
 
 def PlotPhotonAccumulation(detectors, SaveFig=False, SaveFileName=None):
     """
-    Plot accumulated photons from source only after tiling is run for a list or single detector.
-
-    TO DO:
-    -----
-    --> For case of something changed in a list of sources need to introduce the same
-        dictionary attibute for source class that lists the thing changed and the value for
-        that source.
+    Plot accumulated photons from source only after tiling is run for a list of a list, a list or a single detector.
     """
     if not isinstance(detectors,list):
         detectors=[detectors]
 
+    # Check if it's a list of lists
+    if any([isinstance(detector,list) for detector in detectors]):
+        detectors=[[detectors_el] if not isinstance(detectors[0],list) else detectors_el for detectors_el in detectors]
+    else:
+        detectors=[detectors]
+
     # Create list of detectors if dicts given or mix of dicts and detector objects given
-    detectors=[detector if not isinstance(detector,dict) else SYDs.Athena(**detector) for detector in detectors]
+    # detectors=[detector if not isinstance(detector,dict) else SYDs.Athena(**detector) for detector in detectors]
 
     # Create list of sources in case we have a mix of stuff like DeltatL_cut
-    # sources=[SYSs.SMBH_Merger(**{"ExistentialFileName":detector.detector_source_coverage["source save file"]}) for detector in detectors]
-    FileName = "IdeaPaperSystem_9d"
-    Merger_kwargs = {"ExistentialFileName":"/Users/baird/Documents/LabEx_PostDoc/SYNEX/Saved_Source_Dicts/TestSystem_9d_base.dat"}
-    sources=[GetSourceFromLisabetaData(FileName,**Merger_kwargs) for _ in detectors]
-    t_mergers=[-source.DeltatL_cut/86400. for source in sources]
+    sources=[[GetSourceFromLisabetaData(detector.detector_source_coverage["source H5File"],**{"ExistentialFileName":detector.detector_source_coverage["source save file"]}) for detector in detectors_el] for detectors_el in detectors]
+    SourcePreMergerCuts=[[source.DeltatL_cut for source in source_el] for source_el in sources]
+    for ii in range(len(detectors)):
+        if len(np.unique(SourcePreMergerCuts[ii]))>1:
+            for jj in range(len(detectors[ii])):
+                detectors[ii][jj].detector_config_struct.update({"cloning key":"DeltatL_cut","cloning value":-sources[ii][jj].DeltatL_cut/86400.})
+    t_mergers=[[-source.DeltatL_cut/86400. for source in source_el] for source_el in sources]
 
     # Find the max height so all bars are even
-    height=max([sum(detector.detector_source_coverage["Source photon counts"]) for detector in detectors])
+    for ii in range(len(detectors)):
+        height=max([sum(detector.detector_source_coverage["Source photon counts"]) for detector in detectors[ii]])
 
-    for detector,t_merger in zip(detectors,t_mergers):
-        T0_mjd=detector.detector_source_coverage["Start time (mjd)"]
-        Xs=[ExT0s/86400. for ExT0s in detector.detector_source_coverage["Source tile start times (s)"]]
-        Xs_Widths=[ExTs/86400. for ExTs in detector.detector_source_coverage["Source tile exposuretimes (s)"]]
-        Ys=list(np.cumsum(detector.detector_source_coverage["Source photon counts"]))
-        print("len Xs etc:",len(Xs),len(Xs_Widths),len(Ys))
-
-        # Plot accumulated photons is source was captured
-        if len(detector.detector_source_coverage["Source tile start times (s)"])>0:
-            if detector.detector_config_struct["cloning value"]!=None:
-                label=detector.detector_config_struct["cloning key"]+r"="+str(int(detector.detector_config_struct["cloning value"]//1)) if isinstance(detector.detector_config_struct["cloning value"],(float,int)) else detector.detector_config_struct["cloning value"]
-            elif len(np.unique(t_mergers))>1:
-                label=r"Source time to merger="+str(int(t_merger//1))+r"\,d"
-            else:
-                label=detector.detector_config_struct["telescope"]
-            step_plot=plt.step([t-t_merger+t_exp for t,t_exp in zip(Xs,Xs_Widths)], Ys, where='post', label=label)
-            plt.bar([t-t_merger for t in Xs],height=height,width=Xs_Widths,align="edge",color=step_plot[-1].get_color(),alpha=0.3)
+        for detector,t_merger in zip(detectors[ii],t_mergers[ii]):
+            T0_mjd=detector.detector_source_coverage["Start time (mjd)"]
+            Xs=[ExT0s/86400. for ExT0s in detector.detector_source_coverage["Source tile start times (s)"]]
+            Xs_Widths=[ExTs/86400. for ExTs in detector.detector_source_coverage["Source tile exposuretimes (s)"]]
+            Ys=list(np.cumsum(detector.detector_source_coverage["Source photon counts"]))
+            
+            # Plot accumulated photons is source was captured
+            if len(detector.detector_source_coverage["Source tile start times (s)"])>0:
+                if detector.detector_config_struct["cloning value"]!="DeltatL_cut" and detector.detector_config_struct["cloning value"]!=None:
+                    label=detector.detector_config_struct["cloning key"]+r"="+str(int(detector.detector_config_struct["cloning value"]//1)) if isinstance(detector.detector_config_struct["cloning value"],(float,int)) else detector.detector_config_struct["cloning value"]
+                elif detector.detector_config_struct["cloning value"]=="DeltatL_cut":
+                    label=r"System " + str(ii) + r", Source time to merger="+str(int(t_merger//1))+r"\,d"
+                else:
+                    label=detector.detector_config_struct["telescope"]
+                step_plot=plt.step([t-t_merger+t_exp for t,t_exp in zip(Xs,Xs_Widths)], Ys, where='post', label=label)
+                plt.bar([t-t_merger for t in Xs],height=height,width=Xs_Widths,align="edge",color=step_plot[-1].get_color(),alpha=0.3)
     ax = plt.gca()
     ax.set_yscale('log')
     plt.xlabel(r"Time to Merger [d]",fontsize="xx-small")
     plt.ylabel(r"Accumulated Photons",fontsize="xx-small")
-    plt.xlim([-max(t_mergers),0.])
+    plt.xlim([-max([max(ts) for ts in t_mergers]),0.])
     plt.legend(fontsize="xx-small")
 
     # Save?
@@ -3519,7 +3521,16 @@ def PlotSourcePhotons(detectors, labels=None, SaveFig=False, SaveFileName=None):
         detectors=[detectors]
 
     # Handle cases where some/all entries are dictionaries instead of detector classes
-    detectors=[detector if not isinstance(detector,dict) else SYDs.Athena(**detector) for detectors_el in detectors for detector in detectors]
+    # This does not preserve the shape of input detectors list...
+    # detectors=[detector if not isinstance(detector,dict) else SYDs.Athena(**detector) for detectors_el in detectors for detector in detectors]
+
+    # Create list of sources in case we have a mix of stuff like DeltatL_cut
+    sources=[[GetSourceFromLisabetaData(detector.detector_source_coverage["source H5File"],**{"ExistentialFileName":detector.detector_source_coverage["source save file"]}) for detector in detectors_el] for detectors_el in detectors]
+    SourcePreMergerCuts=[[source.DeltatL_cut for source in source_el] for source_el in sources]
+    for ii in range(len(detectors)):
+        if len(np.unique(SourcePreMergerCuts[ii]))>1:
+            for jj in range(len(detectors[ii])):
+                detectors[ii][jj].detector_config_struct.update({"cloning key":"DeltatL_cut","cloning value":-sources[ii][jj].DeltatL_cut/86400.})
 
     # Handle labels now if not given
     if labels==None: labels=[None]*len(detectors)
@@ -3528,11 +3539,11 @@ def PlotSourcePhotons(detectors, labels=None, SaveFig=False, SaveFileName=None):
     fig=plt.figure()
 
     # Get the figure and axes for each list within detectors list
-    Lines2D=[(PlotSourcePhotons_SingleDetList(detectors_el,fig=fig,label=label)) for detectors_el,label in zip(detectors,labels)]
+    Lines2D=[(PlotSourcePhotons_SingleDetList(detectors_el,sources=sources,fig=fig,label=label)) for detectors_el,label in zip(detectors,labels)]
 
     # Formatting some stuff globally
     if labels!=None:
-        plt.legend(fontsize="xx-small")
+        plt.legend(fontsize="x-small")
 
     # Save?
     if SaveFig:
@@ -3547,7 +3558,7 @@ def PlotSourcePhotons(detectors, labels=None, SaveFig=False, SaveFileName=None):
 
     plt.show()
 
-def PlotSourcePhotons_SingleDetList(detectors,fig=None,label=None):
+def PlotSourcePhotons_SingleDetList(detectors,sources=None,fig=None,label=None):
     """
     Plot total accumulated photons from source versus cloned parameter.
     """
@@ -3557,12 +3568,8 @@ def PlotSourcePhotons_SingleDetList(detectors,fig=None,label=None):
     # Create list of detectors if dicts given or mix of dicts and detector objects given
     detectors=[detector if not isinstance(detector,dict) else SYDs.Athena(**detector) for detector in detectors]
 
-    # Create list of sources in case we have a mix of stuff like DeltatL_cut
-    # sources=[SYSs.SMBH_Merger(**{"ExistentialFileName":detector.detector_source_coverage["source save file"]}) for detector in detectors]
-    FileName = "IdeaPaperSystem_9d"
-    Merger_kwargs = {"ExistentialFileName":"/Users/baird/Documents/LabEx_PostDoc/SYNEX/Saved_Source_Dicts/TestSystem_9d_base.dat"}
-    sources=[GetSourceFromLisabetaData(FileName,**Merger_kwargs) for _ in detectors]
-    t_mergers=[-source.DeltatL_cut/86400. for source in sources]
+    # Create sources if we don't have any
+    if sources==None: sources=[GetSourceFromLisabetaData(detector.detector_source_coverage["source H5File"],**{"ExistentialFileName":detector.detector_source_coverage["source save file"]}) for detector in detectors]
 
     # Get cloned values and photon counts
     Xs = [detector.detector_config_struct["cloning value"] for detector in detectors] # This will store values cloned for sources too...
@@ -3576,8 +3583,8 @@ def PlotSourcePhotons_SingleDetList(detectors,fig=None,label=None):
         ax.set_yscale('log')
 
     # Label axes
-    plt.xlabel(detectors[0].detector_config_struct["cloning key"],fontsize="xx-small")
-    plt.ylabel(r"Accumulated Photons",fontsize="xx-small")
+    plt.xlabel(detectors[0].detector_config_struct["cloning key"],fontsize="x-small")
+    plt.ylabel(r"Accumulated Photons",fontsize="x-small")
 
     # Init figure if it isn't already
     if fig==None: fig=plt.figure()

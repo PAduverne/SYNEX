@@ -12,6 +12,7 @@ import lisabeta.utils.plotutils as plotutils
 from SYNEX import SYNEX_Detectors as SYDs
 from SYNEX import SYNEX_Sources as SYSs
 from SYNEX import SYNEX_Utils as SYU
+from SYNEX.SYNEX_Utils import SYNEX_PATH
 
 from numpy.random import rand
 
@@ -36,43 +37,16 @@ except:
 
 
 
-# ########################### Example - Create and save source object from lisabeta file ###########################
-#
-# # Merger args
-# Merger_kwargs = {"ExistentialFileName":"/Users/baird/Documents/LabEx_PostDoc/SYNEX/Saved_Source_Dicts/IdeaPaperSystem_9d_base.dat"}
-# FileName="IdeaPaperSystem_9d"
-# Merger = SYU.GetSourceFromLisabetaData(FileName,**Merger_kwargs)
-#
-# MergerDict=dict(Merger.__dict__)
-# for key,val in MergerDict.items(): print(key,val)
-
-
-
-
-
-
-
-
-
-
-########################### Example - Tile using gwemopt on Cluster ###########################
+########################### Example - Tile over all sources in a number of pre-merger cut inferences ###########################
 
 # Merger args
 # Merger_kwargs = {"ExistentialFileName":"/Users/baird/Documents/LabEx_PostDoc/SYNEX/Saved_Source_Dicts/IdeaPaperSystem_9d_base.dat",
 #                  "NewExistentialFileName":"/Users/baird/Documents/LabEx_PostDoc/SYNEX/Saved_Source_Dicts/IdeaPaperSystem_9d_dev.dat"}
 
-# Source
-FileName = "IdeaPaperSystem_9d"
-Merger_kwargs = {"ExistentialFileName":"/Users/baird/Documents/LabEx_PostDoc/SYNEX/Saved_Source_Dicts/TestSystem_9d_base.dat"}
-Merger = SYU.GetSourceFromLisabetaData(FileName,**Merger_kwargs)
-
-# Base telescope args
+# Telescope args
 t0 = '2034-01-01T00:00:00.00' # YYYY-MM-DDTHH:mm:SS.MS 01/01/2034
 t = Time(t0, format='isot', scale='utc').gps
 Athena_kwargs={"ExistentialFileName":"/Users/baird/Documents/LabEx_PostDoc/SYNEX/Saved_Telescope_Dicts/Athena_base.dat",
-                "NewExistentialFileName":"/Users/baird/Documents/LabEx_PostDoc/SYNEX/Saved_Telescope_Dicts/Athena_dev.dat",
-                "orbitFile":"/Users/baird/Documents/LabEx_PostDoc/SYNEX/orbit_files/Athena_20340601_728d_inc60_R750Mkm_ecc4_ArgPeri20_AscNode-10_phi020_P90_frozenFalse_base.dat",
-                "NeworbitFile":"/Users/baird/Documents/LabEx_PostDoc/SYNEX/orbit_files/Athena_20340601_728d_inc60_R750Mkm_ecc4_ArgPeri20_AscNode-10_phi020_P90_frozenFalse_dev.dat",
                 "telescope":"Athena",
                 "tilesType" : "moc", # "greedy", # "hierarchical", # "ranked", # moc/greedy/hierarchical/ranked/galaxy.
                 "timeallocationType" : "powerlaw", # "absmag" / "powerlaw" / "waw" / "manual" / "pem"
@@ -80,7 +54,7 @@ Athena_kwargs={"ExistentialFileName":"/Users/baird/Documents/LabEx_PostDoc/SYNEX
                 "doCalcTiles" : False, # Calculates the no. of "hierarchical" tiles based on sky area prob threashold and FoV
                 "Ntiles" : None, # 50, # Speific to tilesType=hierarchical and greedy. Needs to be set if "doCalcTiles"=False
                 "frozenAthena" : False, # False,
-                "exposuretime" : None, # 10000., # 6*60*60, # 60., #
+                "exposuretime" : 10000.,
                 "min_observability_duration" : None, # 10./3600., # in HOURS
                 "inc" : 60., # 60., # In DEGREES, incline of orbital plane normal to Sun-Earth axis.
                 "MeanRadius" : 750000000., # 750000000., # meters (from earth-orbit normal axis)
@@ -109,33 +83,155 @@ Athena_kwargs={"ExistentialFileName":"/Users/baird/Documents/LabEx_PostDoc/SYNEX
                 "sat_moon_constraint" : 5., # 20.0,
                } ### What about doPerturbativeTiling? ### "doPerturbativeTiling" : True
 
+# Get all sources that we want to test
+FileNames = [glob.glob(SYNEX_PATH+"/inference_data/Randomized_SYNEX2/Randomized_angles_spins_MRat_"+str(ii)+"*.h5") for ii in range(1,10)]
+FileNames = [[FileName for FileName in FileNames_el if len(FileName.split("raw"))==1 and len(FileName.split("0cut"))==1] for FileNames_el in FileNames]
+print(FileNames)
+ExNames = [[SYNEX_PATH+"/Saved_Source_Dicts"+FileName.split("inference_data")[-1].split(".h5")[0]+".dat" for FileName in FileNames_el] for FileNames_el in FileNames]
+Mergers = [[SYU.GetSourceFromLisabetaData(FileName,**{"ExistentialFileName":ExName}) for FileName,ExName in zip(FileNames[ii],ExNames[ii])] for ii in range(len(FileNames))]
 
-# Check what's inside the ARF file
-from astropy.io import fits
-from SYNEX.SYNEX_Utils import SYNEX_PATH
-ARF_file=SYNEX_PATH+"/XIFU_CC_BASELINECONF_2018_10_10.arf"
-hdul = fits.open(ARF_file)
-# hdul.info()
-print("ARF file contents:",type(hdul))
-ARF0 = hdul[0].data
-print("ARF0 file contents:",type(ARF0),np.shape(ARF0),ARF0) # ,type(ARF0[0]),np.shape(ARF0[0]),ARF0[0:3])
-ARF1 = hdul[1].data[:]
-N = len(ARF1)
-print("ARF1 file contents:",type(ARF1),np.shape(ARF1),type(ARF1[0]),np.shape(ARF1[0]),ARF1[0:3])
+# Create Athena Detectors
+ExNames = [[SYNEX_PATH+"/Saved_Telescope_Dicts"+FileName.split("inference_data")[-1].split(".h5")[0]+".dat" for FileName in FileNames_el] for FileNames_el in FileNames]
+Athena_kwargs_dicts=[[copy.deepcopy(Athena_kwargs) for _ in ExNames_el] for ExNames_el in ExNames]
+for ii in range(len(Athena_kwargs_dicts)):
+    for jj in range(len(Athena_kwargs_dicts[ii])):
+        Athena_kwargs_dicts[ii][jj].update({"NewExistentialFileName":ExNames[ii][jj]})
+Athenas = [[SYDs.Athena(**Athena_kwargs) for Athena_kwargs in Athena_kwargs_dicts_el] for Athena_kwargs_dicts_el in Athena_kwargs_dicts]
 
 # Test tiling with detector cloning
-# ex_times=np.logspace(2,4,num=2,endpoint=True,base=10.)
-ex_times=np.logspace(2.8,4.,num=40,endpoint=True,base=10.)
-cloning_params={"exposuretime":ex_times}
 tiling_t0=time.time()
-# detectors = SYU.TileSkyArea(Merger_kwargs,detectors=None,base_telescope_params=Athena_kwargs,cloning_params=cloning_params)
-detectors = SYU.TileSkyArea(Merger,detectors=None,base_telescope_params=Athena_kwargs,cloning_params=cloning_params)
+detectors_out = [[SYU.TileSkyArea(Merger,detectors=Athena,base_telescope_params=None,cloning_params=None) for Merger,Athena in zip(Mergers[ii],Athenas[ii])] for ii in range(len(Mergers))]
 tiling_t1=time.time()
-print("Total time for",len(detectors),"detectors:",tiling_t1-tiling_t0, "s")
+print("Total time for",np.sum([len(Mergers_el) for Mergers_el in Mergers]),"sources:",tiling_t1-tiling_t0, "s")
+
+# Reorder things a bit
+print("detectors_out:", detectors_out)
+detectors_out = [[d[0] for d in detectors_out_el] for detectors_out_el in detectors_out]
 
 # Plot something
-# SYU.PlotPhotonAccumulation(detectors, SaveFig=False, SaveFileName=None)
-SYU.PlotSourcePhotons(detectors, labels=None, SaveFig=False, SaveFileName=None)
+SYU.PlotPhotonAccumulation(detectors_out, SaveFig=False, SaveFileName=None)
+SYU.PlotSourcePhotons(detectors_out, labels=None, SaveFig=False, SaveFileName=None)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+# ########################### Example - Create and save source object from lisabeta file ###########################
+#
+# # Merger args
+# Merger_kwargs = {"ExistentialFileName":"/Users/baird/Documents/LabEx_PostDoc/SYNEX/Saved_Source_Dicts/IdeaPaperSystem_9d_base.dat"}
+# FileName="IdeaPaperSystem_9d"
+# Merger = SYU.GetSourceFromLisabetaData(FileName,**Merger_kwargs)
+#
+# MergerDict=dict(Merger.__dict__)
+# for key,val in MergerDict.items(): print(key,val)
+
+
+
+
+
+
+
+
+
+
+# ########################### Example - Tile using gwemopt on Cluster ###########################
+#
+# # Merger args
+# # Merger_kwargs = {"ExistentialFileName":"/Users/baird/Documents/LabEx_PostDoc/SYNEX/Saved_Source_Dicts/IdeaPaperSystem_9d_base.dat",
+# #                  "NewExistentialFileName":"/Users/baird/Documents/LabEx_PostDoc/SYNEX/Saved_Source_Dicts/IdeaPaperSystem_9d_dev.dat"}
+#
+# # Source
+# FileName = "IdeaPaperSystem_9d"
+# Merger_kwargs = {"ExistentialFileName":"/Users/baird/Documents/LabEx_PostDoc/SYNEX/Saved_Source_Dicts/TestSystem_9d_base.dat"}
+# Merger = SYU.GetSourceFromLisabetaData(FileName,**Merger_kwargs)
+#
+# # Base telescope args
+# t0 = '2034-01-01T00:00:00.00' # YYYY-MM-DDTHH:mm:SS.MS 01/01/2034
+# t = Time(t0, format='isot', scale='utc').gps
+# Athena_kwargs={"ExistentialFileName":"/Users/baird/Documents/LabEx_PostDoc/SYNEX/Saved_Telescope_Dicts/Athena_base.dat",
+#                 "NewExistentialFileName":"/Users/baird/Documents/LabEx_PostDoc/SYNEX/Saved_Telescope_Dicts/Athena_dev.dat",
+#                 "orbitFile":"/Users/baird/Documents/LabEx_PostDoc/SYNEX/orbit_files/Athena_20340601_728d_inc60_R750Mkm_ecc4_ArgPeri20_AscNode-10_phi020_P90_frozenFalse_base.dat",
+#                 "NeworbitFile":"/Users/baird/Documents/LabEx_PostDoc/SYNEX/orbit_files/Athena_20340601_728d_inc60_R750Mkm_ecc4_ArgPeri20_AscNode-10_phi020_P90_frozenFalse_dev.dat",
+#                 "telescope":"Athena",
+#                 "tilesType" : "moc", # "greedy", # "hierarchical", # "ranked", # moc/greedy/hierarchical/ranked/galaxy.
+#                 "timeallocationType" : "powerlaw", # "absmag" / "powerlaw" / "waw" / "manual" / "pem"
+#                 "scheduleType" : "greedy",
+#                 "doCalcTiles" : False, # Calculates the no. of "hierarchical" tiles based on sky area prob threashold and FoV
+#                 "Ntiles" : None, # 50, # Speific to tilesType=hierarchical and greedy. Needs to be set if "doCalcTiles"=False
+#                 "frozenAthena" : False, # False,
+#                 "exposuretime" : None, # 10000., # 6*60*60, # 60., #
+#                 "min_observability_duration" : None, # 10./3600., # in HOURS
+#                 "inc" : 60., # 60., # In DEGREES, incline of orbital plane normal to Sun-Earth axis.
+#                 "MeanRadius" : 750000000., # 750000000., # meters (from earth-orbit normal axis)
+#                 "semi_maj" : 750000000., # 750000000., # equivalent to MeanRadius axis ONLY IF we say we are really orbiting the centre and not the focal point
+#                 "eccentricity" : 0.4, # 0.8
+#                 "ArgPeriapsis" : 20., # 0., # In DEGREES, angle of point of closest approach to FOCAL POINT IN ORBIT PLANE
+#                 "AscendingNode" : -10., # 0., # In DEGREES
+#                 "phi_0" : 10., # 0., # in DEGREES, initial phase of Athena when measurments start
+#                 "period" : 90., # 180., # In days, for one complete halo orbit about L2
+#                 "gps_science_start" : t, # 1703721618.0, # 01/01/2034 00:00:00.000 UTC -- gps start time of science meaasurements
+#                 "mission_duration" : 2., # In years
+#                 "filt_change_time" : 0., # In seconds?
+#                 "overhead_per_exposure" : 0., # 0., #  In seconds?
+#                 "latitude" : 0., # None, # 20.7204,       ### None if we want a telesscopic orbit?
+#                 "longitude" : 0., # None, # -156.1552,    ### None if we want a telesscopic orbit?
+#                 "elevation" : 0., # None, # 3055.0,       ### None if we want a telesscopic orbit? GWEMOPT uses these for airmass calcs... Ask to raise flag for this?
+#                 "slew_rate" : 1., # None, # 1., # in deg/s -- Idea paper has 1 deg/sec
+#                 "horizon" : 0., # 30.,                    ### None if we want a telesscopic orbit?
+#                 "doMinimalTiling" : True, #  True,
+#                 "readout" : 0.0001, # 0.0001, #
+#                 "doSingleExposure" : True, # False
+#                 "iterativeOverlap" : 0., # 1.0, # Maybe set this to 0? I can't find where this is used...
+#                 "maximumOverlap" : 1.0,
+#                 "sat_sun_restriction" : 5., # 45.,
+#                 "sat_earth_constraint" : 5., # 30.,
+#                 "sat_moon_constraint" : 5., # 20.0,
+#                } ### What about doPerturbativeTiling? ### "doPerturbativeTiling" : True
+#
+#
+# # Check what's inside the ARF file
+# from astropy.io import fits
+# from SYNEX.SYNEX_Utils import SYNEX_PATH
+# ARF_file=SYNEX_PATH+"/XIFU_CC_BASELINECONF_2018_10_10.arf"
+# hdul = fits.open(ARF_file)
+# # hdul.info()
+# print("ARF file contents:",type(hdul))
+# ARF0 = hdul[0].data
+# print("ARF0 file contents:",type(ARF0),np.shape(ARF0),ARF0) # ,type(ARF0[0]),np.shape(ARF0[0]),ARF0[0:3])
+# ARF1 = hdul[1].data[:]
+# N = len(ARF1)
+# print("ARF1 file contents:",type(ARF1),np.shape(ARF1),type(ARF1[0]),np.shape(ARF1[0]),ARF1[0:3])
+#
+# # Test tiling with detector cloning
+# # ex_times=np.logspace(2,4,num=2,endpoint=True,base=10.)
+# ex_times=np.logspace(2.8,4.,num=40,endpoint=True,base=10.)
+# cloning_params={"exposuretime":ex_times}
+# tiling_t0=time.time()
+# # detectors = SYU.TileSkyArea(Merger_kwargs,detectors=None,base_telescope_params=Athena_kwargs,cloning_params=cloning_params)
+# detectors = SYU.TileSkyArea(Merger,detectors=None,base_telescope_params=Athena_kwargs,cloning_params=cloning_params)
+# tiling_t1=time.time()
+# print("Total time for",len(detectors),"detectors:",tiling_t1-tiling_t0, "s")
+#
+# # Plot something
+# # SYU.PlotPhotonAccumulation(detectors, SaveFig=False, SaveFileName=None)
+# SYU.PlotSourcePhotons(detectors, labels=None, SaveFig=False, SaveFileName=None)
 
 
 
@@ -1470,155 +1566,6 @@ SYU.PlotSourcePhotons(detectors, labels=None, SaveFig=False, SaveFileName=None)
 
 
 
-# ########################## Example - Load FoM as func of Mtot and plot lines of z with inlay waveforms ###########################
-# # Fags to normaize by Fisher elements?
-# NormaliseByFisher = False
-#
-# # Create options to Initialize the source object
-# LISA_kwargs = {"TDI":'TDIAET'}
-#
-# # NB Dec = beta and Ra = lambda
-# # Merger_kwargs = {"q": 1.1, "M": 5130000., "z": 3.11, "chi1": 0.9,
-# Merger_kwargs = {"q": 1.1, "M": 5130000., "z": 3.11, "chi1": 0.9,
-#         "chi2": 0.95, "beta" : -3.*np.pi/8., "lambda" : np.pi/3., "inc": np.pi/10., "psi": 0.4,  "approximant" : 'IMRPhenomHM'}
-#
-# # Initialize the detector object
-# LISA = SYDs.LISA(**LISA_kwargs)
-#
-# # Initialize the source object
-# Merger = SYSs.SMBH_Merger(**Merger_kwargs)
-#
-# # Load data
-# json_file = "FoMOverRange_z_M.json"
-# with open(json_file) as f:
-#     FoMOverRange = json.load(f)
-# f.close()
-# # print(data)
-#
-# # Check that you loaded a grided FoMOverRange file
-# if not FoMOverRange["IsGrid"]:
-#     raise ValueError("Loaded json file does not contain grid data. Check filename.")
-#
-# # Extract x data
-# M_tot_xs = FoMOverRange["M_xs"]
-# Red_xs = FoMOverRange["z_xs"]
-#
-# # Extract y data
-# SkyArea_ys = np.array(FoMOverRange["grid_ys"]) # * (180./np.pi)**2
-#
-# # Get dimensions
-# dims = np.shape(SkyArea_ys)
-#
-# # Loop over a handful of redshifts to plot lines
-# ChosenReds = []
-# for iRed in range(0,dims[1],5):
-#     ys = [y for y in SkyArea_ys[:,iRed]]
-#     label = r'z = %0.2f' % (Red_xs[iRed])
-#     if NormaliseByFisher:
-#         FisherElement = []
-#         for mass in M_tot_xs:
-#             from lisabeta.lisa.lisa_fisher import default_steps
-#             import lisabeta.lisa.lisa_fisher as lisa_fisher
-#             Par1 = "M"
-#             Par2 = "M"
-#             wftdi = SYU.GetSMBHGWDetection(Merger, LISA)
-#             freqs = wftdi[(2,2)]["freq"]
-#             BaseParamDict = {"M":mass}
-#             param_dict, _, _ = SYU.ClassesToParams(Merger, LISA, CollectionMethod="Fisher",**BaseParamDict)
-#             FisherElement.append(lisa_fisher.fisher_element(param_dict, Par1, Par2, default_steps[Par1], default_steps[Par2], freqs))
-#         plt.plot(M_tot_xs,ys/np.array(FisherElement),label=label)
-#     else:
-#         plt.plot(M_tot_xs,ys,label=label)
-#
-#     # store the redshift plotted for getting inlay positions later
-#     ChosenReds.append(Red_xs[iRed])
-#
-# # Find the ys positions of each mass inference plot to be inlay
-# i0 = np.where(abs(np.array(M_tot_xs)-3.e6)==min(abs(np.array(M_tot_xs)-3.e6)))[0][0]
-# i1 = np.where(abs(np.array(M_tot_xs)-1.e7)==min(abs(np.array(M_tot_xs)-1.e7)))[0][0]
-# i2 = np.where(abs(np.array(M_tot_xs)-8.e7)==min(abs(np.array(M_tot_xs)-8.e7)))[0][0]
-# iRed = np.where(abs(np.array(Red_xs)-ChosenReds[1])==min(abs(np.array(Red_xs)-ChosenReds[1])))[0][0]
-# MassYs = [0.067, 0.062, 0.42]# [SkyArea_ys[i0,iRed],
-#          #  SkyArea_ys[i1,iRed],
-#          #  SkyArea_ys[i2,iRed]]
-#
-# # Log scale for mass and axis labels
-# ax1 = plt.gca()
-# ax1.set_xscale('log')
-# plt.xlabel(r'$M_{tot} \; (M_{\odot})$')
-# plt.ylabel(r'$\Delta \Omega \; (\mathrm{sq. deg.})$')
-# if not NormaliseByFisher:
-#     plt.ylim([0.,3.])
-#     plt.xlim([8.e5,6.e8])
-#
-# # Add legend, grid and show
-# plt.legend(loc='upper right')
-# plt.grid()
-#
-# # Overlay inference plots
-# MtotTestedStrs = ["3e6", "1e7", "8e7"]
-# MtotTestedVals = [3.e6, 1.e7, 8.e7]
-# DataFilePath = "/Users/jonathonbaird/Documents/LabEx_PostDoc/SYNEX/inference_data/MassGridTest_NoMpi_"
-# jsonFilePath = "/Users/jonathonbaird/Documents/LabEx_PostDoc/SYNEX/inference_param_files/MassGridTest_NoMpi_"
-#
-# # Positioning arguments for inlay inference plots
-# pos_lefts = np.array([0.18, 0.45, 0.69])
-# pos_bottoms = np.array([0.6, 0.6, 0.4])
-# pos_widths = np.array([0.2, 0.2, 0.2])
-# pos_heights = np.array([0.2, 0.2, 0.2])
-#
-# # Arrow coords and widths
-# Arrow_xs = [2.e6, 2.e7, 1.01e8]
-# Arrow_ys = [1.9, 1.9, 1.1]
-# Arrow_dxs = [3.e6-Arrow_xs[0], 1.e7-Arrow_xs[1], 8.e7-Arrow_xs[2]]
-# Arrow_dys = [MassYs[0]-Arrow_ys[0], MassYs[1]-Arrow_ys[1], MassYs[2]-Arrow_ys[2]]
-#
-# # Add arrows
-# for iArrow in range(len(Arrow_xs)):
-#     mpl.pyplot.arrow(Arrow_xs[iArrow], Arrow_ys[iArrow], Arrow_dxs[iArrow], Arrow_dys[iArrow])
-#
-# for iMtot in range(len(MtotTestedStrs)):
-#     # Change base total mass
-#     kwargs = {"M":MtotTestedVals[iMtot]}
-#
-#     # Get LISA Noise and full waveforms
-#     SNR, freqs, h_full, Snvals = SYU.ComputeSNR(Merger, LISA, freqs=None, Lframe=False, ReturnAllVariable=True, **kwargs)
-#
-#     # Create new axes
-#     ax = plt.axes([pos_lefts[iMtot], pos_bottoms[iMtot], pos_widths[iMtot], pos_heights[iMtot]], facecolor='y')
-#
-#     h_full_tot = 0.
-#     Snvals_tot = 0.
-#     for chan in Snvals.keys():
-#         # # Plot waveform
-#         # plt.loglog(freqs, np.sqrt(h_full[chan]*np.conj(h_full[chan])))
-#         #
-#         # # Plot noise
-#         # plt.loglog(freqs, np.sqrt(Snvals[chan]))
-#
-#         # Totals
-#         h_full_tot += h_full[chan]
-#         Snvals_tot += Snvals[chan]
-#
-#     # Plot waveform
-#     plt.loglog(freqs, np.sqrt(h_full_tot*np.conj(h_full_tot)))
-#
-#     # Plot noise
-#     plt.loglog(freqs, np.sqrt(Snvals_tot))
-#
-#     # Labels and grid
-#     plt.grid()
-#     # plt.xlabel(labels[0])
-#     # plt.ylabel(labels[5])
-#
-#     # Ranges
-#     plt.ylim([1.e-23, 1.e-18])
-#
-#     # Move to position
-#     plt.xticks([])
-#     plt.yticks([])
-#
-# plt.show()
 
 
 
@@ -1627,568 +1574,6 @@ SYU.PlotSourcePhotons(detectors, labels=None, SaveFig=False, SaveFileName=None)
 
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-# ########################## Example - Load FoM as func of z and plot lines of Mtot with inlay waveforms ###########################
-# # Fags to normaize by Fisher elements?
-# NormaliseByFisher = False
-#
-# # Create options to Initialize the source object
-# LISA_kwargs = {"TDI":'TDIAET'}
-#
-# # NB Dec = beta and Ra = lambda
-# # Merger_kwargs = {"q": 1.1, "M": 5130000., "z": 3.11, "chi1": 0.9,
-# Merger_kwargs = {"q": 1.1, "M": 5130000., "z": 3.11, "chi1": 0.9,
-#         "chi2": 0.95, "beta" : -3.*np.pi/8., "lambda" : np.pi/3., "inc": np.pi/10., "psi": 0.4,  "approximant" : 'IMRPhenomHM'}
-#
-# # Initialize the detector object
-# LISA = SYDs.LISA(**LISA_kwargs)
-#
-# # Initialize the source object
-# Merger = SYSs.SMBH_Merger(**Merger_kwargs)
-#
-# # Load data
-# json_file = "FoMOverRange_z_M.json"
-# with open(json_file) as f:
-#     FoMOverRange = json.load(f)
-# f.close()
-# # print(data)
-#
-# # Check that you loaded a grided FoMOverRange file
-# if not FoMOverRange["IsGrid"]:
-#     raise ValueError("Loaded json file does not contain grid data. Check filename.")
-#
-# # Extract x data
-# M_tot_xs = FoMOverRange["M_xs"]
-# Red_xs = FoMOverRange["z_xs"]
-#
-# # Extract y data
-# SkyArea_ys = np.array(FoMOverRange["grid_ys"]) # * (180./np.pi)**2
-#
-# # Get dimensions
-# dims = np.shape(SkyArea_ys)
-#
-# # Loop over a handful of redshifts to plot lines
-# ChosenMasses = []
-# for iMass in range(0,dims[1],5):
-#     ys = [y for y in SkyArea_ys[iMass,:]]
-#     label = r'$M_{tot} = %d\times10^{6} \, M_{\odot}$' % (M_tot_xs[iMass]/1000000.)
-#     if NormaliseByFisher:
-#         FisherElement = []
-#         for z in Red_xs:
-#             from lisabeta.lisa.lisa_fisher import default_steps
-#             import lisabeta.lisa.lisa_fisher as lisa_fisher
-#             Par1 = "dist"
-#             Par2 = "dist"
-#             wftdi = SYU.GetSMBHGWDetection(Merger, LISA)
-#             freqs = wftdi[(2,2)]["freq"]
-#             BaseParamDict = {"z":z}
-#             param_dict, _, _ = SYU.ClassesToParams(Merger, LISA, CollectionMethod="Fisher",**BaseParamDict)
-#             FisherElement.append(lisa_fisher.fisher_element(param_dict, Par1, Par2, default_steps[Par1], default_steps[Par2], freqs))
-#         if Par1 == "dist":
-#             z_to_dist = cosmo.luminosity_distance(Merger.z).to("Mpc").value/Merger.z
-#             dist_to_z = 1./z_to_dist
-#             FisherElement = FisherElement/z_to_dist
-#         if Par2 == "dist":
-#             z_to_dist = cosmo.luminosity_distance(Merger.z).to("Mpc").value/Merger.z
-#             dist_to_z = 1./z_to_dist
-#             FisherElement = FisherElement/z_to_dist
-#         plt.plot(Red_xs,ys*np.array(FisherElement),label=label)
-#         plt.plot(Red_xs,ys,label=label)
-#     else:
-#         plt.plot(Red_xs,ys,label=label)
-#
-#     # store the redshift plotted for getting inlay positions later
-#     ChosenMasses.append(M_tot_xs[iMass])
-#
-# # Find the ys positions of each mass inference plot to be inlay
-# i0 = np.where(abs(np.array(Red_xs)-1.)==min(abs(np.array(Red_xs)-1.)))[0][0]
-# i1 = np.where(abs(np.array(Red_xs)-5.)==min(abs(np.array(Red_xs)-5.)))[0][0]
-# i2 = np.where(abs(np.array(Red_xs)-9.)==min(abs(np.array(Red_xs)-9.)))[0][0]
-# iRed = np.where(abs(np.array(M_tot_xs)-ChosenMasses[1])==min(abs(np.array(M_tot_xs)-ChosenMasses[1])))[0][0]
-# MassYs = [0.02, 0.1, 0.42]# [SkyArea_ys[i0,iRed],
-#          #  SkyArea_ys[i1,iRed],
-#          #  SkyArea_ys[i2,iRed]]
-#
-# # Log scale for mass and axis labels
-# ax1 = plt.gca()
-# plt.xlabel(r'z$ \; ( )$')
-# plt.ylabel(r'$\Delta \Omega \; (\mathrm{sq. deg.})$')
-# plt.ylim([0.,3.])
-# plt.xlim([0.5,9.5])
-#
-# # Add legend, grid and show
-# plt.legend(loc='upper right')
-# plt.grid()
-#
-# # Overlay inference plots
-# RedTestedStrs = ["1", "5", "9"]
-# RedTestedVals = [1., 5., 9.]
-# DataFilePath = "/Users/jonathonbaird/Documents/LabEx_PostDoc/SYNEX/inference_data/RedGridTest_NoMpi_"
-# jsonFilePath = "/Users/jonathonbaird/Documents/LabEx_PostDoc/SYNEX/inference_param_files/RedGridTest_NoMpi_"
-#
-# # Positioning arguments for inlay inference plots
-# pos_lefts = np.array([0.16, 0.2, 0.54])
-# pos_bottoms = np.array([0.3, 0.6, 0.46])
-# pos_widths = np.array([0.2, 0.2, 0.2])
-# pos_heights = np.array([0.2, 0.2, 0.2])
-#
-# # Arrow coords and widths
-# Arrow_xs = [1.5, 3., 6.5]
-# Arrow_ys = [0.75, 1.9, 1.4]
-# Arrow_dxs = [1.-Arrow_xs[0], 5.-Arrow_xs[1], 9.-Arrow_xs[2]]
-# Arrow_dys = [MassYs[0]-Arrow_ys[0], MassYs[1]-Arrow_ys[1], MassYs[2]-Arrow_ys[2]]
-#
-# # Add arrows
-# for iArrow in range(len(Arrow_xs)):
-#     mpl.pyplot.arrow(Arrow_xs[iArrow], Arrow_ys[iArrow], Arrow_dxs[iArrow], Arrow_dys[iArrow])
-#
-# for iRed in range(len(RedTestedStrs)):
-#     # Change base total mass
-#     kwargs = {"z":RedTestedVals[iRed]}
-#
-#     # Get LISA Noise and full waveforms
-#     SNR, freqs, h_full, Snvals = SYU.ComputeSNR(Merger, LISA, freqs=None, Lframe=False, ReturnAllVariable=True, **kwargs)
-#
-#     # Create new axes
-#     ax = plt.axes([pos_lefts[iRed], pos_bottoms[iRed], pos_widths[iRed], pos_heights[iRed]], facecolor='y')
-#
-#     h_full_tot = 0.
-#     Snvals_tot = 0.
-#     for chan in Snvals.keys():
-#         # # Plot waveform
-#         # plt.loglog(freqs, np.sqrt(h_full[chan]*np.conj(h_full[chan])))
-#         #
-#         # # Plot noise
-#         # plt.loglog(freqs, np.sqrt(Snvals[chan]))
-#
-#         # Totals
-#         h_full_tot += h_full[chan]
-#         Snvals_tot += Snvals[chan]
-#
-#     # Plot waveform
-#     plt.loglog(freqs, np.sqrt(h_full_tot*np.conj(h_full_tot)))
-#
-#     # Plot noise
-#     plt.loglog(freqs, np.sqrt(Snvals_tot))
-#
-#     # Labels and grid
-#     plt.grid()
-#     # plt.xlabel(labels[0])
-#     # plt.ylabel(labels[5])
-#
-#     # Ranges
-#     plt.ylim([1.e-23, 1.e-18])
-#
-#     # Move to position
-#     plt.xticks([])
-#     plt.yticks([])
-#
-# plt.show()
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-# ########################## Example - Load FoM as func of Mtot and plot lines of z with inlay infers ###########################
-# # Fags to normaize by Fisher elements?
-# NormaliseByFisher = True
-#
-# # Create options to Initialize the source object
-# LISA_kwargs = {"TDI":'TDIAET'}
-#
-# # NB Dec = beta and Ra = lambda
-# # Merger_kwargs = {"q": 1.1, "M": 5130000., "z": 3.11, "chi1": 0.9,
-# Merger_kwargs = {"q": 1.1, "M": 5130000., "z": 3.11, "chi1": 0.9,
-#         "chi2": 0.95, "beta" : -3.*np.pi/8., "lambda" : np.pi/3., "inc": np.pi/10., "psi": 0.4,  "approximant" : 'IMRPhenomHM'}
-#
-# # Initialize the detector object
-# LISA = SYDs.LISA(**LISA_kwargs)
-#
-# # Initialize the source object
-# Merger = SYSs.SMBH_Merger(**Merger_kwargs)
-#
-# # Load data
-# json_file = "FoMOverRange_z_M.json"
-# with open(json_file) as f:
-#     FoMOverRange = json.load(f)
-# f.close()
-# # print(data)
-#
-# # Check that you loaded a grided FoMOverRange file
-# if not FoMOverRange["IsGrid"]:
-#     raise ValueError("Loaded json file does not contain grid data. Check filename.")
-#
-# # Extract x data
-# M_tot_xs = FoMOverRange["M_xs"]
-# Red_xs = FoMOverRange["z_xs"]
-#
-# # Extract y data
-# SkyArea_ys = np.array(FoMOverRange["grid_ys"]) # * (180./np.pi)**2
-#
-# # Get dimensions
-# dims = np.shape(SkyArea_ys)
-#
-# # Loop over a handful of redshifts to plot lines
-# ChosenReds = []
-# for iRed in range(0,dims[1],5):
-#     ys = [y for y in SkyArea_ys[:,iRed]]
-#     label = r'z = %0.2f' % (Red_xs[iRed])
-#     if NormaliseByFisher:
-#         FisherElement = []
-#         for mass in M_tot_xs:
-#             from lisabeta.lisa.lisa_fisher import default_steps
-#             import lisabeta.lisa.lisa_fisher as lisa_fisher
-#             Par1 = "M"
-#             Par2 = "M"
-#             wftdi = SYU.GetSMBHGWDetection(Merger, LISA)
-#             freqs = wftdi[(2,2)]["freq"]
-#             BaseParamDict = {"M":mass}
-#             param_dict, _, _ = SYU.ClassesToParams(Merger, LISA, CollectionMethod="Fisher",**BaseParamDict)
-#             FisherElement.append(lisa_fisher.fisher_element(param_dict, Par1, Par2, default_steps[Par1], default_steps[Par2], freqs))
-#         plt.plot(M_tot_xs,ys/np.array(FisherElement),label=label)
-#     # plt.plot(M_tot_xs,ys,label=label)
-#
-#     # store the redshift plotted for getting inlay positions later
-#     ChosenReds.append(Red_xs[iRed])
-#
-# # Find the ys positions of each mass inference plot to be inlay
-# i0 = np.where(abs(np.array(M_tot_xs)-3.e6)==min(abs(np.array(M_tot_xs)-3.e6)))[0][0]
-# i1 = np.where(abs(np.array(M_tot_xs)-1.e7)==min(abs(np.array(M_tot_xs)-1.e7)))[0][0]
-# i2 = np.where(abs(np.array(M_tot_xs)-8.e7)==min(abs(np.array(M_tot_xs)-8.e7)))[0][0]
-# iRed = np.where(abs(np.array(Red_xs)-ChosenReds[1])==min(abs(np.array(Red_xs)-ChosenReds[1])))[0][0]
-# MassYs = [0.067, 0.062, 0.42]# [SkyArea_ys[i0,iRed],
-#          #  SkyArea_ys[i1,iRed],
-#          #  SkyArea_ys[i2,iRed]]
-#
-# # Log scale for mass and axis labels
-# ax1 = plt.gca()
-# ax1.set_xscale('log')
-# plt.xlabel(r'$M_{tot} \; (M_{\odot})$')
-# plt.ylabel(r'$\Delta \Omega \; (\mathrm{sq. deg.})$')
-# if not NormaliseByFisher:
-#     plt.ylim([0.,3.])
-#     plt.xlim([8.e5,6.e8])
-#
-# # Add legend, grid and show
-# plt.legend(loc='upper right')
-# plt.grid()
-#
-# # Overlay inference plots
-# MtotTestedStrs = ["3e6", "1e7", "8e7"]
-# DataFilePath = "/Users/jonathonbaird/Documents/LabEx_PostDoc/SYNEX/inference_data/MassGridTest_NoMpi_"
-# jsonFilePath = "/Users/jonathonbaird/Documents/LabEx_PostDoc/SYNEX/inference_param_files/MassGridTest_NoMpi_"
-#
-# # Positioning arguments for inlay inference plots
-# pos_lefts = np.array([0.18, 0.45, 0.69])
-# pos_bottoms = np.array([0.6, 0.6, 0.4])
-# pos_widths = np.array([0.2, 0.2, 0.2])
-# pos_heights = np.array([0.2, 0.2, 0.2])
-#
-# # Arrow coords and widths
-# Arrow_xs = [2.e6, 2.e7, 1.01e8]
-# Arrow_ys = [1.9, 1.9, 1.1]
-# Arrow_dxs = [3.e6-Arrow_xs[0], 1.e7-Arrow_xs[1], 8.e7-Arrow_xs[2]]
-# Arrow_dys = [MassYs[0]-Arrow_ys[0], MassYs[1]-Arrow_ys[1], MassYs[2]-Arrow_ys[2]]
-#
-# # Add arrows
-# for iArrow in range(len(Arrow_xs)):
-#     mpl.pyplot.arrow(Arrow_xs[iArrow], Arrow_ys[iArrow], Arrow_dxs[iArrow], Arrow_dys[iArrow])
-#
-# PostVals = {}
-# for iMtot in range(len(MtotTestedStrs)):
-#     DataFile = DataFilePath + MtotTestedStrs[iMtot] + ".h5"
-#     jsonFile = jsonFilePath + MtotTestedStrs[iMtot] + ".json"
-#     DataFileRaw = DataFile[:-3]+"_raw.h5"
-#
-#     # Make the inference plots from scratch since we don't pass back axes handles in the utils functions
-#     DataFileLocAndName = DataFile
-#     hist_n_bins=1000
-#     [infer_params, inj_param_vals, static_params, meta_data] = SYU.read_h5py_file(DataFileLocAndName)
-#     if not inj_param_vals: # Raw files at first didn't record this, so make sure it's there...
-#         # Get the inj values from the processed data file instead
-#         DataFileLocAndName_NotRaw = DataFileLocAndName[:-7] + ".h5"
-#         [_,inj_param_vals,_,_] = read_h5py_file(DataFileLocAndName_NotRaw)
-#     ndim = len(infer_params.keys())
-#     labels = list(infer_params.keys())
-#     if np.size(infer_params[labels[0]][0])>1:
-#         nsamples = len(infer_params[labels[0]][0])
-#     else:
-#         nsamples = len(infer_params[labels[0]])
-#     print("Posterior sample length: " + str(nsamples) + ", number of infered parameters: " + str(ndim))
-#     # Grab data for infered parameters
-#     data = np.empty([ndim,nsamples])
-#     SampleModes = []
-#     for ii in range(ndim):
-#         if np.size(infer_params[labels[0]][0])>1:
-#             data[ii][:] = infer_params[labels[ii]][0]
-#         else:
-#             data[ii][:] = infer_params[labels[ii]]
-#         histn,histbins = np.histogram(data[ii,:], bins=hist_n_bins)
-#         histbins = histbins[:-1] + 0.5*(histbins[2]-histbins[1]) # change from left bins edges to middle of bins
-#         mode = histbins[histn==max(histn)]
-#         if len(mode)>1:
-#             mode = mode[1] # Doe now take the first on the list, but if there are several we need to work out what to do there...
-#         SampleModes.append(mode)
-#     data = np.transpose(np.array(data)) # should have shape [nsamples, ndim]
-#
-#     # Get injected values
-#     InjParam_InjVals = []
-#     for key in infer_params.keys():
-#         InjParam_InjVals.append(inj_param_vals["source_params_Lframe"][key][0]) # Lframe is right.
-#
-#     # Sctter plot of labmda and beta posterior chains, marginalized over all other params
-#     ax = plt.axes([pos_lefts[iMtot], pos_bottoms[iMtot], pos_widths[iMtot], pos_heights[iMtot]], facecolor='y')
-#     plt.scatter(data[:,0], data[:,5], marker=".", linestyle="None")
-#
-#     # Add injected and mode vertical and horizontal lines
-#     ax.axvline(InjParam_InjVals[0], color="g", linestyle=":")
-#     ax.axvline(SampleModes[0], color="r", linestyle=":")
-#     ax.axhline(InjParam_InjVals[5], color="g", linestyle=":")
-#     ax.axhline(SampleModes[5], color="r", linestyle=":")
-#
-#     # Add points at injected and mode values
-#     ax.plot(InjParam_InjVals[0], InjParam_InjVals[5], "sg")
-#     ax.plot(SampleModes[0], SampleModes[5], "sr")
-#
-#     # Labels and grid
-#     plt.grid()
-#     plt.xlabel(labels[0])
-#     plt.ylabel(labels[5])
-#
-#     # Move to position
-#     plt.xticks([])
-#     plt.yticks([])
-#
-# plt.show()
-
-
-
-
-
-
-
-
-
-
-
-# ########################## Example - Load FoM as func of z and plot lines of Mtot with inlay infers ###########################
-# # Fags to normaize by Fisher elements?
-# NormaliseByFisher = True
-#
-# # Create options to Initialize the source object
-# LISA_kwargs = {"TDI":'TDIAET'}
-#
-# # NB Dec = beta and Ra = lambda
-# # Merger_kwargs = {"q": 1.1, "M": 5130000., "z": 3.11, "chi1": 0.9,
-# Merger_kwargs = {"q": 1.1, "M": 5130000., "z": 3.11, "chi1": 0.9,
-#         "chi2": 0.95, "beta" : -3.*np.pi/8., "lambda" : np.pi/3., "inc": np.pi/10., "psi": 0.4,  "approximant" : 'IMRPhenomHM'}
-#
-# # Initialize the detector object
-# LISA = SYDs.LISA(**LISA_kwargs)
-#
-# # Initialize the source object
-# Merger = SYSs.SMBH_Merger(**Merger_kwargs)
-#
-# # Load data
-# json_file = "FoMOverRange_z_M.json"
-# with open(json_file) as f:
-#     FoMOverRange = json.load(f)
-# f.close()
-# # print(data)
-#
-# # Check that you loaded a grided FoMOverRange file
-# if not FoMOverRange["IsGrid"]:
-#     raise ValueError("Loaded json file does not contain grid data. Check filename.")
-#
-# # Extract x data
-# M_tot_xs = FoMOverRange["M_xs"]
-# Red_xs = FoMOverRange["z_xs"]
-#
-# # Extract y data
-# SkyArea_ys = np.array(FoMOverRange["grid_ys"]) # * (180./np.pi)**2
-#
-# # Get dimensions
-# dims = np.shape(SkyArea_ys)
-#
-# # Loop over a handful of redshifts to plot lines
-# ChosenMasses = []
-# for iMass in range(0,dims[1],5):
-#     ys = [y for y in SkyArea_ys[iMass,:]]
-#     label = r'$M_{tot} = %d\times10^{6} \, M_{\odot}$' % (M_tot_xs[iMass]/1000000.)
-#     if NormaliseByFisher:
-#         FisherElement = []
-#         for z in Red_xs:
-#             from lisabeta.lisa.lisa_fisher import default_steps
-#             import lisabeta.lisa.lisa_fisher as lisa_fisher
-#             Par1 = "dist"
-#             Par2 = "dist"
-#             wftdi = SYU.GetSMBHGWDetection(Merger, LISA)
-#             freqs = wftdi[(2,2)]["freq"]
-#             BaseParamDict = {"z":z}
-#             param_dict, _, _ = SYU.ClassesToParams(Merger, LISA, CollectionMethod="Fisher",**BaseParamDict)
-#             FisherElement.append(lisa_fisher.fisher_element(param_dict, Par1, Par2, default_steps[Par1], default_steps[Par2], freqs))
-#         if Par1 == "dist":
-#             z_to_dist = cosmo.luminosity_distance(Merger.z).to("Mpc").value/Merger.z
-#             dist_to_z = 1./z_to_dist
-#             FisherElement = FisherElement/z_to_dist
-#         if Par2 == "dist":
-#             z_to_dist = cosmo.luminosity_distance(Merger.z).to("Mpc").value/Merger.z
-#             dist_to_z = 1./z_to_dist
-#             FisherElement = FisherElement/z_to_dist
-#         plt.plot(Red_xs,ys*np.array(FisherElement),label=label)
-#         plt.plot(Red_xs,ys,label=label)
-#     else:
-#         plt.plot(Red_xs,ys,label=label)
-#
-#     # store the redshift plotted for getting inlay positions later
-#     ChosenMasses.append(M_tot_xs[iMass])
-#
-# # Find the ys positions of each mass inference plot to be inlay
-# i0 = np.where(abs(np.array(Red_xs)-1.)==min(abs(np.array(Red_xs)-1.)))[0][0]
-# i1 = np.where(abs(np.array(Red_xs)-5.)==min(abs(np.array(Red_xs)-5.)))[0][0]
-# i2 = np.where(abs(np.array(Red_xs)-9.)==min(abs(np.array(Red_xs)-9.)))[0][0]
-# iRed = np.where(abs(np.array(M_tot_xs)-ChosenMasses[1])==min(abs(np.array(M_tot_xs)-ChosenMasses[1])))[0][0]
-# MassYs = [0.02, 0.1, 0.42]# [SkyArea_ys[i0,iRed],
-#          #  SkyArea_ys[i1,iRed],
-#          #  SkyArea_ys[i2,iRed]]
-#
-# # Log scale for mass and axis labels
-# ax1 = plt.gca()
-# plt.xlabel(r'z$ \; ( )$')
-# plt.ylabel(r'$\Delta \Omega \; (\mathrm{sq. deg.})$')
-# plt.ylim([0.,3.])
-# plt.xlim([0.5,9.5])
-#
-# # Add legend, grid and show
-# plt.legend(loc='upper right')
-# plt.grid()
-#
-# # Overlay inference plots
-# RedTestedStrs = ["1", "5", "9"]
-# DataFilePath = "/Users/jonathonbaird/Documents/LabEx_PostDoc/SYNEX/inference_data/RedGridTest_NoMpi_"
-# jsonFilePath = "/Users/jonathonbaird/Documents/LabEx_PostDoc/SYNEX/inference_param_files/RedGridTest_NoMpi_"
-#
-# # Positioning arguments for inlay inference plots
-# pos_lefts = np.array([0.16, 0.2, 0.54])
-# pos_bottoms = np.array([0.3, 0.6, 0.46])
-# pos_widths = np.array([0.2, 0.2, 0.2])
-# pos_heights = np.array([0.2, 0.2, 0.2])
-#
-# # Arrow coords and widths
-# Arrow_xs = [1.5, 3., 6.5]
-# Arrow_ys = [0.75, 1.9, 1.4]
-# Arrow_dxs = [1.-Arrow_xs[0], 5.-Arrow_xs[1], 9.-Arrow_xs[2]]
-# Arrow_dys = [MassYs[0]-Arrow_ys[0], MassYs[1]-Arrow_ys[1], MassYs[2]-Arrow_ys[2]]
-#
-# # Add arrows
-# for iArrow in range(len(Arrow_xs)):
-#     mpl.pyplot.arrow(Arrow_xs[iArrow], Arrow_ys[iArrow], Arrow_dxs[iArrow], Arrow_dys[iArrow])
-#
-# PostVals = {}
-# for iRed in range(len(RedTestedStrs)):
-#     DataFile = DataFilePath + RedTestedStrs[iRed] + ".h5"
-#     jsonFile = jsonFilePath + RedTestedStrs[iRed] + ".json"
-#     DataFileRaw = DataFile[:-3]+"_raw.h5"
-#
-#     # Make the inference plots from scratch since we don't pass back axes handles in the utils functions
-#     DataFileLocAndName = DataFile
-#     hist_n_bins=1000
-#     [infer_params, inj_param_vals, static_params, meta_data] = SYU.read_h5py_file(DataFileLocAndName)
-#     if not inj_param_vals: # Raw files at first didn't record this, so make sure it's there...
-#         # Get the inj values from the processed data file instead
-#         DataFileLocAndName_NotRaw = DataFileLocAndName[:-7] + ".h5"
-#         [_,inj_param_vals,_,_] = read_h5py_file(DataFileLocAndName_NotRaw)
-#     ndim = len(infer_params.keys())
-#     labels = list(infer_params.keys())
-#     if np.size(infer_params[labels[0]][0])>1:
-#         nsamples = len(infer_params[labels[0]][0])
-#     else:
-#         nsamples = len(infer_params[labels[0]])
-#     print("Posterior sample length: " + str(nsamples) + ", number of infered parameters: " + str(ndim))
-#     # Grab data for infered parameters
-#     data = np.empty([ndim,nsamples])
-#     SampleModes = []
-#     for ii in range(ndim):
-#         if np.size(infer_params[labels[0]][0])>1:
-#             data[ii][:] = infer_params[labels[ii]][0]
-#         else:
-#             data[ii][:] = infer_params[labels[ii]]
-#         histn,histbins = np.histogram(data[ii,:], bins=hist_n_bins)
-#         histbins = histbins[:-1] + 0.5*(histbins[2]-histbins[1]) # change from left bins edges to middle of bins
-#         mode = histbins[histn==max(histn)]
-#         if len(mode)>1:
-#             mode = mode[1] # Doe now take the first on the list, but if there are several we need to work out what to do there...
-#         SampleModes.append(mode)
-#     data = np.transpose(np.array(data)) # should have shape [nsamples, ndim]
-#
-#     # Get injected values
-#     InjParam_InjVals = []
-#     for key in infer_params.keys():
-#         InjParam_InjVals.append(inj_param_vals["source_params_Lframe"][key][0]) # Lframe is right.
-#
-#     # Sctter plot of labmda and beta posterior chains, marginalized over all other params
-#     ax = plt.axes([pos_lefts[iRed], pos_bottoms[iRed], pos_widths[iRed], pos_heights[iRed]], facecolor='y')
-#     plt.scatter(data[:,0], data[:,5], marker=".", linestyle="None")
-#
-#     # Add injected and mode vertical and horizontal lines
-#     ax.axvline(InjParam_InjVals[0], color="g", linestyle=":")
-#     ax.axvline(SampleModes[0], color="r", linestyle=":")
-#     ax.axhline(InjParam_InjVals[5], color="g", linestyle=":")
-#     ax.axhline(SampleModes[5], color="r", linestyle=":")
-#
-#     # Add points at injected and mode values
-#     ax.plot(InjParam_InjVals[0], InjParam_InjVals[5], "sg")
-#     ax.plot(SampleModes[0], SampleModes[5], "sr")
-#
-#     # Labels and grid
-#     plt.grid()
-#     plt.xlabel(labels[0])
-#     plt.ylabel(labels[5])
-#
-#     # Move to position
-#     plt.xticks([])
-#     plt.yticks([])
-#
-# plt.show()
 
 
 

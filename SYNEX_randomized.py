@@ -76,6 +76,8 @@ def draw_random_massratio(low=np.log10(0.1), high=np.log10(1.), size=1):
 CHECK_FOR_JSONS=True
 if is_master and CHECK_FOR_JSONS:
     JsonFiles = glob.glob(SYNEX_PATH+"/inference_param_files/Randomized_angles_spins_MRat_*.json")
+elif is_master:
+    JsonFiles=[]
 else:
     JsonFiles=None
 

@@ -234,41 +234,12 @@ class SMBH_Merger:
                 self.Lframe = value
             elif key=='lisabetaFile':
                 JsonFileLocAndName,H5FileLocAndName=SYU.CompleteLisabetaDataAndJsonFileNames(value)
-                if os.path.isfile(JsonFileLocAndName) and os.path.isfile(H5FileLocAndName):
-                    self.H5File=H5FileLocAndName
-                    self.JsonFile=JsonFileLocAndName
-                elif not os.path.isfile(JsonFileLocAndName) and os.path.isfile(H5FileLocAndName):
-                    print("Warning: H5 found but no- setting json and h5 filenames to None...")
-                    self.H5File=None
-                    self.JsonFile=None
-                elif os.path.isfile(JsonFileLocAndName) and not os.path.isfile(H5FileLocAndName):
-                    print("Warning: Json found but no h5- setting json and h5 filenames to None...")
-                    self.H5File=None
-                    self.JsonFile=None
-                else:
-                    print("Warning: no json or h5 found- setting both to None...")
+                self.H5File=H5FileLocAndName
+                self.JsonFile=JsonFileLocAndName
             elif key=='H5File':
-                if value!=None and os.path.isfile(value):
-                    self.H5File=value
-                else:
-                    print("Couldn't find H5 file. Searching elsewhere...")
-                    _,H5FileLocAndName=SYU.CompleteLisabetaDataAndJsonFileNames(value)
-                    if os.path.isfile(H5FileLocAndName):
-                        self.H5File=H5FileLocAndName
-                    else:
-                        print("Couldn't find H5 file in ../SYNEX/inference_data/ directory. Setting to None.")
-                        self.H5File=None
+                self.H5File=value
             elif key=='JsonFile':
-                if value!=None and os.path.isfile(value):
-                    self.JsonFile=value
-                else:
-                    print("Couldn't find Json file. Searching elsewhere...")
-                    JsonFileLocAndName,_=SYU.CompleteLisabetaDataAndJsonFileNames(value)
-                    if os.path.isfile(JsonFileLocAndName):
-                        self.JsonFile=JsonFileLocAndName
-                    else:
-                        print("Couldn't find Json file in ../SYNEX/inference_param_files/ directory. Setting to None.")
-                        self.JsonFile=None
+                self.JsonFile=value
             elif key=='sky_map':
                 self.sky_map=value
             elif key=='ExistentialFileName':

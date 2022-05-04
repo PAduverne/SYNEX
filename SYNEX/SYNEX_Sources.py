@@ -101,6 +101,9 @@ class SMBH_Merger:
 
         But both frames should be stored in h5 file... need to make sure we are reading in the right ones.
         """
+        # Set verbosity
+        self.verbose=kwargs_in.pop("verbose") if "verbose" in kwargs_in else True
+
         # Make sure to handle case where we are in cluster so we don't write too many files and exceed disk quota
         # self.use_mpi=kwargs["use_mpi"] if "use_mpi" in kwargs else False
         if MPI is not None:
@@ -138,7 +141,7 @@ class SMBH_Merger:
         if "MUTATED" in kwargs_in:
             # Check if we want to force savefile either way
             MUTATED=kwargs_in["MUTATED"]
-            print("Source mutation set to",MUTATED)
+            if self.verbose: print("Source mutation set to",MUTATED)
             del kwargs_in["MUTATED"]
             kwargs=kwargs_in
         elif "ExistentialFileName" in kwargs_in.keys() and os.path.isfile(kwargs_in["ExistentialFileName"]):
@@ -158,7 +161,7 @@ class SMBH_Merger:
                 ValueCheck = [value!=kwargs[key] for key,value in kwargs_in.items() if key in kwargs]
                 if any([ValueCheck]):
                     # Values are changed so warn user
-                    print("Loaded source dictionary will be mutated- mutation will be saved to a new file...")
+                    if self.verbose: print("Loaded source dictionary will be mutated- mutation will be saved to a new file...")
                     MUTATED = True
 
             # Set loaded dict values to kwargs
@@ -197,7 +200,7 @@ class SMBH_Merger:
                 self.psi = value
             elif key == "dist":
                 if hasattr(self,"dist"):
-                    print("Distance already defined by redshift, sticking with the redshift equivalent distance.")
+                    if self.verbose: print("Distance already defined by redshift, sticking with the redshift equivalent distance.")
                 else:
                     self.dist = value
                     self.z = z_at_value(cosmo.luminosity_distance, value*u.Mpc).value
@@ -263,39 +266,39 @@ class SMBH_Merger:
         # Make sure m1>m2 and q>1
         if hasattr(self,"m1") and hasattr(self,"m2"):
                 if self.m1<self.m2:
-                    print("Redefining m1>m2")
+                    if self.verbose: print("Redefining m1>m2")
                     tmp = self.m1
                     self.m1 = self.m2
                     self.m2 = tmp
         if hasattr(self,"q"):
                 if self.q<1.:
-                    print("Redefining q>=1")
+                    if self.verbose: print("Redefining q>=1")
                     self.q = 1./self.q
 
         # Default mass parameters if all four mass params are givien - include a warning
         if all([hasattr(self,"M"), hasattr(self,"q"), hasattr(self,"m1"), hasattr(self,"m2")]):
             if self.m1 + self.m2 != self.M or self.m1/self.m2 != self.q:
-                print("The total mass and/or mass ratio does not match the sum of m1 and m2. Redefining based on m1 and m2")
+                if self.verbose: print("The total mass and/or mass ratio does not match the sum of m1 and m2. Redefining based on m1 and m2")
                 self.M = self.m1 + self.m2
                 self.q = self.m1/self.m2
 
         # Default mass parameters if three mass params are givien - include a warning
         if all([hasattr(self,"m1"), hasattr(self,"m2"), hasattr(self,"M"), not hasattr(self,"q")]) or all([hasattr(self,"m1"), hasattr(self,"m2"), not hasattr(self,"M"), hasattr(self,"q")]):
             if hasattr(self,"M") and self.m1 + self.m2 != self.M:
-                    print("The total mass does not match the sum of m1 and m2. Redefining based on m1 and m2")
+                    if self.verbose: print("The total mass does not match the sum of m1 and m2. Redefining based on m1 and m2")
                     self.M = self.m1 + self.m2
                     self.q = self.m1/self.m2
             if hasattr(self,"q") and self.m1/self.m2 != self.q:
-                    print("The mass ratio does not match the sum of m1 and m2. Redefining based on m1 and m2")
+                    if self.verbose: print("The mass ratio does not match the sum of m1 and m2. Redefining based on m1 and m2")
                     self.M = self.m1 + self.m2
                     self.q = self.m1/self.m2
         if all([hasattr(self,"M"), hasattr(self,"q"), hasattr(self,"m1"), not hasattr(self,"m2")]) or all([hasattr(self,"M"), hasattr(self,"q"), not hasattr(self,"m1"), hasattr(self,"m2")]):
             if hasattr(self,"m1") and self.m1 != self.M*(self.q/(1.+self.q)):
-                    print("The primary mass m1 does not match the total mass and mass ratio. Redefining based on M and q")
+                    if self.verbose: print("The primary mass m1 does not match the total mass and mass ratio. Redefining based on M and q")
                     self.m1 = self.M*(self.q/(1.+self.q))
                     self.m2 = self.M/(1.+self.q)
             if hasattr(self,"m2") and self.m2 != self.M/(1.+self.q):
-                print("The secondary mass m2 does not match the total mass and mass ratio. Redefining based on M and q")
+                if self.verbose: print("The secondary mass m2 does not match the total mass and mass ratio. Redefining based on M and q")
                 self.m1 = self.M*(self.q/(1.+self.q))
                 self.m2 = self.M/(1.+self.q)
 
@@ -319,29 +322,29 @@ class SMBH_Merger:
                     self.m1 = self.q*self.m2
                     self.M = self.m1 + self.m2
         elif hasattr(self,"M"): # Set defaults if only one mass param is givien
-                print("Assuming q=1")
+                if self.verbose: print("Assuming q=1")
                 self.q = 1.
                 self.m1 = self.M/2.
                 self.m2 = self.m1
         elif hasattr(self,"q"):
-                print("Assuming m1=1e6 M_sol")
+                if self.verbose: print("Assuming m1=1e6 M_sol")
                 self.m1 = 1.e6
                 self.m2 = self.m1/self.q
                 self.M = self.m1+self.m2
         elif hasattr(self,"m1"):
-                print("Assuming q=1")
+                if self.verbose: print("Assuming q=1")
                 self.q = 1.
                 self.m2 = self.m1
                 self.M = self.m1+self.m2
         elif hasattr(self,"m2"):
-                print("Assuming q=1")
+                if self.verbose: print("Assuming q=1")
                 self.q = 1.
                 self.m1 = self.m2
                 self.M = self.m1+self.m2
 
         # Default mass parameters if no mass param is givien
         if all([not hasattr(self,"M"), not hasattr(self,"q"), not hasattr(self,"m1"), not hasattr(self,"m2")]):
-                print("Assuming q=1 and m1=1e6 M_sol")
+                if self.verbose: print("Assuming q=1 and m1=1e6 M_sol")
                 self.m1 = 1.e6
                 self.m2 = self.m1
                 self.M = self.m1 + self.m2
@@ -349,32 +352,32 @@ class SMBH_Merger:
 
         # Default base source parameters
         if not hasattr(self,"z"): # If this is true then distance is also missing. Set default to redshift 3.
-            print("Setting z=3")
+            if self.verbose: print("Setting z=3")
             self.z = 3.
             self.dist = cosmo.luminosity_distance(self.z).to("Mpc").value
         if not hasattr(self,"chi1"):
-            print("Setting chi1=0")
+            if self.verbose: print("Setting chi1=0")
             self.chi1 = 0.
         if not hasattr(self,"chi2"):
-                print("Setting chi2=0")
+                if self.verbose: print("Setting chi2=0")
                 self.chi2 = 0.
         if not hasattr(self,"lamda"):
-                print("Setting lambda=0")
+                if self.verbose: print("Setting lambda=0")
                 self.lamda = 0.
         if not hasattr(self,"beta"):
-                print("Setting beta=0")
+                if self.verbose: print("Setting beta=0")
                 self.beta = 0.
         if not hasattr(self,"inc"):
-                print("Setting inc=0")
+                if self.verbose: print("Setting inc=0")
                 self.inc= 0.
         if not hasattr(self,"psi"):
-                print("Setting psi=0")
+                if self.verbose: print("Setting psi=0")
                 self.psi = 0.
         if not hasattr(self,"Deltat"):
-                print("Setting Deltat=0")
+                if self.verbose: print("Setting Deltat=0")
                 self.Deltat = 0.
         if not hasattr(self,"phi"):
-                print("Setting phi=0")
+                if self.verbose: print("Setting phi=0")
                 self.phi = 0.
 
         # Default source parameters for waveform generation
@@ -432,12 +435,12 @@ class SMBH_Merger:
         if self.JsonFile and not self.H5File:
             JsonFileLocAndName,H5FileLocAndName=SYU.CompleteLisabetaDataAndJsonFileNames(self.JsonFile)
             if os.path.isfile(H5FileLocAndName):
-                print("Using similar H5 file found \n"+H5FileLocAndName)
+                if self.verbose: print("Using similar H5 file found \n"+H5FileLocAndName)
                 self.H5File=H5FileLocAndName
         if not self.JsonFile and self.H5File:
             JsonFileLocAndName,H5FileLocAndName=SYU.CompleteLisabetaDataAndJsonFileNames(self.H5File)
             if os.path.isfile(JsonFileLocAndName):
-                print("Using similar Json file found \n"+JsonFileLocAndName)
+                if self.verbose: print("Using similar Json file found \n"+JsonFileLocAndName)
                 self.JsonFile=JsonFileLocAndName
 
         # If we resurrected with mutation, keep a reference to where this class came from
@@ -461,8 +464,8 @@ class SMBH_Merger:
                 while os.path.isfile(self.ExistentialFileName):
                     ExistentialFileExt+=1
                     self.ExistentialFileName = "_".join(self.ExistentialFileName.split("_")[:-1]) + "_" + str(ExistentialFileExt) + "." + self.ExistentialFileName.split(".")[-1]
-            print("Successfully mutated source:", self.MutatedFromSourceFile)
-            print("New savefile for mutation:", self.ExistentialFileName)
+            if self.verbose: print("Successfully mutated source:", self.MutatedFromSourceFile)
+            if self.verbose: print("New savefile for mutation:", self.ExistentialFileName)
 
         # Check that Skymap file path exists - in case of subdirectory organizational architectures...
         # Json and H5 file paths already checked when names are completed, Existential and NewExistential checks at top of init function
@@ -589,7 +592,7 @@ class SMBH_Merger:
         # Check everything went as planned
         # non_zero_counts = nsamples*probs[np.where(probs>0)[0]]
         # _,minmax,mean,_,_,_=stats.describe(non_zero_counts)
-        # print(stats.describe(non_zero_counts), hp.nside2pixarea(nside,degrees=True), mean//10, nside)
+        # if self.verbose: print(stats.describe(non_zero_counts), hp.nside2pixarea(nside,degrees=True), mean//10, nside)
 
         # Get pixel locations
         pix_thetas, pix_phis = hp.pix2ang(nside, np.arange(npix))
@@ -606,7 +609,7 @@ class SMBH_Merger:
         if self.do3D:
             if not "dist" in infer_params:
                 # Check if 'dist' was included in inference
-                print("Distance inference data requested but not found in h5 file... Proceeding with do3D=False.")
+                if self.verbose: print("Distance inference data requested but not found in h5 file... Proceeding with do3D=False.")
                 self.do3D=False
             else:
                 # Included- bin posteriors according to pixels. Easiest to do with pandas
@@ -730,15 +733,15 @@ class SMBH_Merger:
             chi1_y=0.
             chi2_x=0.
             chi2_y=0. # assuming aligned spins with orbital momentum...
-            # print(type(phi_c), type(self.Deltat), type(self.m1*pyconstants.MSUN_SI), type(self.m2*pyconstants.MSUN_SI), type(fstart22), type(self.dist*1e6*pyconstants.PC_SI), type(self.inc), type(chi1_x), type(chi1_y), type(self.chi1), type(chi2_x), type(chi2_y), type(self.chi2), type(modearray), type(seobflags))
-            # print((phi_c), (self.Deltat), (self.m1*pyconstants.MSUN_SI), (self.m2*pyconstants.MSUN_SI), (fstart22))
-            # print((self.dist*1e6*pyconstants.PC_SI), (self.inc))
-            # print(chi1_x, chi1_y, self.chi1)
-            # print(chi2_x, chi2_y, self.chi2)
-            # print((modearray), (seobflags))
+            # if self.verbose: print(type(phi_c), type(self.Deltat), type(self.m1*pyconstants.MSUN_SI), type(self.m2*pyconstants.MSUN_SI), type(fstart22), type(self.dist*1e6*pyconstants.PC_SI), type(self.inc), type(chi1_x), type(chi1_y), type(self.chi1), type(chi2_x), type(chi2_y), type(self.chi2), type(modearray), type(seobflags))
+            # if self.verbose: print((phi_c), (self.Deltat), (self.m1*pyconstants.MSUN_SI), (self.m2*pyconstants.MSUN_SI), (fstart22))
+            # if self.verbose: print((self.dist*1e6*pyconstants.PC_SI), (self.inc))
+            # if self.verbose: print(chi1_x, chi1_y, self.chi1)
+            # if self.verbose: print(chi2_x, chi2_y, self.chi2)
+            # if self.verbose: print((modearray), (seobflags))
             # I assume it takes parameters in the source frame...?
             # if self.Lframe: # second input var (delta_t) was set to 1.5... can we increase this? Should 1st parameter be self.psi?
-            #     print("Lframe; rescaling to source fram using z =",self.z)
+            #     if self.verbose: print("Lframe; rescaling to source fram using z =",self.z)
             #     hplus, hcross, hIlm, hJlm, dyn_Low, dyn_Hi, dyn_all, t_vec_modes, hP22_amp, hP22_phase, hP21_amp, hP21_phase, hP33_amp, hP33_phase, hP44_amp, hP44_phase, hP55_amp, hP55_phase, alphaJ2P, betaJ2P, gammaJ2P, AttachPars = lalsim.SimIMRSpinPrecEOBWaveformAll(self.phi, 1.5, self.m1*pyconstants.MSUN_SI/(1.+self.z), self.m2*pyconstants.MSUN_SI/(1.+self.z), fstart22/(1.+self.z), self.dist*1e6*pyconstants.PC_SI, self.inc, chi1_x, chi1_y, self.chi1, chi2_x, chi2_y , self.chi2, modearray, seobflags)
             # else:
             #     hplus, hcross, hIlm, hJlm, dyn_Low, dyn_Hi, dyn_all, t_vec_modes, hP22_amp, hP22_phase, hP21_amp, hP21_phase, hP33_amp, hP33_phase, hP44_amp, hP44_phase, hP55_amp, hP55_phase, alphaJ2P, betaJ2P, gammaJ2P, AttachPars = lalsim.SimIMRSpinPrecEOBWaveformAll(self.phi, 1.5, self.m1*pyconstants.MSUN_SI, self.m2*pyconstants.MSUN_SI, fstart22, self.dist*1e6*pyconstants.PC_SI, self.inc, chi1_x, chi1_y, self.chi1, chi2_x, chi2_y , self.chi2, modearray, seobflags)
@@ -824,7 +827,7 @@ class SMBH_Merger:
             # Start time - LISABETA takes the Lframe flag appropriately. Need to convert to *SOURCE* frame
             param_dict,waveform_params,extra_params = SYU.ClassesToParams(self,detector=None,**EM_kwargs) ## Do we need to change the approximant here from the saved one in source to EOB one?
             waveform_params["DeltatL_cut"] = None # Need to set this to 0 to get the remaining signal for photon phases
-            # print("Params from 'ClassesToParams':",param_dict,waveform_params,extra_params)
+            # if self.verbose: print("Params from 'ClassesToParams':",param_dict,waveform_params,extra_params)
             if param_dict["m1"]==param_dict["m2"]:
                 param_dict["m1"] = param_dict["m1"]*(1.+1e-6) # lisabeta needs q>1, so just adjust lightly so that m1>m2...
             waveform_params["modes"]=[(2,2)] # cumulative SNR functions work for 22 mode only right now
@@ -836,7 +839,7 @@ class SMBH_Merger:
             # Return is always Lframe, now decide if this is larger or smaller than the cut time
             t_start_flux/=(1.+self.z) # This is slightly off - can you look up their relation between time and frequency they quote from the paper? Bottom of page 3
             if self.DeltatL_cut != None:
-                print(r"T$_{SNR=10}$",(1.+self.z)*t_start_flux/(24.*60.*60.),r"t$_{cut}$", self.DeltatL_cut/(24.*60.*60.))
+                if self.verbose: print(r"T$_{SNR=10}$",(1.+self.z)*t_start_flux/(24.*60.*60.),r"t$_{cut}$", self.DeltatL_cut/(24.*60.*60.))
                 if (1.+self.z)*t_start_flux<self.DeltatL_cut:
                     t_start_flux = self.DeltatL_cut # Because we don't start at a time that is before the sky area is provided
                 # Here we can either code the latency time to be the period of the GW wave or we can start when the period is comparable with the latency time requested...
@@ -887,7 +890,7 @@ class SMBH_Merger:
         integrand = [dE_bins[ii]*ARF_func[ii]*((E_bins[ii]+E_bins[ii+1])/2.)**(-1.*gamma) for ii in range(N)]
         integral = sum(integrand)/(1.+self.z) # We need another 1/(1+z) here otherwise the photon rate is too high. Maybe this is a redshifting of energy bins?
         CTR_Data["CTR"] = [integral*el for el in CTR_Data["xray_phi_0"]] # CTR
-        # print("Integral checks:",np.mean(integrand),integral,1.+self.z)
+        # if self.verbose: print("Integral checks:",np.mean(integrand),integral,1.+self.z)
         # import matplotlib.pyplot as plt
         # EBinsPlot=[((E_bins[ii]+E_bins[ii+1])/2.) for ii in range(N)]
         # plt.loglog(EBinsPlot,integrand,label=r"Convolution")
@@ -941,7 +944,7 @@ class SMBH_Merger:
         if "EM_Flux_Data" in MyExistentialDict: del MyExistentialDict["EM_Flux_Data"]
 
         # Save to file...
-        print("Saving source attributes to:",self.ExistentialFileName)
+        if self.verbose: print("Saving source attributes to:",self.ExistentialFileName)
         with open(self.ExistentialFileName, 'wb') as f:
             pickle.dump(MyExistentialDict, f)
-        print("Done.")
+        if self.verbose: print("Done.")

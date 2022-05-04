@@ -89,7 +89,7 @@ if is_master and len(JsonFiles)==0:
     rand_massratios = draw_random_massratio(size=n)
 
     # Create options to Initialize the detector object
-    LISA_base_kwargs = {"TDI":'TDIAET'}
+    LISA_base_kwargs = {"TDI":'TDIAET',"verbose":False}
 
     # Initialize the detector object
     LISA = SYDs.LISA(**LISA_base_kwargs)
@@ -105,6 +105,7 @@ if is_master and len(JsonFiles)==0:
             "chi2": 0.95, "beta" : -3.*np.pi/8., "lambda" : np.pi/3.,
             "inc": np.pi/10., "psi": 0.4,  "approximant" : 'IMRPhenomHM',
             "Lframe":True, "DeltatL_cut":None,
+            "verbose":False,
             "ExistentialFileName":"/Users/baird/Documents/LabEx_PostDoc/SYNEX/Saved_Source_Dicts/TestSystem_9d_base.dat",
             "NewExistentialFileName":"/Users/baird/Documents/LabEx_PostDoc/SYNEX/Saved_Source_Dicts/TestSystem_9d_tmp.dat"}
 
@@ -160,7 +161,7 @@ if is_master and len(JsonFiles)==0:
             source=SYSs.SMBH_Merger(**Merger_kwargs)
 
             # Write params to json file
-            SYU.WriteParamsToJson(source,LISA,inference_params,True,**RunTimekwargs)
+            SYU.WriteParamsToJson(source,LISA,inference_params,is_master,**RunTimekwargs)
             JsonFiles+=[source.JsonFile]
 
 

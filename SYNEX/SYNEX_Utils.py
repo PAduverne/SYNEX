@@ -922,8 +922,11 @@ def RunInference(source_or_kwargs, detector, inference_params, PlotInference=Fal
 def WriteParamsToJson(source, detector, inference_params, IsMaster=True, **RunTimekwargs):
     """
     Function to save source and GW detector params to json file for lisabeta inference runs,
-    using the saved jsoon file name in source class.
+    using the saved json file name in source class.
     """
+    # Only verbose if both classes are verbose
+    verbose=source.verbose and detector.verbose
+
     # See if we have output filenames to asign
     if "out_file" in RunTimekwargs:
         JsonFile,H5File=CompleteLisabetaDataAndJsonFileNames(RunTimekwargs["out_file"])
@@ -940,7 +943,7 @@ def WriteParamsToJson(source, detector, inference_params, IsMaster=True, **RunTi
         JsonFile,H5File=CompleteLisabetaDataAndJsonFileNames(JsonOrOutFile)
         source.JsonFile=JsonFile
         source.H5File=H5File
-        print("Creating default json name:",JsonFile)
+        if verbose: print("Creating default json name:",JsonFile)
     elif source.JsonFile==None and source.H5File!=None:
         JsonFile,H5File=CompleteLisabetaDataAndJsonFileNames(source.H5File)
         source.JsonFile=JsonFile
@@ -951,7 +954,7 @@ def WriteParamsToJson(source, detector, inference_params, IsMaster=True, **RunTi
         source.H5File=H5File
     elif source.JsonFile!=None and source.H5File!=None:
         JsonFile,H5File=CompleteLisabetaDataAndJsonFileNames(source.JsonFile)
-        if source.H5File!=H5File:
+        if source.H5File!=H5File and verbose:
             print("Json and H5 filenames are not matched... There is currently no check that the paths are ok here so make sure to pass the entire path if doing this.")
 
     # import some default parameters defined the ptemcee handler script
@@ -1002,7 +1005,7 @@ def WriteParamsToJson(source, detector, inference_params, IsMaster=True, **RunTi
 
     # Write the json file only if master node or not mpi
     if IsMaster:
-        print("Writting params to",source.JsonFile)
+        if verbose: print("Writting params to",source.JsonFile)
         with open(source.JsonFile, 'w') as f:
             json.dump(json_default_dict, f, indent=2)
         f.close()
@@ -2022,7 +2025,7 @@ def GetCoverageInfo(go_params, map_struct, tile_structs, coverage_struct, detect
         print(SourceTile_prob2,"\n")
         print("Source tile accumulated p:",SourceTile_accum_prob1,SourceTile_accum_prob2)
 
-    print("Coverage stuct exposures within range:",Time(cov_data[0,2],format='mjd', scale='utc').isot,Time(cov_data[-1,2],format='mjd', scale='utc').isot)
+    if len(cov_source_tile)>0: print("Coverage stuct exposures within range:",Time(cov_data[0,2],format='mjd', scale='utc').isot,Time(cov_data[-1,2],format='mjd', scale='utc').isot)
     print("start times checks:",Time(source.gpstime, format='gps', scale='utc').isot,Time(go_params["gpstime"], format='gps', scale='utc').isot)
 
     # Now add cuts to coverage info depending on photon flux
@@ -3473,7 +3476,7 @@ def PlotPhotonAccumulation(detectors, SaveFig=False, SaveFileName=None):
             Xs=[ExT0s/86400. for ExT0s in detector.detector_source_coverage["Source tile start times (s)"]]
             Xs_Widths=[ExTs/86400. for ExTs in detector.detector_source_coverage["Source tile exposuretimes (s)"]]
             Ys=list(np.cumsum(detector.detector_source_coverage["Source photon counts"]))
-            
+
             # Plot accumulated photons is source was captured
             if len(detector.detector_source_coverage["Source tile start times (s)"])>0:
                 if detector.detector_config_struct["cloning value"]!="DeltatL_cut" and detector.detector_config_struct["cloning value"]!=None:

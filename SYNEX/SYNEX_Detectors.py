@@ -36,6 +36,10 @@ class LISA:
     """
 
     def __init__(self, **kwargs):
+        # Set verbosity
+        self.verbose=kwargs.pop("verbose") if "verbose" in kwargs else True
+
+        # Now unpack other kwargs -- Need to flatten this block of code cause its ugly af
         for key,value in kwargs.items():
             if key == 'tmin':
                 self.tmin = value
@@ -143,6 +147,8 @@ class Athena:
             params in defaults that aren't in the savefile and add their defaults. This is why 'Ntiles'
             isn't being changed when you load older savefiles and add it to them.
         """
+        # Set verbosity
+        self.verbose=kwargs.pop("verbose") if "verbose" in kwargs else True
 
         # Default is not to recompute tesselation if the saved '.tess' file exists
         MUTATED=False
@@ -247,7 +253,7 @@ class Athena:
             elif key in detector_config_struct:
                 detector_config_struct[key]=value
             elif key not in ["NewExistentialFileName","NeworbitFile"]: # Kept like this in case more non-gwemopt keys are added
-                print("Setting new keys '",key,"' in detector_config_struct...")
+                if self.verbose: print("Setting new keys '",key,"' in detector_config_struct...")
                 print_reminder = True
                 detector_config_struct[key]=value
 
@@ -289,7 +295,7 @@ class Athena:
 
         # Get/Calculate orbit
         if not detector_config_struct["orbitFile"]:
-            print("Creating new orbit file name...")
+            if self.verbose: print("Creating new orbit file name...")
             t = Time(detector_config_struct["gps_science_start"], format='gps', scale='utc').isot
             f=SYNEX_PATH+"/orbit_files/"
             pathlib.Path(f).mkdir(parents=True, exist_ok=True)
@@ -377,8 +383,8 @@ class Athena:
                 while os.path.isfile(self.ExistentialFileName):
                     ExistentialFileExt+=1
                     self.ExistentialFileName = "_".join(self.ExistentialFileName.split("_")[:-1]) + "_" + str(ExistentialFileExt) + "." + self.ExistentialFileName.split(".")[-1]
-            print("Successfully mutated detector:", self.MutatedFromDetectorFile)
-            print("New savefile for mutation:", self.ExistentialFileName)
+            if self.verbose: print("Successfully mutated detector:", self.MutatedFromDetectorFile)
+            if self.verbose: print("New savefile for mutation:", self.ExistentialFileName)
 
         # Check that file paths exist - in case of subdirectory organizational architectures...
         # Tesselation path already checked in 'SYU.GWEMOPTPathChecks()'
@@ -393,7 +399,7 @@ class Athena:
         self.ARF_file_loc_name=SYNEX_PATH+"/XIFU_CC_BASELINECONF_2018_10_10.arf"
 
         # Issue reminder of where to find list of gwemopt variables and flags
-        if print_reminder:
+        if print_reminder and self.verbose:
             print("Some keys given at initiatiation of Athena class are not contained in gwemop params - see 'SYNEX/gwemopt_defaults.py' for full list of possible field names.")
 
     def ComputeTesselation(self):
@@ -462,7 +468,7 @@ class Athena:
         else:
             TimeToMerger = input_params["waveform_params"]["DeltatL_cut"]
         n_times = int(-TimeToMerger//self.T_lat)
-        print(n_times, "tiles in remaining time to merger...")
+        if self.verbose: print(n_times, "tiles in remaining time to merger...")
 
         # Sort the dictionary to contain just the tiles we want
         Extra_keys = ["Tile Strat", "overlap", "LISA Data File", "source_EM_properties", "tile_structs", "go_params", "map_struct"]
@@ -509,7 +515,7 @@ class Athena:
             import random
             CTR_bg = [7.4e-5]*len(CTR_merger) # 7.4e-5
             n_bg_photons = int(np.trapz(CTR_bg,xray_time_merger))
-            print(n_bg_photons, "background photons added to the whole x-ray timeseries...")
+            if self.verbose: print(n_bg_photons, "background photons added to the whole x-ray timeseries...")
             max_time = -xray_time_merger[0]
             time_lim = [time-xray_time_merger[0] for (time,CTR) in zip(xray_time_merger,CTR_merger) if CTR>0]
             time_lim = time_lim[-1]
@@ -587,7 +593,7 @@ class Athena:
                 else:
                     detection_p_val = 1.-(1.-exposure_p_val)
                     tile_detection_p_val = 1.-(1.-tile_p_val)
-                print("Tile:", tile, self.n_exposures, n_photons, len(exposure_phi_is), tile_kuiper, tile_p_val, exposure_kuiper, exposure_p_val, detection_p_val)
+                if self.verbose: print("Tile:", tile, self.n_exposures, n_photons, len(exposure_phi_is), tile_kuiper, tile_p_val, exposure_kuiper, exposure_p_val, detection_p_val)
 
             # Update the traced properties
             self.tile_kuiper_p_val_trace.append(tile_p_val)
@@ -603,9 +609,9 @@ class Athena:
             te = ts + self.T_lat # times are in seconds to merger
 
         # exposures
-        print(self.n_exposures, "exposures of source by tiles", self.exposure_tiles, "using", TileDict["Tile Strat"], "tiling strategy.")
-        # print("Total photons:", sum(self.n_photons), "with", sum(self.n_photons[:-1]), "exposure photons and", self.n_photons[-1],"background photons.")
-        print("Accumulated photons during on-source exposures (S+B):", sum(self.n_photons))
+        if self.verbose: print(self.n_exposures, "exposures of source by tiles", self.exposure_tiles, "using", TileDict["Tile Strat"], "tiling strategy.")
+        # if self.verbose: print("Total photons:", sum(self.n_photons), "with", sum(self.n_photons[:-1]), "exposure photons and", self.n_photons[-1],"background photons.")
+        if self.verbose: print("Accumulated photons during on-source exposures (S+B):", sum(self.n_photons))
 
     def RunSIXTE(self,TileJsonFile):
         # Figure out maximum times we can do in the time available
@@ -661,7 +667,7 @@ class Athena:
         del MyExistentialDict["detector_config_struct"]["orbit_dict"]
         del MyExistentialDict["detector_config_struct"]["tesselation"]
         # Save to file...
-        print("Saving detector attributes to:",self.ExistentialFileName)
+        if self.verbose: print("Saving detector attributes to:",self.ExistentialFileName)
         with open(self.ExistentialFileName, 'wb') as f:
             pickle.dump(MyExistentialDict, f)
-        print("Done.")
+        if self.verbose: print("Done.")

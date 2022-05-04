@@ -166,9 +166,10 @@ if is_master and len(JsonFiles)==0:
 
 
 # Return the list of jsonfiles to shell script
-for JsonFile in JsonFiles: print(JsonFile)
-comm_global.Barrier()
-sys.exit(0)
+if is_master:
+    for JsonFile in JsonFiles: print(JsonFile)
+if use_mpi: comm_global.Barrier()
+if use_mpi: sys.exit(0)
 
 # # Spread the json file names and locations across all processes
 # if use_mpi:

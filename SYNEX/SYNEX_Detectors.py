@@ -218,9 +218,8 @@ class Athena:
                     # Check if we will modify something later
                     ValueCheck1 = [value!=detector_go_params[key] for key,value in kwargs.items() if key in detector_go_params]
                     ValueCheck2 = [value!=detector_config_struct[key] for key,value in kwargs.items() if key in detector_config_struct]
-                    KeysCheck1 = [key not in detector_go_params.keys() for key in kwargs.keys()]
-                    KeysCheck2 = [key not in detector_config_struct.keys() for key in kwargs.keys()]
-                    if any([ValueCheck1]) or any([ValueCheck2]) or any([KeysCheck1]) or any([KeysCheck2]):
+                    KeysCheck = [(key not in detector_go_params) and (key not in detector_config_struct) for key in kwargs.keys()]
+                    if any(ValueCheck1+ValueCheck2+KeysCheck):
                         # Values are changed or new keys added; recompute tesselation later even if the '.tess' file already exists
                         MUTATED=True
                 # Check now if there is anything being changed that we can't find in the older saved dict
@@ -335,7 +334,7 @@ class Athena:
         else:
             SAVETOFILE=False
         import SYNEX.segments_athena as segs_a
-        detector_config_struct = segs_a.get_telescope_orbit(detector_config_struct,SAVETOFILE=SAVETOFILE)
+        detector_config_struct = segs_a.get_telescope_orbit(detector_config_struct,SAVETOFILE=SAVETOFILE,verbose=self.verbose)
 
         # Set as class attributes
         self.detector_go_params = detector_go_params

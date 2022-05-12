@@ -1682,7 +1682,7 @@ def GetSourceFromLisabetaData(FileName, **kwargs):
 #                 ##########################################
 
 
-def TileSkyArea(source_or_kwargs,detectors=None,base_telescope_params=None,cloning_params=None):
+def TileSkyArea(source_or_kwargs,detectors=None,base_telescope_params=None,cloning_params=None,verbose=True):
     """
     Global function to tile skyarea. This will handle all extra tiling we might add,
     including handling series inputs over lists of sources and/or detectors.
@@ -1710,7 +1710,7 @@ def TileSkyArea(source_or_kwargs,detectors=None,base_telescope_params=None,cloni
             if detectors==None:
                 base_telescope_params=SYDs.Athena().__dict__
             elif isinstance(detectors,list):
-                if len(detectors)>1:
+                if len(detectors)>1 and verbose:
                     print("Cloning first detector in list only...")
                 base_telescope_params=detectors[0].__dict__
             else:
@@ -1742,20 +1742,22 @@ def TileSkyArea(source_or_kwargs,detectors=None,base_telescope_params=None,cloni
             for ii in range(CPU_STARTs[MPI_rank],CPU_ENDs[MPI_rank]): dict_list[ii-CPU_STARTs[MPI_rank]].update({"ExistentialFileName":BaseExFileName,
                           "NewExistentialFileName":".".join(BaseExFileName.split(".")[:-1])+"_"+key+"_"+str(ii+1)+"."+BaseExFileName.split(".")[-1],
                           key:values[ii],
+                          "verbose":verbose,
                           "cloning key":key,
                           "cloning value":values[ii],
                           "telescope":BaseTelescopeName+"_"+key+"_"+str(ii+1)})
-            if MPI_size>1: print("CPU",MPI_rank+1,"/",MPI_size,"has",len(dict_list),"detector objects for",key,flush=True)
+            if MPI_size>1 and verbose: print("CPU",MPI_rank+1,"/",MPI_size,"has",len(dict_list),"detector objects for",key,flush=True)
             detectors+=[SYDs.Athena(**dict_ii) for dict_ii in dict_list]
             out_dirs+=[key]*len(dict_list)
-        if MPI_size>1: print("CPU",MPI_rank+1,"/",MPI_size,"has",len(dict_list),"total detector objects.",flush=True)
+        if MPI_size>1 and verbose: print("CPU",MPI_rank+1,"/",MPI_size,"has",len(dict_list),"total detector objects.",flush=True)
     else:
         # No cloning params so see if we have input detectors
         if detectors==None and base_telescope_params==None:
-            detectors=[SYDs.Athena()] if MPI_rank==0 else None
+            detectors=[SYDs.Athena(**{"verbose":verbose})] if MPI_rank==0 else None
         elif detectors==None and base_telescope_params!=None:
-            detectors=[SYDs.Athena(**base_telescope_params)] if MPI_rank==0 else None
+            detectors=[SYDs.Athena(**dict(base_telescope_params,**{"verbose":verbose}))] if MPI_rank==0 else None
         elif detectors!=None and not isinstance(detectors,list):
+            setattr(detectors,"verbose",verbose)
             detectors=[detectors] if MPI_rank==0 else None # if only one detector given
         elif detectors!=None and isinstance(detectors,list):
              # List of detectors given: split over all cpu.
@@ -1764,7 +1766,9 @@ def TileSkyArea(source_or_kwargs,detectors=None,base_telescope_params=None,cloni
             CoreLenVals=[NValsPerCore+1 if ii<len(values)%MPI_size else NValsPerCore for ii in range(MPI_size)]
             CPU_ENDs=list(np.cumsum(CoreLenVals))
             CPU_STARTs=[0]+CPU_ENDs[:-1]
-            detectors=[detectors[ii] for ii in range(CPU_STARTs[MPI_rank],CPU_ENDs[MPI_rank])]
+            detectors = [detectors[ii] for ii in range(CPU_STARTs[MPI_rank],CPU_ENDs[MPI_rank])]
+            for d in detectors: setattr(d,"verbose",verbose)
+            # detectors=[setattr(detectors[ii],"verbose",verbose) for ii in range(CPU_STARTs[MPI_rank],CPU_ENDs[MPI_rank])]
 
         # Default of no output directory extension
         out_dirs=[None]*len(detectors) if isinstance(detectors,list) else None
@@ -1772,7 +1776,11 @@ def TileSkyArea(source_or_kwargs,detectors=None,base_telescope_params=None,cloni
     # Init source if we need to
     if MPI_rank==0:
         # See if we have a source class or kwargs -- only master node since this can get memory heavy
-        source=SYSs.SMBH_Merger(**source_or_kwargs) if isinstance(source_or_kwargs,dict) else source_or_kwargs
+        if isinstance(source_or_kwargs,dict):
+            source=SYSs.SMBH_Merger(**dict(source_or_kwargs,**{"verbose":verbose}))
+        else:
+            source=source_or_kwargs
+            setattr(source,"verbose",verbose)
     else:
         source=None # So we only have master node running later if one source and/or detector given
 
@@ -1790,11 +1798,11 @@ def TileSkyArea(source_or_kwargs,detectors=None,base_telescope_params=None,cloni
         if len(set([detector.ARF_file_loc_name for detector in detectors]))==1: source.GenerateCTR(detectors[0].ARF_file_loc_name,gamma=1.7)
 
         # Loop over list of detectors
-        for i in range(len(detectors)): go_params, map_struct, tile_structs, coverage_struct, detectors[i] = TileWithGwemopt(source,detectors[i],out_dirs[i])
+        for i in range(len(detectors)): go_params, map_struct, tile_structs, coverage_struct, detectors[i] = TileWithGwemopt(source,detectors[i],out_dirs[i],verbose)
 
     return detectors
 
-def TileWithGwemopt(source,detector,outDirExtension=None):
+def TileWithGwemopt(source,detector,outDirExtension=None,verbose=True):
     """
     Function to handle tiling through gwemopt.
     """
@@ -1802,8 +1810,6 @@ def TileWithGwemopt(source,detector,outDirExtension=None):
     # Get the right dicts to use
     t_tile_0=time.time()
     go_params,map_struct=PrepareGwemoptDicts(source,detector,outDirExtension)
-    # go_params["doParallel"]=True
-    # go_params["Ncores"]=2
 
     # Get segments -- need to understand what this is. Line 469 of binary file 'gwemopt_run'
     import SYNEX.segments_athena as segs_a
@@ -1818,12 +1824,12 @@ def TileWithGwemopt(source,detector,outDirExtension=None):
         moc_structs = gwemopt.moc.create_moc(go_params, map_struct=map_struct)
         tile_structs = gwemopt.tiles.moc(go_params,map_struct,moc_structs,doSegments=False) # doSegments=False ?? Only for 'moc'... Otherwise it calls gwemopt.segments.get_segments_tiles
         for telescope in tile_structs.keys():
-            tile_structs[telescope] = segs_a.get_segments_tiles(go_params, go_params["config"][telescope], tile_structs[telescope])
+            tile_structs[telescope] = segs_a.get_segments_tiles(go_params, go_params["config"][telescope], tile_structs[telescope], verbose)
     elif go_params["tilesType"]=="greedy":
         tile_structs = gwemopt.tiles.greedy(go_params,map_struct)
         go_params["Ntiles"] = []
         for telescope in go_params["telescopes"]:
-            tile_structs[telescope] = segs_a.get_segments_tiles(go_params, go_params["config"][telescope], tile_structs[telescope]) # replace segs with our own
+            tile_structs[telescope] = segs_a.get_segments_tiles(go_params, go_params["config"][telescope], tile_structs[telescope], verbose) # replace segs with our own
             go_params["config"][telescope]["tesselation"] = np.empty((0,3))
             tiles_struct = tile_structs[telescope]
             for index in tiles_struct.keys():
@@ -1834,7 +1840,7 @@ def TileWithGwemopt(source,detector,outDirExtension=None):
         tile_structs = gwemopt.tiles.hierarchical(go_params,map_struct) # ,doSegments=False)
         go_params["Ntiles"] = []
         for telescope in go_params["telescopes"]:
-            tile_structs[telescope] = segs_a.get_segments_tiles(go_params, go_params["config"][telescope], tile_structs[telescope]) # replace segs with our own
+            tile_structs[telescope] = segs_a.get_segments_tiles(go_params, go_params["config"][telescope], tile_structs[telescope], verbose) # replace segs with our own
             go_params["config"][telescope]["tesselation"] = np.empty((0,3))
             tiles_struct = tile_structs[telescope]
             for index in tiles_struct.keys():
@@ -1846,13 +1852,13 @@ def TileWithGwemopt(source,detector,outDirExtension=None):
         moc_structs = gwemopt.rankedTilesGenerator.create_ranked(go_params,map_struct)
         tile_structs = gwemopt.tiles.moc(go_params,map_struct,moc_structs,doSegments=False)
         for telescope in tile_structs.keys():
-            tile_structs[telescope] = segs_a.get_segments_tiles(go_params, go_params["config"][telescope], tile_structs[telescope])
+            tile_structs[telescope] = segs_a.get_segments_tiles(go_params, go_params["config"][telescope], tile_structs[telescope], verbose)
     elif go_params["tilesType"]=="galaxy":
         # Really not sure how this works and where segments are calculated... Use this method with care.
         map_struct, catalog_struct = gwemopt.catalog.get_catalog(go_params, map_struct)
         tile_structs = gwemopt.tiles.galaxy(go_params,map_struct,catalog_struct)
         for telescope in go_params["telescopes"]:
-            # tile_structs[telescope] = segs_a.get_segments_tiles(go_params, go_params["config"][telescope], tile_structs[telescope])
+            # tile_structs[telescope] = segs_a.get_segments_tiles(go_params, go_params["config"][telescope], tile_structs[telescope], verbose)
             go_params["config"][telescope]["tesselation"] = np.empty((0,3))
             tiles_struct = tile_structs[telescope]
             for index in tiles_struct.keys():
@@ -1880,6 +1886,7 @@ def TileWithGwemopt(source,detector,outDirExtension=None):
     detector.detector_source_coverage.update(SourceInfo)
 
     # Save detector
+    print("------------------------->>>>>     Saving detector after tiling...")
     detector.ExistentialCrisis()
 
     return go_params, map_struct, tile_structs, coverage_struct, detector
@@ -3457,9 +3464,10 @@ def PlotPhotonAccumulation(detectors, SaveFig=False, SaveFileName=None):
 
     # Create list of detectors if dicts given or mix of dicts and detector objects given
     # detectors=[detector if not isinstance(detector,dict) else SYDs.Athena(**detector) for detector in detectors]
+    print("Detectors shape check:",type(detectors),len(detectors),[len(detectors_el) for detectors_el in detectors])
 
     # Create list of sources in case we have a mix of stuff like DeltatL_cut
-    sources=[[GetSourceFromLisabetaData(detector.detector_source_coverage["source H5File"],**{"ExistentialFileName":detector.detector_source_coverage["source save file"]}) for detector in detectors_el] for detectors_el in detectors]
+    sources=[[GetSourceFromLisabetaData(detector.detector_source_coverage["source H5File"],**{"ExistentialFileName":detector.detector_source_coverage["source save file"],"verbose":detector.verbose}) for detector in detectors_el] for detectors_el in detectors]
     SourcePreMergerCuts=[[source.DeltatL_cut for source in source_el] for source_el in sources]
     for ii in range(len(detectors)):
         if len(np.unique(SourcePreMergerCuts[ii]))>1:
@@ -3528,7 +3536,7 @@ def PlotSourcePhotons(detectors, labels=None, SaveFig=False, SaveFileName=None):
     # detectors=[detector if not isinstance(detector,dict) else SYDs.Athena(**detector) for detectors_el in detectors for detector in detectors]
 
     # Create list of sources in case we have a mix of stuff like DeltatL_cut
-    sources=[[GetSourceFromLisabetaData(detector.detector_source_coverage["source H5File"],**{"ExistentialFileName":detector.detector_source_coverage["source save file"]}) for detector in detectors_el] for detectors_el in detectors]
+    sources=[[GetSourceFromLisabetaData(detector.detector_source_coverage["source H5File"],**{"ExistentialFileName":detector.detector_source_coverage["source save file"],"verbose":detector.verbose}) for detector in detectors_el] for detectors_el in detectors]
     SourcePreMergerCuts=[[source.DeltatL_cut for source in source_el] for source_el in sources]
     for ii in range(len(detectors)):
         if len(np.unique(SourcePreMergerCuts[ii]))>1:
@@ -3536,7 +3544,8 @@ def PlotSourcePhotons(detectors, labels=None, SaveFig=False, SaveFileName=None):
                 detectors[ii][jj].detector_config_struct.update({"cloning key":"DeltatL_cut","cloning value":-sources[ii][jj].DeltatL_cut/86400.})
 
     # Handle labels now if not given
-    if labels==None: labels=[None]*len(detectors)
+    if not isinstance(labels,(list,int,str,float)): labels=[None]*len(detectors)
+    elif isinstance(labels,(int,str,float)): labels=[labels]*len(detectors)
 
     # Init global figure
     fig=plt.figure()

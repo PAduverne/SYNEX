@@ -17,6 +17,7 @@ from SYNEX.SYNEX_Utils import SYNEX_PATH
 from numpy.random import rand
 
 import time
+import os
 import json
 import glob
 import copy
@@ -39,6 +40,9 @@ except:
 
 ########################### Example - Tile over all sources in a number of pre-merger cut inferences ###########################
 
+# Set verbosity
+verbose = False
+
 # Merger args
 # Merger_kwargs = {"ExistentialFileName":"/Users/baird/Documents/LabEx_PostDoc/SYNEX/Saved_Source_Dicts/IdeaPaperSystem_9d_base.dat",
 #                  "NewExistentialFileName":"/Users/baird/Documents/LabEx_PostDoc/SYNEX/Saved_Source_Dicts/IdeaPaperSystem_9d_dev.dat"}
@@ -47,6 +51,7 @@ except:
 t0 = '2034-01-01T00:00:00.00' # YYYY-MM-DDTHH:mm:SS.MS 01/01/2034
 t = Time(t0, format='isot', scale='utc').gps
 Athena_kwargs={"ExistentialFileName":"/Users/baird/Documents/LabEx_PostDoc/SYNEX/Saved_Telescope_Dicts/Athena_base.dat",
+                "verbose":verbose,
                 "telescope":"Athena",
                 "tilesType" : "moc", # "greedy", # "hierarchical", # "ranked", # moc/greedy/hierarchical/ranked/galaxy.
                 "timeallocationType" : "powerlaw", # "absmag" / "powerlaw" / "waw" / "manual" / "pem"
@@ -82,35 +87,57 @@ Athena_kwargs={"ExistentialFileName":"/Users/baird/Documents/LabEx_PostDoc/SYNEX
                 "sat_earth_constraint" : 5., # 30.,
                 "sat_moon_constraint" : 5., # 20.0,
                } ### What about doPerturbativeTiling? ### "doPerturbativeTiling" : True
+Athena_kwargs_WithNewEx = {key:val for key,val in Athena_kwargs.items()} # copy.deepcopy(Athena_kwargs)
+Athena_kwargs_WithNewEx.update({"NewExistentialFileName":None})
 
-# Get all sources that we want to test
-FileNames = [glob.glob(SYNEX_PATH+"/inference_data/Randomized_SYNEX2/Randomized_angles_spins_MRat_"+str(ii)+"*.h5") for ii in range(1,10)]
-FileNames = [[FileName for FileName in FileNames_el if len(FileName.split("raw"))==1 and len(FileName.split("0cut"))==1] for FileNames_el in FileNames]
-print(FileNames)
-ExNames = [[SYNEX_PATH+"/Saved_Source_Dicts"+FileName.split("inference_data")[-1].split(".h5")[0]+".dat" for FileName in FileNames_el] for FileNames_el in FileNames]
-Mergers = [[SYU.GetSourceFromLisabetaData(FileName,**{"ExistentialFileName":ExName}) for FileName,ExName in zip(FileNames[ii],ExNames[ii])] for ii in range(len(FileNames))]
+# Get all sources that we want to test -- don't include 0cut because we get divides by zeros... Gotta work out how to deal with this.
+FileNames = sorted([FileName.replace("_raw", '') for FileName in glob.glob(SYNEX_PATH+"/inference_data/Randomized_SYNEX2/Randomized_angles_spins_MRat_*_raw.h5") if "0cut" not in FileName]) ## Sort by each system ID so we can group later by cut times
+SystemIDs = [int(FileName[FileName.rfind('t')+2:FileName.rfind('_')]) for FileName in FileNames] ### 't' is last letter before ID that does not occur after ID.
+ExNames = [FileName.replace("/inference_data/", "/Saved_Source_Dicts/").replace(".h5", ".dat") for FileName in FileNames]
+Mergers = [SYU.GetSourceFromLisabetaData(FileName,**{"ExistentialFileName":ExName,"verbose":verbose}) for FileName,ExName in zip(FileNames,ExNames)]
 
 # Create Athena Detectors
-ExNames = [[SYNEX_PATH+"/Saved_Telescope_Dicts"+FileName.split("inference_data")[-1].split(".h5")[0]+".dat" for FileName in FileNames_el] for FileNames_el in FileNames]
-Athena_kwargs_dicts=[[copy.deepcopy(Athena_kwargs) for _ in ExNames_el] for ExNames_el in ExNames]
-for ii in range(len(Athena_kwargs_dicts)):
-    for jj in range(len(Athena_kwargs_dicts[ii])):
-        Athena_kwargs_dicts[ii][jj].update({"NewExistentialFileName":ExNames[ii][jj]})
-Athenas = [[SYDs.Athena(**Athena_kwargs) for Athena_kwargs in Athena_kwargs_dicts_el] for Athena_kwargs_dicts_el in Athena_kwargs_dicts]
+ExNames = [ExName.replace("/Saved_Source_Dicts/", "/Saved_Telescope_Dicts/") for ExName in ExNames]
+Athena_kwargs_dicts=[dict(Athena_kwargs, **{"ExistentialFileName":ExName}) if os.path.isfile(ExName) else dict(Athena_kwargs_WithNewEx, **{"NewExistentialFileName":ExName}) for ExName in ExNames]
+Athenas = [SYDs.Athena(**Athena_kwargs_dict) for Athena_kwargs_dict in Athena_kwargs_dicts]
 
-# Test tiling with detector cloning
+# Tile all telescope classes that haven't already been tiled -- skip those that have
 tiling_t0=time.time()
-detectors_out = [[SYU.TileSkyArea(Merger,detectors=Athena,base_telescope_params=None,cloning_params=None) for Merger,Athena in zip(Mergers[ii],Athenas[ii])] for ii in range(len(Mergers))]
+# detectors_out = [SYU.TileSkyArea(Merger,detectors=Athena,base_telescope_params=None,cloning_params=None,verbose=verbose) if Athena.detector_source_coverage==None else Athena for Merger,Athena in zip(Mergers,Athenas)]
+detectors_out=[]
+for Merger,Athena in zip(Mergers,Athenas):
+    if Athena.detector_source_coverage!=None:
+        if verbose: ("-"*20,"Detector already tiled","-"*20)
+        if verbose: print(Athena.detector_source_coverage)
+        detectors_out += [Athena]
+    else:
+        if verbose: print("-"*20,"Detector not yet tiled","-"*20)
+        if verbose: print(Athena.detector_source_coverage)
+        tiling_t0_a = time.time()
+        detectors_out += [SYU.TileSkyArea(Merger,detectors=Athena,base_telescope_params=None,cloning_params=None,verbose=verbose)]
+        tiling_t0_b = time.time()
+        if verbose: print(tiling_t0_b-tiling_t0_a,"s")
+    if verbose: print("\n")
+    if verbose: print("-"*63)
 tiling_t1=time.time()
-print("Total time for",np.sum([len(Mergers_el) for Mergers_el in Mergers]),"sources:",tiling_t1-tiling_t0, "s")
+detectors_out = [d[0] if isinstance(d,list) else d for d in detectors_out] # Flatten output since it is grouped for case where we populate cloned detectors inside function
+if verbose: print("Total time for",len(Mergers),"sources:",tiling_t1-tiling_t0,"s")
 
 # Reorder things a bit
-print("detectors_out:", detectors_out)
-detectors_out = [[d[0] for d in detectors_out_el] for detectors_out_el in detectors_out]
+detectors_out = [[detector_out for detector_out,ID in zip(detectors_out,SystemIDs) if ID==ii] for ii in range(min(SystemIDs),max(SystemIDs)+1)] ### This can be simplified if we creat a count instance for the IDs and then just move once through the list packeting each ID into a list with length count instance for the ID. Would reduce complexity form n^2 to n...
 
 # Plot something
-SYU.PlotPhotonAccumulation(detectors_out, SaveFig=False, SaveFileName=None)
-SYU.PlotSourcePhotons(detectors_out, labels=None, SaveFig=False, SaveFileName=None)
+# SYU.PlotPhotonAccumulation(detectors_out, SaveFig=False, SaveFileName=None)
+_, idx = np.unique(SystemIDs, return_index=True)
+labels=[SystemIDs[i] for i in np.sort(idx)] # because SystemIDs is not an nparray but a list so have to do things weird to slice with indices stored in nparray
+SYU.PlotSourcePhotons(detectors_out, labels=labels, SaveFig=False, SaveFileName=None)
+
+
+
+
+
+
+
 
 
 

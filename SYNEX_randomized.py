@@ -154,7 +154,7 @@ if is_master and len(JsonFiles)==0:
             Merger_kwargs["psi"] = rand_angles[iiLoop][4]
 
             # Set output file names
-            OutFileName = "Randomized_angles_spins_MRat_" + str(iiLoop+1) + "_" + T_obs_labels[iiCut]
+            OutFileName = "Randomized_angles_spins_MRat_" + str(iiLoop+1+10) + "_" + T_obs_labels[iiCut]
             RunTimekwargs["out_file"]=OutFileName
 
             # Create source object

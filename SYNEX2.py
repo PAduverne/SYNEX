@@ -53,6 +53,7 @@ t = Time(t0, format='isot', scale='utc').gps
 Athena_kwargs={"ExistentialFileName":"/Users/baird/Documents/LabEx_PostDoc/SYNEX/Saved_Telescope_Dicts/Athena_base.dat",
                 "verbose":verbose,
                 "telescope":"Athena",
+                "Tobs":np.array([0.,9.]), # pairs of [Tstart,Tend], for times in DAYS.
                 "tilesType" : "moc", # "greedy", # "hierarchical", # "ranked", # moc/greedy/hierarchical/ranked/galaxy.
                 "timeallocationType" : "powerlaw", # "absmag" / "powerlaw" / "waw" / "manual" / "pem"
                 "scheduleType" : "greedy",
@@ -91,7 +92,8 @@ Athena_kwargs_WithNewEx = {key:val for key,val in Athena_kwargs.items()} # copy.
 Athena_kwargs_WithNewEx.update({"NewExistentialFileName":None})
 
 # Get all sources that we want to test -- don't include 0cut because we get divides by zeros... Gotta work out how to deal with this.
-FileNames = sorted([FileName.replace("_raw", '') for FileName in glob.glob(SYNEX_PATH+"/inference_data/Randomized_SYNEX2/Randomized_angles_spins_MRat_*_raw.h5") if "0cut" not in FileName]) ## Sort by each system ID so we can group later by cut times
+CutsToTest = ["5hr","10hr","1d","3d","1wk","2wk","3wk","1mon"]
+FileNames = [File for c in CutsToTest for File in glob.glob(SYNEX_PATH + "/inference_data/Randomized_SYNEX2/Randomized_angles_spins_MRat_*_"+c+".h5")]
 SystemIDs = [int(FileName[FileName.rfind('t')+2:FileName.rfind('_')]) for FileName in FileNames] ### 't' is last letter before ID that does not occur after ID.
 ExNames = [FileName.replace("/inference_data/", "/Saved_Source_Dicts/").replace(".h5", ".dat") for FileName in FileNames]
 Mergers = [SYU.GetSourceFromLisabetaData(FileName,**{"ExistentialFileName":ExName,"verbose":verbose}) for FileName,ExName in zip(FileNames,ExNames)]
@@ -123,14 +125,13 @@ tiling_t1=time.time()
 detectors_out = [d[0] if isinstance(d,list) else d for d in detectors_out] # Flatten output since it is grouped for case where we populate cloned detectors inside function
 if verbose: print("Total time for",len(Mergers),"sources:",tiling_t1-tiling_t0,"s")
 
-# Reorder things a bit
+# Reorder things a bit and make labels
 detectors_out = [[detector_out for detector_out,ID in zip(detectors_out,SystemIDs) if ID==ii] for ii in range(min(SystemIDs),max(SystemIDs)+1)] ### This can be simplified if we creat a count instance for the IDs and then just move once through the list packeting each ID into a list with length count instance for the ID. Would reduce complexity form n^2 to n...
+labels=[str(ii) for ii in range(min(SystemIDs),max(SystemIDs)+1)] # because SystemIDs is not an nparray but a list so have to do things weird to slice with indices stored in nparray
 
 # Plot something
 # SYU.PlotPhotonAccumulation(detectors_out, SaveFig=False, SaveFileName=None)
-_, idx = np.unique(SystemIDs, return_index=True)
-labels=[SystemIDs[i] for i in np.sort(idx)] # because SystemIDs is not an nparray but a list so have to do things weird to slice with indices stored in nparray
-SYU.PlotSourcePhotons(detectors_out, labels=labels, SaveFig=False, SaveFileName=None)
+SYU.PlotSourcePhotons(detectors_out, labels=labels, BoxPlot=True, SaveFig=False, SaveFileName=None)
 
 
 

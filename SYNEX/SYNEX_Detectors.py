@@ -215,12 +215,13 @@ class Athena:
                     # save file exists already and have a new one specified so mutate loaded source regardless
                     MUTATED=True
                 elif len(kwargs.keys())>1:
-                    # Check if we will modify something later
-                    ValueCheck1 = [value!=detector_go_params[key] for key,value in kwargs.items() if key in detector_go_params]
-                    ValueCheck2 = [value!=detector_config_struct[key] for key,value in kwargs.items() if key in detector_config_struct]
+                    # Check if we will modify something later (treat Tobs seperately because its an array...)
+                    ValueCheck1 = [value!=detector_go_params[key] for key,value in kwargs.items() if key in detector_go_params and key not in ["Tobs"]]
+                    ValueCheck2 = [value!=detector_config_struct[key] for key,value in kwargs.items() if key in detector_config_struct and key not in ["Tobs"]]
                     KeysCheck = [(key not in detector_go_params) and (key not in detector_config_struct) for key in kwargs.keys()]
-                    if any(ValueCheck1+ValueCheck2+KeysCheck):
-                        # Values are changed or new keys added; recompute tesselation later even if the '.tess' file already exists
+                    if "Tobs" in kwargs and not np.array_equal(kwargs["Tobs"],detector_go_params["Tobs"]): # Automatically assume changed if lengths change or values within are not all the same
+                        MUTATED=True
+                    elif any(ValueCheck1+ValueCheck2+KeysCheck): # Any other value changed?
                         MUTATED=True
                 # Check now if there is anything being changed that we can't find in the older saved dict
                 from SYNEX.gwemopt_defaults import go_params_default

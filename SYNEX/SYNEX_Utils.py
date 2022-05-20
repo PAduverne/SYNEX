@@ -15,6 +15,7 @@ import astropy.units as u
 from astropy.time import Time
 import numpy as np
 import healpy as hp
+import pandas as pd
 import gwemopt
 from gwemopt import utils as gou
 from gwemopt import tiles as gots
@@ -532,12 +533,6 @@ def GetPosteriorStats(FileName, ModeJumpLimit=None, LogLikeJumpLimit=None):
             ModeLocationIndex = np.where(ModeLocationLogical)[0][0] # take smallest if more than one - second [0]
             mode = histbins[ModeLocationIndex]
             mode_population = histn[ModeLocationIndex]
-
-            if key == "lambda" and False:
-                print("Mode:", mode, ", Mode pop.:", mode_population)
-                plt.figure()
-                plt.plot(histbins, histn)
-                plt.show()
 
             # Check first if population is sufficient to count as a mode
             if len(Modes)>0:
@@ -1784,7 +1779,7 @@ def TileSkyArea(source_or_kwargs,detectors=None,base_telescope_params=None,cloni
     else:
         source=None # So we only have master node running later if one source and/or detector given
 
-    # Send source to workers
+    # Send source to workers if using mpi
     if MPI_size>1: source = comm.bcast(source, root=0)
 
     # Calculate source flux data -- NB CTR is telescope dependent so included inside loop for coverage info later if ARF file changes
@@ -1886,7 +1881,6 @@ def TileWithGwemopt(source,detector,outDirExtension=None,verbose=True):
     detector.detector_source_coverage.update(SourceInfo)
 
     # Save detector
-    print("------------------------->>>>>     Saving detector after tiling...")
     detector.ExistentialCrisis()
 
     return go_params, map_struct, tile_structs, coverage_struct, detector
@@ -1912,7 +1906,7 @@ def PrepareGwemoptDicts(source,detector,outDirExtension=None):
     nside=nside_arr[np.searchsorted(area_arr, detector.detector_config_struct["FOV"]/4., side='left')-1]
 
     # Update missing params in go_params contained in source
-    go_params["nside"]=nside # hp.pixelfunc.get_nside(source.map_struct["prob"])
+    go_params["nside"]=nside
     if source.gpstime!=None:
         go_params["gpstime"]=source.gpstime
     else:
@@ -1922,7 +1916,9 @@ def PrepareGwemoptDicts(source,detector,outDirExtension=None):
     go_params["true_ra"]=source.true_ra
     go_params["true_dec"]=source.true_dec
     go_params["true_distance"]=source.true_distance
-    go_params["Tobs"]=np.array([0.,-source.DeltatL_cut/86400.]) # np.array([0.,100.]) # in pairs of [Tstart,Tend] for times in DAYS. We CAN pass more than one pair here.
+
+    # See what Tobs we have for each detector
+    # go_params["Tobs"]=np.array([0.,-source.DeltatL_cut/86400.]) # np.array([0.,100.]) # in pairs of [Tstart,Tend] for times in DAYS. We CAN pass more than one pair here.
 
     # Update the gwemopt output dir to comply with lisabeta h5 and json filenames
     # This will overwrite existing files with the same event name... Maybe later include checks?
@@ -2033,7 +2029,6 @@ def GetCoverageInfo(go_params, map_struct, tile_structs, coverage_struct, detect
         print("Source tile accumulated p:",SourceTile_accum_prob1,SourceTile_accum_prob2)
 
     if len(cov_source_tile)>0: print("Coverage stuct exposures within range:",Time(cov_data[0,2],format='mjd', scale='utc').isot,Time(cov_data[-1,2],format='mjd', scale='utc').isot)
-    print("start times checks:",Time(source.gpstime, format='gps', scale='utc').isot,Time(go_params["gpstime"], format='gps', scale='utc').isot)
 
     # Now add cuts to coverage info depending on photon flux
     if source!=None and len(cov_source_tile)>0:
@@ -3515,7 +3510,7 @@ def PlotPhotonAccumulation(detectors, SaveFig=False, SaveFileName=None):
 
     plt.show()
 
-def PlotSourcePhotons(detectors, labels=None, SaveFig=False, SaveFileName=None):
+def PlotSourcePhotons(detectors, labels=None, BoxPlot=True, SaveFig=False, SaveFileName=None):
     """
     Plot total accumulated photons for each list of detectors (in case we
     have several versions of the same cloned parameter but using eg different
@@ -3531,31 +3526,87 @@ def PlotSourcePhotons(detectors, labels=None, SaveFig=False, SaveFileName=None):
     else:
         detectors=[detectors]
 
-    # Handle cases where some/all entries are dictionaries instead of detector classes
-    # This does not preserve the shape of input detectors list...
-    # detectors=[detector if not isinstance(detector,dict) else SYDs.Athena(**detector) for detectors_el in detectors for detector in detectors]
-
     # Create list of sources in case we have a mix of stuff like DeltatL_cut
     sources=[[GetSourceFromLisabetaData(detector.detector_source_coverage["source H5File"],**{"ExistentialFileName":detector.detector_source_coverage["source save file"],"verbose":detector.verbose}) for detector in detectors_el] for detectors_el in detectors]
+
+
+
+    ############# Did we change something? ------ First handle two special cases then gneral case (TO DO) #############
+    # Add this to initial tiling function? Maybe...
+
+    # Did we change DeltatL_cut?
     SourcePreMergerCuts=[[source.DeltatL_cut for source in source_el] for source_el in sources]
     for ii in range(len(detectors)):
         if len(np.unique(SourcePreMergerCuts[ii]))>1:
             for jj in range(len(detectors[ii])):
                 detectors[ii][jj].detector_config_struct.update({"cloning key":"DeltatL_cut","cloning value":-sources[ii][jj].DeltatL_cut/86400.})
 
+    # Did we change Tobs?
+    DetectorTobs=[[detector.detector_go_params["Tobs"] for detector in detector_el] for detector_el in detectors]
+    for ii in range(len(detectors)):
+        if not np.array_equal(np.unique(DetectorTobs[ii]),DetectorTobs[ii][0]):
+            for jj in range(len(detectors[ii])):
+                detectors[ii][jj].detector_config_struct.update({"cloning key":"Tobs","cloning value":DetectorTobs[ii][jj][1]})
+
+    ###################################################################################################################
+
+
+
     # Handle labels now if not given
     if not isinstance(labels,(list,int,str,float)): labels=[None]*len(detectors)
-    elif isinstance(labels,(int,str,float)): labels=[labels]*len(detectors)
-
-    # Init global figure
-    fig=plt.figure()
+    # elif isinstance(labels,(int,str,float)): labels=[labels]*len(detectors)   ##### Not sure what the default behaviour should be here...
 
     # Get the figure and axes for each list within detectors list
-    Lines2D=[(PlotSourcePhotons_SingleDetList(detectors_el,sources=sources,fig=fig,label=label)) for detectors_el,label in zip(detectors,labels)]
+    if BoxPlot:
+        Xs = [detector.detector_config_struct["cloning value"] for detector_el in detectors for detector in detector_el] # This will store values cloned for sources too...
+        Ys = [sum(detector.detector_source_coverage["Source photon counts"]) for detector_el in detectors for detector in detector_el]
+        UniqueXs = pd.unique(Xs)
+        UniqueXs.sort()
+        clone_key = detectors[0][0].detector_config_struct["cloning key"]
+        data_points = pd.DataFrame(data={clone_key:Xs, "photon_count":Ys})
+        xdata_stats = data_points.groupby(by=clone_key).describe() # Default is only include numeric data
+        print(xdata_stats)
+        BoxPlots = data_points.boxplot(vert=True, by=clone_key, column=["photon_count"], return_type="dict")
+        for k in BoxPlots["photon_count"]:
+            for Line2D in BoxPlots["photon_count"][k]:
+                xtmp = Line2D.get_xdata()
+                if len(xtmp)>0:
+                    ii=int(round(np.mean(xtmp)))-1
+                    Line2D.set_xdata(xtmp - round(np.mean(xtmp)) + UniqueXs[ii])
+    else: ### Can we just use dataframes to draw the plots below? Do we need the extra helper function?
+        # Init global figure
+        fig=plt.figure()
 
-    # Formatting some stuff globally
-    if labels!=None:
-        plt.legend(fontsize="x-small")
+        Lines2D=[(PlotSourcePhotons_SingleDetList(detectors_el,sources=sources,fig=fig,label=label,BoxPlot=BoxPlot)) for detectors_el,label in zip(detectors,labels)]
+
+        # Plot the mean
+        clone_key = detectors[0][0].detector_config_struct["cloning key"]
+        data_points = pd.DataFrame(data={clone_key:[x for Line2D in Lines2D for x in Line2D[2]],
+                                   "photon_count":[y for Line2D in Lines2D for y in Line2D[3]]})
+        xdata_stats = data_points.groupby(by=clone_key).describe() # Default is only include numeric data
+        print(xdata_stats)
+        mean_xs=pd.unique(data_points[clone_key])
+        mean_xs.sort()
+        mean_ys=data_points.groupby(by=clone_key).mean().to_numpy().flatten()
+        mean_stds=data_points.groupby(by=clone_key).std().to_numpy(na_value=0.).flatten() ### Make suree to treat case where we have only one data line to avoid Nan errorbars
+        mean_ns=data_points[clone_key].value_counts().sort_index(inplace=False).to_numpy()
+        errors=mean_stds/np.sqrt(mean_ns)
+        print(" --- Means -- ")
+        for i in range(len(mean_xs)):
+            print(mean_xs[i],":",round(mean_ys[i]),r"\pm",round(errors[i]))
+        print(" ------------ ")
+        plt.errorbar(mean_xs,mean_ys,yerr=errors, marker='+', color='black', linestyle='', markersize=2, figure=fig, label='mean')
+
+        # Formatting labels
+        if labels!=None: plt.legend(fontsize="x-small",ncol=data_points[clone_key].nunique()//10+1) # Wrap columns when we get more than 10 points
+
+    # Sort special case of premerger time cut
+    if detectors[0][0].detector_config_struct["cloning key"]=="DeltatL_cut":
+        ax=plt.gca()
+        ax.invert_xaxis()
+        X_Datas_unique = pd.unique(data_points[clone_key])
+        plt.xticks(X_Datas_unique, labels=['-{0:.1f}'.format(d) for d in X_Datas_unique]) # , rotation='vertical')
+        plt.xlabel(r"Pre-merger cut [days to merger]",fontsize="small")
 
     # Save?
     if SaveFig:
@@ -3570,7 +3621,7 @@ def PlotSourcePhotons(detectors, labels=None, SaveFig=False, SaveFileName=None):
 
     plt.show()
 
-def PlotSourcePhotons_SingleDetList(detectors,sources=None,fig=None,label=None):
+def PlotSourcePhotons_SingleDetList(detectors,sources=None,fig=None,label=None,BoxPlot=True):
     """
     Plot total accumulated photons from source versus cloned parameter.
     """
@@ -3580,12 +3631,13 @@ def PlotSourcePhotons_SingleDetList(detectors,sources=None,fig=None,label=None):
     # Create list of detectors if dicts given or mix of dicts and detector objects given
     detectors=[detector if not isinstance(detector,dict) else SYDs.Athena(**detector) for detector in detectors]
 
-    # Create sources if we don't have any
-    if sources==None: sources=[GetSourceFromLisabetaData(detector.detector_source_coverage["source H5File"],**{"ExistentialFileName":detector.detector_source_coverage["source save file"]}) for detector in detectors]
-
     # Get cloned values and photon counts
     Xs = [detector.detector_config_struct["cloning value"] for detector in detectors] # This will store values cloned for sources too...
     Ys = [sum(detector.detector_source_coverage["Source photon counts"]) for detector in detectors]
+
+    # Init figure if it isn't already
+    if fig==None: fig=plt.figure()
+    if label==None: label=''
 
     # Do we need logarithmic axes?
     ax = plt.gca()
@@ -3595,18 +3647,19 @@ def PlotSourcePhotons_SingleDetList(detectors,sources=None,fig=None,label=None):
         ax.set_yscale('log')
 
     # Label axes
-    plt.xlabel(detectors[0].detector_config_struct["cloning key"],fontsize="x-small")
-    plt.ylabel(r"Accumulated Photons",fontsize="x-small")
-
-    # Init figure if it isn't already
-    if fig==None: fig=plt.figure()
-    if label==None: label=''
+    plt.xlabel(detectors[0].detector_config_struct["cloning key"],fontsize="small")
+    plt.ylabel(r"Accumulated Photons",fontsize="small")
 
     # Plot
-    ErrBarCont=plt.errorbar(Xs,Ys,yerr=np.sqrt(Ys), marker='+', linestyle='', markersize=4, figure=fig, label=label)
+    if BoxPlot:
+        plt.boxplot(Ys,meanline=True)
+        plt.show()
+    else:
+        ErrBarCont=plt.errorbar(Xs,Ys,yerr=np.sqrt(Ys), marker='+', linestyle='', markersize=2, figure=fig, label=label)
+        # Return
+        return ErrBarCont, ax, Xs, Ys
 
-    # Return
-    return ErrBarCont, ax
+
 
 
 
@@ -3618,6 +3671,39 @@ def PlotSourcePhotons_SingleDetList(detectors,sources=None,fig=None,label=None):
 #              #   SYNEX -- Optimization Utility functions   #
 #              #                                             #
 #              ###############################################
+
+#####################################
+#                                   #
+#    Decision Tree Regression(?)    #
+#                                   #
+#####################################
+
+def DecTreeReg(Detectors, TestParams):
+    """
+    Code to test how accumulated photon count varies with a subset of
+    tested parameters. In essence, if we randomize over many parameters and find
+    very little variation when marginalising over all but one parameter,
+    then we need to find a fast-ish way to hypothesis test subsets of parameters.
+
+    Algoirthm follows principles outlined here:
+    https://www.saedsayad.com/decision_tree_reg.htm#:~:text=Decision%20tree%20builds%20regression%20or,decision%20nodes%20and%20leaf%20nodes.
+
+    INPUT:
+    ------
+        - Detectors :: list of SYNEX detectors.
+            Each list element can also be a list of detector objects such that
+            the input list is pre-grouped by test parameters.
+
+        - TestParams :: Dict
+            list of variable names to be tested (e.g. ["Tobs","DeltatL_cut"]).
+    """
+
+
+#############
+#           #
+#    PSO    #
+#           #
+#############
 
 ### This can be used if we have a saved skymap and Athena tiling strategy, then optimize the given schedule using latency time / jump time / other params...
 def RunPSO(source, detector, fitness_function=None, N=50, w=0.8, c_1=1, c_2=1, auto_coef=True, max_iter=100, NumSwarms=1, priors=None, **kwargs):

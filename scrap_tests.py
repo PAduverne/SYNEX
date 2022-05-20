@@ -3,6 +3,7 @@ import os
 import lisabeta.utils.plotutils as plotutils
 import time
 import glob
+import copy
 from astropy.cosmology import Planck13, z_at_value # needed only to convert a given distance to redshift at initialization
 from astropy.cosmology import WMAP9 as cosmo
 from astropy.time import Time
@@ -16,6 +17,7 @@ import SYNEX.SYNEX_Sources as SYSs
 import matplotlib.pyplot as plt
 import matplotlib as mpl
 import matplotlib.pylab as pylab
+from SYNEX.SYNEX_Utils import SYNEX_PATH
 from SYNEX.SYNEX_Utils import pylab_params
 pylab.rcParams.update(pylab_params)
 
@@ -23,20 +25,19 @@ pylab.rcParams.update(pylab_params)
 
 
 
+########################### Example - Tile sources with several Tobs ###########################
 
+# Set verbosity
+verbose = False # Verbosity inside SYNEX (making objects etc)
+verbose2 = True # Verbosity in this script alone
 
-### Check we can load a tiled detector correctly ###
-
-FileName = "/Users/baird/Documents/LabEx_PostDoc/SYNEX/Saved_Telescope_Dicts/Randomized_SYNEX2/Randomized_angles_spins_MRat_10_2wk.dat"
-Athena_kwargs={"ExistentialFileName":FileName}
-Athena = SYDs.Athena(**Athena_kwargs)
-print("Check 1:", Athena_kwargs.keys(), Athena.detector_source_coverage)
-
+# Telescope args
 t0 = '2034-01-01T00:00:00.00' # YYYY-MM-DDTHH:mm:SS.MS 01/01/2034
 t = Time(t0, format='isot', scale='utc').gps
-Athena_kwargs={"ExistentialFileName":FileName,
-                "verbose":False,
+Athena_kwargs={"ExistentialFileName":"/Users/baird/Documents/LabEx_PostDoc/SYNEX/Saved_Telescope_Dicts/Athena_base.dat",
+                "verbose":verbose,
                 "telescope":"Athena",
+                "Tobs":np.array([0.,9.]), # pairs of [Tstart,Tend], for times in DAYS.
                 "tilesType" : "moc", # "greedy", # "hierarchical", # "ranked", # moc/greedy/hierarchical/ranked/galaxy.
                 "timeallocationType" : "powerlaw", # "absmag" / "powerlaw" / "waw" / "manual" / "pem"
                 "scheduleType" : "greedy",
@@ -71,27 +72,90 @@ Athena_kwargs={"ExistentialFileName":FileName,
                 "sat_earth_constraint" : 5., # 30.,
                 "sat_moon_constraint" : 5., # 20.0,
                } ### What about doPerturbativeTiling? ### "doPerturbativeTiling" : True
-Athena = SYDs.Athena(**Athena_kwargs)
-print("Check 2:", Athena_kwargs.keys(), Athena.detector_source_coverage)
+Athena_kwargs_WithNewEx = copy.deepcopy(Athena_kwargs)
+Athena_kwargs_WithNewEx.update({"NewExistentialFileName":None})
 
-##### Both checks now passed.
+# Get sources to test
+CutsToTest = ["1d","1wk","3wk"]
+FileNames = [File for c in CutsToTest for File in glob.glob(SYNEX_PATH + "/inference_data/Randomized_SYNEX2/Randomized_angles_spins_MRat_*_"+c+".h5")]
+Systems_ID_Cut = [FileName[FileName.rfind('t')+2:FileName.rfind('.')] for FileName in FileNames] ### 't' is last letter before ID that does not occur after ID.
+Systems_ID_Cut=[tuple(System_ID_Cut.split("_")) for System_ID_Cut in Systems_ID_Cut]
+SystemIDs = [int(System_ID_Cut[0]) for System_ID_Cut in Systems_ID_Cut]
+ExNames = [FileName.replace("/inference_data/", "/Saved_Source_Dicts/").replace(".h5", ".dat") for FileName in FileNames]
+Mergers = [SYU.GetSourceFromLisabetaData(FileName,**{"ExistentialFileName":ExName,"verbose":verbose}) for FileName,ExName in zip(FileNames,ExNames)]
+
+# Create Athena Detectors
+T_obs_array = [np.array([0.,1.]),np.array([0.,2.]),np.array([0.,3.]),np.array([0.,4.])] ###
+n_T_obs = len(T_obs_array)
+Tobs_maxes = [T[1] for T in T_obs_array]
+ExNames=[]
+for System_ID_Cut in Systems_ID_Cut:
+    ExNames.extend([SYNEX_PATH+"/Saved_Telescope_Dicts/Tobs_Tests/Randomized_SYNEX2_System_"+"_".join(System_ID_Cut)+"_TileTime_"+str(int(T_obs_array[i][1]))+"d.h5" for i in range(len(Tobs_maxes))])
+Athena_kwargs_dicts=[dict(Athena_kwargs, **{"ExistentialFileName":ExName,"Tobs":np.array([0.,int(ExName.split("_TileTime_")[-1].split("d.")[0])])}) if os.path.isfile(ExName) else dict(Athena_kwargs_WithNewEx, **{"NewExistentialFileName":ExName, "Tobs":np.array([0.,int(ExName.split("_TileTime_")[-1].split("d.")[0])])}) for ExName in ExNames]
+Athenas = [SYDs.Athena(**Athena_kwargs_dict) for Athena_kwargs_dict in Athena_kwargs_dicts]
+
+print("-"*50)
+for i in range(3):
+    print(Mergers[i].ExistentialFileName)
+    print(Athenas[n_T_obs*i].ExistentialFileName)
+    print(Athenas[n_T_obs*i+1].ExistentialFileName)
+    print(Athenas[n_T_obs*i+2].ExistentialFileName)
+    print(Athenas[n_T_obs*i+3].ExistentialFileName)
+    print("-"*50)
+
+# Tile all telescope classes that haven't already been tiled -- skip those that have
+tiling_t0=time.time()
+detectors_out=[]
+for iMerg,Merger in enumerate(Mergers):
+    for Athena in Athenas[n_T_obs*iMerg:n_T_obs*(iMerg+1)]:
+        if Athena.detector_source_coverage!=None:
+            if verbose2: print("-"*20,"Detector already tiled","-"*20)
+            print(Athena.detector_go_params["Tobs"], -Merger.DeltatL_cut/(24.*60.*60.))
+            print(Athena.ExistentialFileName, Merger.ExistentialFileName, Merger.chi1)
+            detectors_out += [Athena]
+        else:
+            if verbose2: print("-"*20,"Detector not yet tiled","-"*20)
+            tiling_t0_a = time.time()
+            print(Athena.detector_go_params["Tobs"], -Merger.DeltatL_cut/(24.*60.*60.))
+            print(Athena.ExistentialFileName, Merger.ExistentialFileName, Merger.chi1)
+            detectors_out += SYU.TileSkyArea(Merger,detectors=Athena,base_telescope_params=None,cloning_params=None,verbose=verbose)
+            tiling_t0_b = time.time()
+            if verbose2: print("Merger system:", iMerg+1, "/", len(Mergers), " in", tiling_t0_b-tiling_t0_a, "s")
+        if verbose2: print("\n")
+        if verbose2: print("-"*63)
+tiling_t1=time.time()
+if verbose2: print("Total time for",len(detectors_out),"sources:",tiling_t1-tiling_t0,"s")
+
+# Reorder things a bit and make labels
+detectors_out = [[detector_out for detector_out,SysCut in zip(detectors_out,Systems_ID_Cut) if SysCut[1]==Cut] for Cut in CutsToTest]
+
+# Plot
+# SYU.PlotPhotonAccumulation(detectors_out, SaveFig=False, SaveFileName=None)
+SYU.PlotSourcePhotons(detectors_out, labels=CutsToTest, BoxPlot=True, SaveFig=False, SaveFileName=None)
 
 
-# FileName = "Randomized_SYNEX2/Randomized_angles_spins_MRat_1_5hr"
-# JsonFileLocAndName,H5FileLocAndName=SYU.CompleteLisabetaDataAndJsonFileNames(FileName)
-# Merger_kwargs = {"ExistentialFileName":"/Users/baird/Documents/LabEx_PostDoc/SYNEX/Saved_Source_Dicts/Randomized_angles_spins_MRat_1_5hr.dat"}
-# Merger = SYU.GetSourceFromLisabetaData(FileName,**Merger_kwargs)
-# print(JsonFileLocAndName, Merger.JsonFile, -Merger.DeltatL_cut/(24*60*60))
-# Merger.CreateSkyMapStruct() #### Everything until here is right... Check this function!
-# print(len(Merger.map_struct["prob"]))
-# SYU.PlotSkyMapData(Merger)
-# posteriors_full = plotutils.load_params_posterior_lisa_smbh(JsonFileLocAndName, H5FileLocAndName, format='multiemcee', load_fisher=True)
-# fig = plotutils.corner_plot(posteriors_full['injparams_Lframe'], posteriors_full['post'], add_posteriors=None, output=False, output_dir=None, output_file=None, histograms=True, fisher=False, fishercov=posteriors_full['fishercov'], Lframe=True, params=['chi1', 'chi2', 'dist', 'inc', 'phi', 'lambda', 'beta', 'psi'], color=plotutils.plotpalette[0], cov_color='k', add_colors=[plotutils.plotpalette[1]], show_truths=True, truth_color='k', bins=25, show_histograms=False, plot_datapoints=False);
-# ax_list = fig.axes
-# for ii in range(len(ax_list)):
-#     if "ylabel" in list([ax_list[ii].tick_params()]): ax_list[ii].set_ylabel(ax_list[ii].get_ylabel(),fontsize="x-small")
-#     if "xlabel" in list([ax_list[ii].tick_params()]): ax_list[ii].set_xlabel(ax_list[ii].get_xlabel(),fontsize="x-small")
-# plt.show()
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 

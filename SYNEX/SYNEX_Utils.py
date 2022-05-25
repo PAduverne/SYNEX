@@ -27,6 +27,7 @@ import astropy.units as u
 import copy
 from ast import literal_eval
 import statistics
+import itertools
 from scipy import stats
 import time
 import json, h5py
@@ -1677,16 +1678,16 @@ def GetSourceFromLisabetaData(FileName, **kwargs):
 #                 ##########################################
 
 
-def TileSkyArea(source_or_kwargs,detectors=None,base_telescope_params=None,cloning_params=None,verbose=True):
+def TileSkyArea(sources=None,detectors=None,base_telescope_params=None,cloning_params=None,SaveInSubFile=None,SaveFileCommonStart=None,SourceIndexingByString=None,verbose=True):
     """
     Global function to tile skyarea. This will handle all extra tiling we might add,
     including handling series inputs over lists of sources and/or detectors.
 
     TO DO:
     ------
-    1. Case where we inject a list of sources...
-    2. Sort 'out_dirs' list if we have an injected long list of detectors where
-       more than one variable is changing. Maybe a variable for cloning_params?
+    1. Case where we inject lists of savefile names -- can then by pass a binch of stuff...
+    2. Should we allow case where 'DeltatL_cut' can be in cloning? then we gotta check
+       filenames exist etc...
     """
     # Using MPI or not
     if MPI is not None:
@@ -1699,8 +1700,7 @@ def TileSkyArea(source_or_kwargs,detectors=None,base_telescope_params=None,cloni
 
     # Populate detectors if we have cloning parameters
     if cloning_params!=None:
-        # Create base_telescope_params from default vals or whatever was handed to us
-        # We preferentially choose base_telescope_params that was handed to us
+        # Create base_telescope_params from whatever was handed to us, otherwise obtain from default vals
         if base_telescope_params==None:
             if detectors==None:
                 base_telescope_params=SYDs.Athena().__dict__
@@ -1712,7 +1712,7 @@ def TileSkyArea(source_or_kwargs,detectors=None,base_telescope_params=None,cloni
                 base_telescope_params=detectors.__dict__
 
         # Base detector savefile and name
-        BaseExFileName=base_telescope_params["ExistentialFileName"] if "ExistentialFileName" in base_telescope_params else "Athena_Base"
+        BaseTelescopeExFileName=base_telescope_params["ExistentialFileName"] if "ExistentialFileName" in base_telescope_params else SYNEX_PATH+"/Saved_Telescope_Dicts/Athena_Base.dat"
         if 'detector_config_struct' in base_telescope_params:
             BaseTelescopeName=base_telescope_params["detector_config_struct"]["telescope"]
         elif "telescope" in base_telescope_params:
@@ -1720,82 +1720,213 @@ def TileSkyArea(source_or_kwargs,detectors=None,base_telescope_params=None,cloni
         else:
             BaseTelescopeName="Athena"
 
-        # Start populating detector list -- list of lists, each embedded list corresponds to each requested cloning parameter
-        out_dirs=[]
+        # Check if we have a list of sources or savefiles
+        if isinstance(sources,dict) and "ExistentialFileName" in sources:
+            if sources["ExistentialFileName"][-1]=="/": source+="*"
+            sources=glob.glob(sources["ExistentialFileName"]) if "*" in sources["ExistentialFileName"] else [sources["ExistentialFileName"]]
+            cloning_params["SourceExName"]=sources
+        elif isinstance(sources,dict) and "H5File" in sources:
+            if sources["H5File"][-1]=="/": source+="*"
+            sources=glob.glob(sources["H5File"]) if "*" in sources["H5File"] else [sources["H5File"]]
+            cloning_params["H5File"]=sources
+        elif isinstance(sources,str):
+            if sources[-1]=="/": sources+="*"
+            sources=glob.glob(sources) if "*" in sources else [sources]
+            if sources[0][-3:]==".h5":
+                cloning_params["H5File"]=sources
+            elif sources[0][-3:]=="dat":
+                cloning_params["SourceExName"]=sources #### This has potential to be broken easily...
+        elif isinstance(sources,list) and isinstance(sources[0],str): ### OR PATH?
+            if sources[0][-3:]==".h5":
+                cloning_params["H5File"]=sources
+            elif sources[0][-3:]=="dat":
+                cloning_params["SourceExName"]=sources #### This has potential to be broken easily...
+        elif isinstance(sources,list):
+            cloning_params["SourceExName"]=[source.ExistentialFileName for source in sources] ## should we delete the list here or find a way to check later if it doesn't already exist?
+        else:
+            sources=[sources.ExistentialFileName]*len(detectors) # Just a single source object
+
+        # Need to know how many objects we will need --- later will include some source params in cloning params dict bith check that sources must == None to use cloning stuff
+        CloningVals = list(cloning_params.values())
+        CloningKeys = list(cloning_params.keys())
+        CloningCombs = list(itertools.product(*CloningVals)) # returns list of tuples of all possible combinations
+        Nvals = len(CloningCombs)
+
+        # Work out how many items per cpu to reduce data usage asap
+        NValsPerCore=int(Nvals//MPI_size)
+        CoreLenVals=[NValsPerCore+1 if ii<Nvals%MPI_size else NValsPerCore for ii in range(MPI_size)]
+        CPU_ENDs=list(np.cumsum(CoreLenVals))
+        CPU_STARTs=[0]+CPU_ENDs[:-1]
+
+        # Assign subset of combinations to each core
+        CloningCombs = [list(CloningCombs[ii]) for ii in range(CPU_STARTs[MPI_rank],CPU_ENDs[MPI_rank])]
+
+        # Create list of sources
+        if "H5File" in cloning_params:
+            ExNames = [ParamComb[-1].replace("/inference_data/", "/Saved_Source_Dicts/").replace(".h5", ".dat") for ParamComb in CloningCombs]
+            sources=[GetSourceFromLisabetaData(ParamComb[CloningKeys.index("H5File")],**{"ExistentialFileName":ExName,"verbose":verbose}) for ParamComb,ExName in zip(CloningCombs,ExNames)]
+        elif "SourceExName" in cloning_params:
+            sources=[SYSs.SMBH_Merger(**{"ExistentialFileName":ParamComb[CloningKeys.index("SourceExName")],"verbose":verbose}) for ParamComb in CloningCombs]
+        else:
+            sources=[sources[ii] for ii in range(CPU_STARTs[MPI_rank],CPU_ENDs[MPI_rank])]
+
+        # check what has changed in sources. Need this check to not be hard coded...
+        SourceCheckParams=[("DeltatL_cut","Tcut")] # list of tuples (paramName,paramAlias) --- this also doesn't deal with multiple source params changing... ### NEEDS FIXING ###
+        for p in SourceCheckParams:
+            SourcePVals = [-getattr(s,p[0])/86400. if p[1]=="Tcut" else getattr(s,p[0]) for s in sources]
+            SourcePValsUnique = np.unique(SourcePVals)
+            if len(SourcePValsUnique)>1 and len(SourcePValsUnique)!=len(sources):
+                if "H5File" in CloningKeys:
+                    CloningKeys[CloningKeys.index("H5File")]=p[1]
+                elif "SourceExName" in CloningKeys:
+                    CloningKeys[CloningKeys.index("SourceExName")]=p[1]
+                CloningCombs=[[v if k!=p[1] else SourcePVals[iparam] for v,k in zip(comb,CloningKeys)] for iparam,comb in enumerate(CloningCombs)]
+
+        # Add structure to detector savefile location and name if requested
+        FolderArch = "/".join(BaseTelescopeExFileName.split("/")[:-1])
+        if SaveInSubFile and SaveInSubFile[0]!="/": SaveInSubFile="/"+SaveInSubFile
+        if SaveInSubFile: FolderArch += SaveInSubFile
+        if FolderArch[-1]=="/": FolderArch=FolderArch[:-1]
+        pathlib.Path(FolderArch).mkdir(parents=True, exist_ok=True)
+        SaveFileCommon=FolderArch+"/"+SaveFileCommonStart if SaveFileCommonStart else FolderArch+"/"+BaseTelescopeExFileName.split("/")[-1]
+
+        # Get system IDs if we want them i.e. if we randomized some params and want to organize accordingly
+        if SourceIndexingByString:
+            SourceIndices=[source.ExistentialFileName.split(SourceIndexingByString)[-1] for source in sources]
+            SourceIndices=[s[:s.rindex("_")] for s in SourceIndices]
+        else:
+            SourceIndices=[str(i) for i in range(1,len(sources)+1)]
+
+        # Create list of detectors NB:: exfile names depend on what was changed... Make sure to treat long numbers so we dont get stupid savefile names.
+        ### I am sure this can be optimized... ###
         detectors=[]
-        for key,values in cloning_params.items():
-            # In case single value
-            if not isinstance(values,(list,np.ndarray)): values=[values]
-            # Work out how many per cpu if we are on cluster
-            Nvals=len(values)
-            NValsPerCore=int(Nvals//MPI_size)
-            CoreLenVals=[NValsPerCore+1 if ii<len(values)%MPI_size else NValsPerCore for ii in range(MPI_size)]
-            CPU_ENDs=list(np.cumsum(CoreLenVals))
-            CPU_STARTs=[0]+CPU_ENDs[:-1]
-            # Make list of detector properties depending on MPI_rank
-            dict_list = [base_telescope_params.copy() for _ in range(CPU_STARTs[MPI_rank],CPU_ENDs[MPI_rank])]
-            for ii in range(CPU_STARTs[MPI_rank],CPU_ENDs[MPI_rank]): dict_list[ii-CPU_STARTs[MPI_rank]].update({"ExistentialFileName":BaseExFileName,
-                          "NewExistentialFileName":".".join(BaseExFileName.split(".")[:-1])+"_"+key+"_"+str(ii+1)+"."+BaseExFileName.split(".")[-1],
-                          key:values[ii],
-                          "verbose":verbose,
-                          "cloning key":key,
-                          "cloning value":values[ii],
-                          "telescope":BaseTelescopeName+"_"+key+"_"+str(ii+1)})
-            if MPI_size>1 and verbose: print("CPU",MPI_rank+1,"/",MPI_size,"has",len(dict_list),"detector objects for",key,flush=True)
-            detectors+=[SYDs.Athena(**dict_ii) for dict_ii in dict_list]
-            out_dirs+=[key]*len(dict_list)
-        if MPI_size>1 and verbose: print("CPU",MPI_rank+1,"/",MPI_size,"has",len(dict_list),"total detector objects.",flush=True)
+        for ii,ParamComb in enumerate(CloningCombs):
+            # New Existential filename
+            KeyValStrings=[]
+            for k,v in zip(CloningKeys,ParamComb):
+                if isinstance(v,np.ndarray):
+                    vs=str(int(round(v[-1]))) ### What if we have gaps in Tobs???? should be count number of gaps and put that in too?
+                elif k=="Tcut":
+                    if v<1:
+                        vs=v*24 # Turn into hours... Never go below 1 hour anyway
+                        vs=str(int(round(vs)))+"hr"
+                    else:
+                        vs=str(int(round(v)))+"d"
+                elif isinstance(v,(float,int)):
+                    vs=str(int(round(v)))
+                elif isinstance(v,bool):
+                    # incase we start playing with flags later?
+                    vs=str(int(v))
+                KeyValStrings.append("{key}_{val}".format(key=k,val=vs))
+            # Use pairings with source IDs if given
+            DetectorNewExName=SaveFileCommon+"_SourceInd_"+SourceIndices[ii]+"__"+"_".join(KeyValStrings)+"."+BaseTelescopeExFileName.split(".")[-1]
+
+            # Detector object
+            detectors.append(SYDs.Athena(**dict(base_telescope_params,
+                      **{"ExistentialFileName":BaseTelescopeExFileName,
+                      "NewExistentialFileName":DetectorNewExName,
+                      "verbose":verbose,
+                      "cloning keys":CloningKeys,
+                      "cloning values":ParamComb,
+                      "telescope":BaseTelescopeName+"_"+"_".join(CloningKeys)+"_"+str(ii+1)},
+                      **{CloningKeys[jj]:ParamComb[jj] for jj in range(len(CloningKeys)) if CloningKeys[jj] not in ["Tcut"]})))
     else:
+        ###
+        #
+        # this section is not up to date -- need to sort case where we give a list of dictionaries,
+        # and we should divide between cores before we create the objects.
+        #
+        ###
+
         # No cloning params so see if we have input detectors
         if detectors==None and base_telescope_params==None:
+            Nvals=1
             detectors=[SYDs.Athena(**{"verbose":verbose})] if MPI_rank==0 else None
         elif detectors==None and base_telescope_params!=None:
+            Nvals=1
             detectors=[SYDs.Athena(**dict(base_telescope_params,**{"verbose":verbose}))] if MPI_rank==0 else None
         elif detectors!=None and not isinstance(detectors,list):
+            Nvals=1
             setattr(detectors,"verbose",verbose)
             detectors=[detectors] if MPI_rank==0 else None # if only one detector given
-        elif detectors!=None and isinstance(detectors,list):
-             # List of detectors given: split over all cpu.
-            Nvals=len(detectors)
+
+        # No cloning params so see if we have input sources
+        if sources==None and base_source_params==None:
+            Nvals=1
+            sources=[SYDs.Athena(**{"verbose":verbose})] if MPI_rank==0 else None
+        elif sources==None and base_source_params!=None:
+            Nvals=1
+            sources=[SYDs.Athena(**dict(base_source_params,**{"verbose":verbose}))] if MPI_rank==0 else None
+        elif sources!=None and not isinstance(base_source_params,list):
+            Nvals=1
+            setattr(sources,"verbose",verbose)
+            sources=[sources] if MPI_rank==0 else None # if only one detector given
+
+        # Check lengths of lists of objects and decide how many total tilings to do -- NB: both detectors and sources should now be lists but we never specified if they are the same length or not... Need to work on this ambiguous case...
+        Nsources,Ndetects = len(sources),len(detectors)
+        if Nsources>1 and Ndetects>1:
+            # List of sources and list of detectors given... Ensure lengths are the same.
+            if Nsources!=Ndetects: raise ValueError("inputting a list of sources with a list of detectors with lengths not equal is ambiguous... Try implementing cloning function instead to ensure all combinations of sources and detectors are accounted for.")
+            Nvals=Nsources
+        elif Nsources==1 and Ndetects>1:
+            # List of detectors given
+            Nvals=Ndetects
+        elif Nsources>1 and Ndetects==1:
+            # List of sources given
+            Nvals=Nsources
+        else:
+            # One of each; special case
+            Nvals=1
+
+        # Divide objects evenly between cores available
+        if Nvals>1:
             NValsPerCore=int(Nvals//MPI_size)
-            CoreLenVals=[NValsPerCore+1 if ii<len(values)%MPI_size else NValsPerCore for ii in range(MPI_size)]
+            CoreLenVals=[NValsPerCore+1 if ii<Nvals%MPI_size else NValsPerCore for ii in range(MPI_size)]
             CPU_ENDs=list(np.cumsum(CoreLenVals))
             CPU_STARTs=[0]+CPU_ENDs[:-1]
             detectors = [detectors[ii] for ii in range(CPU_STARTs[MPI_rank],CPU_ENDs[MPI_rank])]
-            for d in detectors: setattr(d,"verbose",verbose)
-            # detectors=[setattr(detectors[ii],"verbose",verbose) for ii in range(CPU_STARTs[MPI_rank],CPU_ENDs[MPI_rank])]
+            sources = [sources[ii] for ii in range(CPU_STARTs[MPI_rank],CPU_ENDs[MPI_rank])]
 
-        # Default of no output directory extension
-        out_dirs=[None]*len(detectors) if isinstance(detectors,list) else None
-
-    # Init source if we need to
-    if MPI_rank==0:
-        # See if we have a source class or kwargs -- only master node since this can get memory heavy
-        if isinstance(source_or_kwargs,dict):
-            source=SYSs.SMBH_Merger(**dict(source_or_kwargs,**{"verbose":verbose}))
+        # Sort some additional stuff
+        if Nvals==1 and MPI_rank>0:
+            ### Special case of single detector and single source ###
+            # Not sure how to treat special case of many cores but one det and one source... Does gwemopt handle cores instrinsically? Need to verify this...
+            # For now just have the master do stuff.
+            detectors=None
+            sources=None
         else:
-            source=source_or_kwargs
-            setattr(source,"verbose",verbose)
+            ### house-keeping and fill missing EM data ###
+            # Re-set verbosity in detectors
+            for d in detectors: setattr(d,"verbose",verbose)
+            # Re-set verbosity in sources, calculate EM flux and CTR
+            for s in sources:
+                setattr(s,"verbose",verbose)
+                # Calculate source EM flux data if missing
+                if not hasattr(source,"EM_Flux_Data"): source.GenerateEMFlux(fstart22=1e-4,TYPE="const",**{})
+                # Calculate source CTR data (detector dependent so force calculation here)
+                source.GenerateCTR(detector.ARF_file_loc_name,gamma=1.7)
+
+
+
+
+
+    #####
+    #
+    # At this point we should have sources and detectors as two lists of objects with equal lengths -- *each object in one list corresponds to the equivalently placed object in the second list*
+    # EXCEPT case where we have single source with single detector WHILE using multiple cores, then detectors and sources both = None for MPI_rank>1.
+    #
+    #####
+
+    # Skip special case
+    if detectors!=None and sources!=None:
+        # Output check that cluster is provisioning correctly
+        print(MPI_rank+1,"/",MPI_size,"with",len(detectors),"/",Nvals,"detectors to tile, and ",len(sources),"/",Nvals,"sources to tile.")
+        # Loop over lists of objects
+        for i in range(len(detectors)): go_params, map_struct, tile_structs, coverage_struct, detectors[i] = TileWithGwemopt(sources[i],detectors[i],FolderArch,verbose)
+        # Return new detectors only if we are not on cluster -- do we want to bcast here? Don't think we ever want to continue after tiling on cluster...
+        if MPI_size==1: return detectors
     else:
-        source=None # So we only have master node running later if one source and/or detector given
-
-    # Send source to workers if using mpi
-    if MPI_size>1: source = comm.bcast(source, root=0)
-
-    # Calculate source flux data -- NB CTR is telescope dependent so included inside loop for coverage info later if ARF file changes
-    if source!=None and not hasattr(source,"EM_Flux_Data"): source.GenerateEMFlux(fstart22=1e-4,TYPE="const",**{})
-
-    # Make sure only cases where detectors and source are defined are run (i.e. if we handed cluster one object with many cluster).
-    # We will optimise this later to ask gwemopt to run in parallel once we understand if this will speed up calculations for a single
-    # telescope or if they employ parallel code only when you ask it to consider several (unique!) telescopes in the coverage scheme.
-    if detectors!=None and source!=None:
-        # Finish source EM calculations based on broadcast detectors only if ARF file does not change in detectors
-        if len(set([detector.ARF_file_loc_name for detector in detectors]))==1: source.GenerateCTR(detectors[0].ARF_file_loc_name,gamma=1.7)
-
-        # Loop over list of detectors
-        for i in range(len(detectors)): go_params, map_struct, tile_structs, coverage_struct, detectors[i] = TileWithGwemopt(source,detectors[i],out_dirs[i],verbose)
-
-    return detectors
+        print(MPI_rank,"/",MPI_size,"with 0 /",Nvals,"detectors to tile, and 0 /",Nvals,"sources to tile.")
 
 def TileWithGwemopt(source,detector,outDirExtension=None,verbose=True):
     """
@@ -1948,8 +2079,10 @@ def GetCoverageInfo(go_params, map_struct, tile_structs, coverage_struct, detect
     tiles that cover source with exposure time at least the minimum for a threshold
     photon count.
     """
-    # gwemopt.scheduler.summary(go_params, map_struct, coverage_struct)
-    # gwemopt.plotting.coverage(go_params, map_struct, coverage_struct)
+
+    ### Include check that source exists here - if not: create it, or read it's position from json,
+    ### or can we just use the detector_go_params ? Is it updated? Or can the position and dist be included in
+    ### the detector_source_coverage dictionary?
 
     # Extract some data structures
     source_pix = hp.ang2pix(go_params["nside"],np.rad2deg(source.lamda),np.rad2deg(source.beta),lonlat=True)
@@ -1998,6 +2131,8 @@ def GetCoverageInfo(go_params, map_struct, tile_structs, coverage_struct, detect
     UniqueSourceCoverageCount=0
     cov_source_tile=[]
     cov_source_pix=[]
+    SourceTileTimeRanges=[]
+    SourceTileTimeRanges_days=[]
     TotExpTime=0.
     for tile_ii,tile_pix in enumerate(cov_ipix):
         TotExpTime+=cov_data[tile_ii,4]
@@ -2005,17 +2140,23 @@ def GetCoverageInfo(go_params, map_struct, tile_structs, coverage_struct, detect
         if source_pix in tile_pix:
             cov_source_tile += [tile_ii] # [tile_ii for tile_ii,tile_pix in enumerate(cov_ipix) if source_pix in tile_pix]
             cov_source_pix += list(tile_pix)
+            SourceTileTimeRanges_days.append([TotExpTime-cov_data[tile_ii,4],TotExpTime])
+            SourceTileTimeRange=[Time(detector.detector_config_struct["gps_science_start"]+TotExpTime-cov_data[tile_ii,4], format='gps', scale='utc').isot,
+                               Time(detector.detector_config_struct["gps_science_start"]+TotExpTime, format='gps', scale='utc').isot]
+            SourceTileTimeRanges.append(SourceTileTimeRange)
             if all([pix not in cov_source_pix for pix in tile_pix]):
                 UniqueSourceCoverageCount+=1
-    print("Total exposure time (d):",TotExpTime/(24*60*60))
     SourceTile_prob1=[cov_data[i,6] for i in cov_source_tile]
     SourceTile_prob2=[map_probs[pix] for pix in cov_source_pix]
     SourceTile_accum_prob1=np.sum(SourceTile_prob1)
     SourceTile_accum_prob2=np.sum(SourceTile_prob2)
+
     detector.detector_source_coverage={"telescope":telescope,"Source Tile Prob (by cov tiles)":SourceTile_prob1,
                         "Source Tile Prob (by cov pixels)":SourceTile_prob2,"tile ID containing source pixel":cov_source_tile,
                         "tile pixels containing source pixel":cov_source_pix, "No. source coverages":len(SourceTile_prob1),
-                        "No. unique source coverages":UniqueSourceCoverageCount}
+                        "No. unique source coverages":UniqueSourceCoverageCount,
+                        "Source tile timeranges (isot)": SourceTileTimeRanges,
+                        "Source tile timeranges (days)": SourceTileTimeRanges}
 
     # Print summary if asked for
     if verbose:
@@ -2054,7 +2195,7 @@ def GetCoverageInfo(go_params, map_struct, tile_structs, coverage_struct, detect
 
         detector.detector_source_coverage.update({"Source tile exposuretimes (s)":SourceTileExpTimes,
                                                   "Source photon counts":SourceTilePhotonCounts,
-                                                  "Source tile start times (s)":SourceTileStartTimes,
+                                                  "Source tile start times (s)":SourceTileStartTimes, ### Maybe change this and exp times to be a list of pairs like 'timeranges' but in gps days from start time? Then you can easily make the required histpgrams of interest.
                                                   "Start time (mjd)":Time(go_params["gpstime"], format='gps', scale='utc').mjd})
     else:
         detector.detector_source_coverage.update({"Source tile exposuretimes (s)":[],
@@ -2230,7 +2371,6 @@ def PlotLikeRatioFoMFromJsonWithInferenceInlays(FoMJsonFileAndPath, BF_lim=20., 
 
     with open(FoMJsonFileAndPath) as f:
         FoMOverRange = json.load(f)
-    f.close()
 
     # Set the Bayes limit
     # For inc vs maxf: beta BF_lim=31, lambda BF_lim=15.5
@@ -3532,7 +3672,7 @@ def PlotSourcePhotons(detectors, labels=None, BoxPlot=True, SaveFig=False, SaveF
 
 
     ############# Did we change something? ------ First handle two special cases then gneral case (TO DO) #############
-    # Add this to initial tiling function? Maybe...
+    # Add this to master tiling function.
 
     # Did we change DeltatL_cut?
     SourcePreMergerCuts=[[source.DeltatL_cut for source in source_el] for source_el in sources]
@@ -3678,7 +3818,7 @@ def PlotSourcePhotons_SingleDetList(detectors,sources=None,fig=None,label=None,B
 #                                   #
 #####################################
 
-def DecTreeReg(Detectors, TestParams):
+def DecTreeReg(detectors):
     """
     Code to test how accumulated photon count varies with a subset of
     tested parameters. In essence, if we randomize over many parameters and find
@@ -3692,11 +3832,69 @@ def DecTreeReg(Detectors, TestParams):
     ------
         - Detectors :: list of SYNEX detectors.
             Each list element can also be a list of detector objects such that
-            the input list is pre-grouped by test parameters.
+            the input list is pre-grouped by test parameters that we want to test (?) --- Maybe not a needed feature...
 
         - TestParams :: Dict
             list of variable names to be tested (e.g. ["Tobs","DeltatL_cut"]).
+
+    TO DO:
+    ------
+        - Figure out ambiguous case when we have variable names that match for lisabeta and gwemopt.
+          Need to introduce a way to discern when we want one or the other.
     """
+    ###
+    # Variables of interest:
+    # source -- {Mtot, q, chi1, chi2, lambda, beta, dist, DeltatL_cut}
+    # detect -- {Tobs, Texp}
+    # FoMs -- {n_photons, DaysToSourceExp}
+    ###
+
+    # List of all params of interest... This should not be hardcoded moving forward as a priori we don't know what is interesting...
+    SourceTestParamKeys = ["M","q","chi1","chi2","lambda","beta", "dist", "DeltatL_cut"]
+    DetectorTestParamKeys = ["Tobs", "exposuretime","n_photons","DaysToSourceExp"]
+    AllTestParamKeys = SourceTestParamKeys+DetectorTestParamKeys
+    AllTestParams = {key:[] for key in AllTestParamKeys}
+
+    # Load params
+    for d in detectors:
+        with open(d.detector_source_coverage["source JsonFile"]) as f:
+            input_params = json.load(f)
+        for key in AllTestParamKeys:
+            if key in input_params['source_params'] or key in ["M","q"]:
+                if key=="M":
+                    AllTestParams[key].append(round(input_params['source_params']["m1"]+input_params['source_params']["m2"])) ## Otherwise we get fractional differences and this can screw up methods in dataframe
+                elif key=="q":
+                    AllTestParams[key].append(round(input_params['source_params']["m1"])/round(input_params['source_params']["m2"]))
+                else:
+                    AllTestParams[key].append(input_params['source_params'][key])
+            elif key in input_params['waveform_params']:
+                AllTestParams[key].append(input_params['waveform_params'][key])
+            elif key in d.detector_go_params:
+                if key=="Tobs":
+                    AllTestParams[key].append(d.detector_go_params[key][1]) ### But what if we have gaps... How do we treat array of pairs? Seperate out photons per obs period maybe? Effectively 'exploding' the dataframe? Need to include this calc then inside 'GetCoverageInfo'
+                else:
+                    AllTestParams[key].append(d.detector_go_params[key])
+            elif key in d.detector_config_struct:
+                AllTestParams[key].append(d.detector_config_struct[key])
+
+        # Add total source photons captured
+        AllTestParams["n_photons"].append(round(sum(d.detector_source_coverage["Source photon counts"])))
+
+        # Add first day after detector start of science at which source is exposed -- append 'NAN' if source never exposed
+        if len(d.detector_source_coverage["Source tile timeranges (days)"])>0:
+            AllTestParams["DaysToSourceExp"].append(d.detector_source_coverage["Source tile timeranges (days)"])
+        else:
+            AllTestParams["DaysToSourceExp"].append(np.nan)
+
+    # Create DataFrame
+    data = pd.DataFrame(data=AllTestParams)
+
+    # Return data frame
+    return data
+
+
+
+
 
 
 #############

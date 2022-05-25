@@ -91,15 +91,20 @@ class SMBH_Merger:
     IMRPhenomD waveforms calibrated for ``q`` = ``m1`` /``m2`` < 18
     lisabeta waveforms assume aligned spins ``chi1``, ``chi2`` = abs(a/m) <= 0.85 or if ``q`` =1 abs(a/m)<0.98
     """
-
+    
     def __init__(self, **kwargs_in):
         """
-        TO DO: Need to check if read in vals from H5 file are LFrame or SSBFrame,
-        and then convert accordingly::
-        params_SSBframe=lisatools.convert_Lframe_to_SSBframe(
+        TO DO:
+        1. Need to check if read in vals from H5 file are LFrame or SSBFrame,
+            and then convert accordingly::
+            params_SSBframe=lisatools.convert_Lframe_to_SSBframe(
                 params_Lframe, t0=0., frozenLISA=False, LISAconst=pyresponse.LISAconstProposal)
 
-        But both frames should be stored in h5 file... need to make sure we are reading in the right ones.
+            But both frames should be stored in h5 file... need to make sure we are reading in the right ones.
+
+        2. Need to clean up innit function by importing the defaults in SYNEX_PTMC code and running checks
+            for values of keys there. This will be much more efficient and allow better control over changes to
+            default values. Seperate these into a seperate file with source and LISA defaults markated clearly.
         """
         # Set verbosity
         self.verbose=kwargs_in.pop("verbose") if "verbose" in kwargs_in else True

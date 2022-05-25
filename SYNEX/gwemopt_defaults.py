@@ -85,7 +85,7 @@ go_params_default["Ntiles"] = None # 50 # Speific to tilesType=hierarchical and 
 go_params_default["Ntiles_cr"] = 0.70 # Speific to tilesType=hierarchical and greedy (I think)
 go_params_default["Dscale"] = 1.0
 go_params_default["nside"] = 128
-go_params_default["Tobs"] = None # Source param to be defined when data file is provided -- e.g. np.array([0.0,1.0]) = [Tstart,Tend], for times in DAYS
+go_params_default["Tobs"] = np.array([0.,9.]) # pairs of [Tstart,Tend], for times in DAYS from science start... We need to join this with lisabeta time stamps later. Default 9 days.
 go_params_default["powerlaw_cl"] = 0.9
 go_params_default["powerlaw_n"] = 1.0
 go_params_default["powerlaw_dist_exp"] = 0
@@ -149,8 +149,8 @@ config_struct_default = {
 "latitude" : 0., # None, # 20.7204,       ### None if we want a telesscopic orbit?
 "longitude" : 0., # None, # -156.1552,    ### None if we want a telesscopic orbit?
 "elevation" : 0., # None, # 3055.0,       ### None if we want a telesscopic orbit? GWEMOPT uses these for airmass calcs... Ask to raise flag for this? It's always written to file but only used if you choose "airmass_weighted" scheduleType
-"FOV_coverage" : 1., # In deg^2
-"FOV" : 1., # In deg^2 ### Is it deg^2? line 26 of samplers.py suggests it's the radius/side length of the observation window...
+"FOV_coverage" : 0.4, # In deg^2
+"FOV" : 0.4, # In deg^2 ### Is it deg^2? line 26 of samplers.py suggests it's the radius/side length of the observation window...
 "FOV_coverage_type" : "square",
 "FOV_type" : "square",
 "tesselationFile" : None,
@@ -173,7 +173,7 @@ config_struct_default = {
 "AscendingNode" : 0., # In DEGREES
 "phi_0" : 0., # In DEGREeS, initial phase of Athena when measurments start
 "period" : 180., # In days, for one complete halo orbit about L2
-"gps_science_start" : 1703721618.0, # 01/01/2034 00:00:00.000 UTC -- gps start time of science meaasurements
+"gps_science_start" : 1703721618.0, # 01/01/2034 00:00:00.000 UTC -- gps start time of science measurements
 "mission_duration" : 3. # in YEARS- total time from *start of science* to end of Athena mission
 }
 # "dec_constraint" : "-90,90",

@@ -44,7 +44,7 @@ def get_telescope_segments(params):
         params["config"][telescope]["n_windows"] = nexp
         tot_obs_time = np.sum(np.diff(np.array(params["config"][telescope]["exposurelist"]))) * 86400.
         params["config"][telescope]["tot_obs_time"] = tot_obs_time
-    
+
     return params
 
 def get_segments(params, config_struct):
@@ -142,14 +142,14 @@ def get_segments_tile(config_struct, radec, segmentlist):
 
     return tilesegmentlist
 
-def get_segments_tiles(params, config_struct, tile_struct):
+def get_segments_tiles(params, config_struct, tile_struct, verbose=True):
 
     # Get rough details of sun, earth, moon radecs in ATHENA frame through orbit
-    config_struct = get_telescope_orbit(config_struct)
+    config_struct = get_telescope_orbit(config_struct,verbose=verbose)
 
     segmentlist = config_struct["segmentlist"]
 
-    print("Generating Athena segments for tiles...")
+    if verbose: print("Generating Athena segments for tiles...")
 
     keys = tile_struct.keys()
 
@@ -199,7 +199,7 @@ def get_segments_tiles(params, config_struct, tile_struct):
 
     return tile_struct
 
-def get_telescope_orbit(config_struct,SAVETOFILE=False):
+def get_telescope_orbit(config_struct,SAVETOFILE=False,verbose=True):
     """
     Overhead function to either load a custom orbit from
     config_struct["orbitFile"]=full_file_path,
@@ -212,11 +212,11 @@ def get_telescope_orbit(config_struct,SAVETOFILE=False):
         with open(config_struct["orbitFile"], 'rb') as f:
             config_struct["orbit_dict"] = pickle.load(f)
     else:
-        config_struct=calc_telescope_orbit(config_struct,SAVETOFILE)
+        config_struct=calc_telescope_orbit(config_struct,SAVETOFILE,verbose=verbose)
 
     return config_struct
 
-def calc_telescope_orbit(config_struct,SAVETOFILE):
+def calc_telescope_orbit(config_struct,SAVETOFILE,verbose=True):
     """
     NB: heliospheric long and latitude assumed here. config_struct has a number of
         added parameters for orbit calculation... Consider adding a switch for
@@ -342,7 +342,7 @@ def calc_telescope_orbit(config_struct,SAVETOFILE):
     if SAVETOFILE:
         with open(config_struct["orbitFile"], 'wb') as f:
             pickle.dump(astrophysical_bodies_from_athena_radecs, f)
-        print("Saved orbit to :",config_struct["orbitFile"])
+        if verbose: print("Saved orbit to :",config_struct["orbitFile"])
 
     return config_struct
 

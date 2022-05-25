@@ -98,7 +98,7 @@ Athena_kwargs={"ExistentialFileName":SYNEX_PATH+"/Saved_Telescope_Dicts/Athena_b
 
 # Get sources to test
 CutsToTest = ["5hr","10hr","1d","3d","1wk","2wk","3wk","1mon"] # ["5hr","10hr"] #
-SourceExNames = sorted([File for c in CutsToTest for File in glob.glob(SYNEX_PATH + "/Saved_Source_Dicts/Randomized_SYNEX2/Randomized_angles_spins_MRat_*_"+c+".dat")]) ### Makes "10" go in front of "1"... Problematic af.
+SourceExNames = sorted([File for c in CutsToTest for File in glob.glob(SYNEX_PATH + "/Saved_Source_Dicts/Randomized_angles_spins_MRat_*_"+c+".dat")]) ### Makes "10" go in front of "1"... Problematic af.
 
 # Create Athena Detectors by cloning a base detector
 T_obs_array = [np.array([0.,1.]),np.array([0.,2.]),np.array([0.,3.]),np.array([0.,4.])]

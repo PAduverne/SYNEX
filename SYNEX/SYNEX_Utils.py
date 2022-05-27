@@ -1946,6 +1946,9 @@ def TileSkyArea(sources=None,detectors=None,base_telescope_params=None,cloning_p
         # Output check that cluster is provisioning correctly
         print(MPI_rank+1,"/",MPI_size,"with",len(detectors),"/",Nvals,"detectors to tile, and ",len(sources),"/",Nvals,"sources to tile.")
 
+        # Output location -- I think gwemopt_output folder is redundant now. Keep in case of relics.
+        OutPutArch=SaveInSubFile.strip("/") if SaveInSubFile else None
+
         # Initiate empty detectors output list if we are not on cluster
         if MPI_size==1: detectors=[]
 
@@ -1975,7 +1978,7 @@ def TileSkyArea(sources=None,detectors=None,base_telescope_params=None,cloning_p
             detector=SYDs.Athena(**Dictii)
 
             # Tile
-            go_params, map_struct, tile_structs, coverage_struct, detector = TileWithGwemopt(sources[i],detector,FolderArch,verbose)
+            go_params, map_struct, tile_structs, coverage_struct, detector = TileWithGwemopt(sources[i],detector,OutPutArch,verbose)
 
             # Add to detectors output list if we not on cluster
             if MPI_size==1: detectors.append(detector)

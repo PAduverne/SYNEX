@@ -155,6 +155,8 @@ class Athena:
 
         # Default coverage dict is None
         detector_source_coverage=None
+        detector_tile_struct=None
+        detector_coverage_struct=None
 
         # Make sure to handle case where we are in cluster so we don't write too many files and exceed disk quota
         # self.use_mpi=kwargs["use_mpi"] if "use_mpi" in kwargs else False

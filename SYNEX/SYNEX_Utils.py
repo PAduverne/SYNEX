@@ -1973,12 +1973,18 @@ def TileSkyArea(sources=None,detectors=None,base_telescope_params=None,cloning_p
                           "cloning values":CloningCombs[i],
                           "telescope":BaseTelescopeName+"_"+"_".join(CloningKeys)+"_"+str(i+1)},
                           **{CloningKeys[jj]:CloningCombs[i][jj] for jj in range(len(CloningKeys)) if CloningKeys[jj] not in ["Tcut"]})
-            
+
             # Detector object
             detector=SYDs.Athena(**Dictii) ## IF a param changed from existing detect file, Athena innit function forces detector_source_coverage = None.
-
+            
             # Tile
+            if MPI_rank==0:
+                t_tile0=time.time()
+                DetectorCovered=True if detector.detector_source_coverage==None else False
             if detector.detector_source_coverage==None: go_params, map_struct, tile_structs, coverage_struct, detector = TileWithGwemopt(sources[i],detector,OutPutArch,verbose)
+            if MPI_rank==0:
+                t_tile1=time.time()
+                print("Time for one source by master rank:",t_tile1-t_tile0,"s, Covered:",DetectorCovered)
 
             # Add to detectors output list if we not on cluster
             if MPI_size==1: detectors.append(detector)

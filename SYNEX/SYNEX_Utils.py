@@ -1688,6 +1688,12 @@ def TileSkyArea(sources=None,detectors=None,base_telescope_params=None,cloning_p
     1. Case where we inject lists of savefile names -- can then by pass a binch of stuff...
     2. Should we allow case where 'DeltatL_cut' can be in cloning? then we gotta check
        filenames exist etc...
+    3. Reduce memory usage by loading base telecope by master only and transfering.
+    4. Do the detector and source one by one to save data and have at least most of the objects
+       calculated before we get a potential out-of-memory error on the cluster...
+    5. Add changes to default go_params flags (Ncores etc) for case of single detector and single
+       source input with MPI_size>1. Can we go one step further and calculate a share of cores
+       to go into parallelizing gwemopt with remaining cores used to share input objects across.
     """
     # Using MPI or not
     if MPI is not None:
@@ -1799,7 +1805,7 @@ def TileSkyArea(sources=None,detectors=None,base_telescope_params=None,cloning_p
 
         # Create list of detectors NB:: exfile names depend on what was changed... Make sure to treat long numbers so we dont get stupid savefile names.
         ### I am sure this can be optimized... ###
-        detectors=[]
+        DetectorNewExNames=[]
         for ii,ParamComb in enumerate(CloningCombs):
             # New Existential filename
             KeyValStrings=[]
@@ -1818,18 +1824,31 @@ def TileSkyArea(sources=None,detectors=None,base_telescope_params=None,cloning_p
                     # incase we start playing with flags later?
                     vs=str(int(v))
                 KeyValStrings.append("{key}_{val}".format(key=k,val=vs))
-            # Use pairings with source IDs if given
-            DetectorNewExName=SaveFileCommon+"_SourceInd_"+SourceIndices[ii]+"__"+"_".join(KeyValStrings)+"."+BaseTelescopeExFileName.split(".")[-1]
 
-            # Detector object
-            detectors.append(SYDs.Athena(**dict(base_telescope_params,
-                      **{"ExistentialFileName":BaseTelescopeExFileName,
-                      "NewExistentialFileName":DetectorNewExName,
-                      "verbose":verbose,
-                      "cloning keys":CloningKeys,
-                      "cloning values":ParamComb,
-                      "telescope":BaseTelescopeName+"_"+"_".join(CloningKeys)+"_"+str(ii+1)},
-                      **{CloningKeys[jj]:ParamComb[jj] for jj in range(len(CloningKeys)) if CloningKeys[jj] not in ["Tcut"]})))
+            # Use pairings with source IDs if given
+            DetectorNewExNames.append(SaveFileCommon+"_SourceInd_"+SourceIndices[ii]+"__"+"_".join(KeyValStrings)+"."+BaseTelescopeExFileName.split(".")[-1])
+            #
+            # # Detector object -- load if file exists including clone changes in case we changed something (then we recalculate everything anyway)
+            # if os.path.isfile(ExName):
+            #     Dictii=dict(base_telescope_params,
+            #               **{"ExistentialFileName":BaseTelescopeExFileName,
+            #               "NewExistentialFileName":DetectorNewExName,
+            #               "verbose":verbose,
+            #               "cloning keys":CloningKeys,
+            #               "cloning values":ParamComb,
+            #               "telescope":BaseTelescopeName+"_"+"_".join(CloningKeys)+"_"+str(ii+1)},
+            #               **{CloningKeys[jj]:ParamComb[jj] for jj in range(len(CloningKeys)) if CloningKeys[jj] not in ["Tcut"]}))
+            # else:
+            #     Dictii=dict(base_telescope_params,
+            #               **{"ExistentialFileName":DetectorNewExName,
+            #               "verbose":verbose,
+            #               "cloning keys":CloningKeys,
+            #               "cloning values":ParamComb,
+            #               "telescope":BaseTelescopeName+"_"+"_".join(CloningKeys)+"_"+str(ii+1)},
+            #               **{CloningKeys[jj]:ParamComb[jj] for jj in range(len(CloningKeys)) if CloningKeys[jj] not in ["Tcut"]}))
+            #
+            # # Add to list
+            # detectors.append(SYDs.Athena(**Dictii))
     else:
         ###
         #
@@ -1912,8 +1931,13 @@ def TileSkyArea(sources=None,detectors=None,base_telescope_params=None,cloning_p
 
     #####
     #
-    # At this point we should have sources and detectors as two lists of objects with equal lengths -- *each object in one list corresponds to the equivalently placed object in the second list*
-    # EXCEPT case where we have single source with single detector WHILE using multiple cores, then detectors and sources both = None for MPI_rank>1.
+    # At this point we should have a list of sources and detector Ex names (or detector objects if we passed H5file names at input).
+    # Both sources and detector-related lists have equal length:
+    #              * Each object in one list corresponds to the equivalently placed object in the second list *
+    #
+    # EXCEPTION :: input is single source and single detector WHILE using multiple cores.
+    # Then detectors and sources both = None for MPI_rank>1 -- assuming there is scope within GWEMOPT to
+    # handle multiple cores. To do this though we need to change some default go_params flags (Ncores etc). This needs to be done still.
     #
     #####
 
@@ -1921,9 +1945,42 @@ def TileSkyArea(sources=None,detectors=None,base_telescope_params=None,cloning_p
     if detectors!=None and sources!=None:
         # Output check that cluster is provisioning correctly
         print(MPI_rank+1,"/",MPI_size,"with",len(detectors),"/",Nvals,"detectors to tile, and ",len(sources),"/",Nvals,"sources to tile.")
-        # Loop over lists of objects
-        for i in range(len(detectors)): go_params, map_struct, tile_structs, coverage_struct, detectors[i] = TileWithGwemopt(sources[i],detectors[i],FolderArch,verbose)
-        # Return new detectors only if we are not on cluster -- do we want to bcast here? Don't think we ever want to continue after tiling on cluster...
+
+        # Initiate empty detectors output list if we are not on cluster
+        if MPI_size==1: detectors=[]
+
+        # Loop over lists of sources and telescope save files
+        for i,ExName in enumerate(DetectorNewExNames):
+            # Detector object vals -- load if file exists but include clone vals in case we changed something
+            # (then we recalculate everything)
+            if os.path.isfile(ExName):
+                Dictii=dict(base_telescope_params,
+                          **{"ExistentialFileName":BaseTelescopeExFileName,
+                          "NewExistentialFileName":ExName,
+                          "verbose":verbose,
+                          "cloning keys":CloningKeys,
+                          "cloning values":CloningCombs[i],
+                          "telescope":BaseTelescopeName+"_"+"_".join(CloningKeys)+"_"+str(ii+1)},
+                          **{CloningKeys[jj]:CloningCombs[i][jj] for jj in range(len(CloningKeys)) if CloningKeys[jj] not in ["Tcut"]})
+            else:
+                Dictii=dict(base_telescope_params,
+                          **{"ExistentialFileName":ExName,
+                          "verbose":verbose,
+                          "cloning keys":CloningKeys,
+                          "cloning values":CloningCombs[i],
+                          "telescope":BaseTelescopeName+"_"+"_".join(CloningKeys)+"_"+str(ii+1)},
+                          **{CloningKeys[jj]:CloningCombs[i][jj] for jj in range(len(CloningKeys)) if CloningKeys[jj] not in ["Tcut"]})
+
+            # Detector object
+            detector=SYDs.Athena(**Dictii)
+
+            # Tile
+            go_params, map_struct, tile_structs, coverage_struct, detector = TileWithGwemopt(sources[i],detector,FolderArch,verbose)
+
+            # Add to detectors output list if we not on cluster
+            if MPI_size==1: detectors.append(detector)
+
+        # Return detectors output list if we are not on cluster
         if MPI_size==1: return detectors
     else:
         print(MPI_rank,"/",MPI_size,"with 0 /",Nvals,"detectors to tile, and 0 /",Nvals,"sources to tile.")

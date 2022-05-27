@@ -1942,9 +1942,9 @@ def TileSkyArea(sources=None,detectors=None,base_telescope_params=None,cloning_p
     #####
 
     # Skip special case
-    if detectors!=None and sources!=None:
+    if DetectorNewExNames!=None and sources!=None:
         # Output check that cluster is provisioning correctly
-        print(MPI_rank+1,"/",MPI_size,"with",len(detectors),"/",Nvals,"detectors to tile, and ",len(sources),"/",Nvals,"sources to tile.")
+        print(MPI_rank+1,"/",MPI_size,"with",len(DetectorNewExNames),"/",Nvals,"detectors to tile, and ",len(sources),"/",Nvals,"sources to tile.")
 
         # Output location -- I think gwemopt_output folder is redundant now. Keep in case of relics.
         OutPutArch=SaveInSubFile.strip("/") if SaveInSubFile else None
@@ -1963,7 +1963,7 @@ def TileSkyArea(sources=None,detectors=None,base_telescope_params=None,cloning_p
                           "verbose":verbose,
                           "cloning keys":CloningKeys,
                           "cloning values":CloningCombs[i],
-                          "telescope":BaseTelescopeName+"_"+"_".join(CloningKeys)+"_"+str(ii+1)},
+                          "telescope":BaseTelescopeName+"_"+"_".join(CloningKeys)+"_"+str(i+1)},
                           **{CloningKeys[jj]:CloningCombs[i][jj] for jj in range(len(CloningKeys)) if CloningKeys[jj] not in ["Tcut"]})
             else:
                 Dictii=dict(base_telescope_params,
@@ -1971,7 +1971,7 @@ def TileSkyArea(sources=None,detectors=None,base_telescope_params=None,cloning_p
                           "verbose":verbose,
                           "cloning keys":CloningKeys,
                           "cloning values":CloningCombs[i],
-                          "telescope":BaseTelescopeName+"_"+"_".join(CloningKeys)+"_"+str(ii+1)},
+                          "telescope":BaseTelescopeName+"_"+"_".join(CloningKeys)+"_"+str(i+1)},
                           **{CloningKeys[jj]:CloningCombs[i][jj] for jj in range(len(CloningKeys)) if CloningKeys[jj] not in ["Tcut"]})
 
             # Detector object

@@ -91,7 +91,7 @@ class SMBH_Merger:
     IMRPhenomD waveforms calibrated for ``q`` = ``m1`` /``m2`` < 18
     lisabeta waveforms assume aligned spins ``chi1``, ``chi2`` = abs(a/m) <= 0.85 or if ``q`` =1 abs(a/m)<0.98
     """
-    
+
     def __init__(self, **kwargs_in):
         """
         TO DO:
@@ -524,7 +524,7 @@ class SMBH_Merger:
         self.map_struct={}
         try:
             # 3D case
-            healpix_data, header = hp.read_map(self.sky_map,field=(0,1,2,3),h=True)
+            healpix_data, header = hp.read_map(self.sky_map,field=(0,1,2,3),h=True,verbose=self.verbose)
             distmu_data = healpix_data[1]
             distsigma_data = healpix_data[2]
             prob_data = healpix_data[0]
@@ -537,7 +537,7 @@ class SMBH_Merger:
             self.do3D = True
         except:
             # 1D case
-            prob_data, header = hp.read_map(self.sky_map,field=0,h=True)
+            prob_data, header = hp.read_map(self.sky_map,field=0,h=True,verbose=self.verbose)
             prob_data = prob_data/np.sum(prob_data)
             self.map_struct["prob"] = prob_data
             self.do3D = False

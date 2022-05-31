@@ -1678,20 +1678,18 @@ def GetSourceFromLisabetaData(FileName, **kwargs):
 #                 ##########################################
 
 
-def TileSkyArea(sources=None,detectors=None,base_telescope_params=None,cloning_params=None,SaveInSubFile=None,SaveFileCommonStart=None,SourceIndexingByString=None,verbose=True):
+def TileSkyArea(sources=None,detectors=None,base_telescope_params=None,base_source_savefile=None,cloning_params=None,SaveInSubFile=None,SaveFileCommonStart=None,SourceIndexingByString=None,verbose=True):
     """
     Global function to tile skyarea. This will handle all extra tiling we might add,
     including handling series inputs over lists of sources and/or detectors.
 
     TO DO:
     ------
-    1. Case where we inject lists of savefile names -- can then by pass a binch of stuff...
-    2. Should we allow case where 'DeltatL_cut' can be in cloning? then we gotta check
-       filenames exist etc...
-    3. Reduce memory usage by loading base telecope by master only and transfering.
-    4. Do the detector and source one by one to save data and have at least most of the objects
-       calculated before we get a potential out-of-memory error on the cluster...
-    5. Add changes to default go_params flags (Ncores etc) for case of single detector and single
+    1. Should we allow case where 'DeltatL_cut' can be in cloning? then we gotta check
+       filenames exist etc... this would allow us to move source creations to loop one by one too... PRIORITIZE THIS!
+    2. Reduce memory usage by loading base telecope by master only and transfering?
+    3. Do sources one by one to save data.
+    4. Add changes to default go_params flags (Ncores etc) for case of single detector and single
        source input with MPI_size>1. Can we go one step further and calculate a share of cores
        to go into parallelizing gwemopt with remaining cores used to share input objects across.
     """
@@ -1726,7 +1724,7 @@ def TileSkyArea(sources=None,detectors=None,base_telescope_params=None,cloning_p
         else:
             BaseTelescopeName="Athena"
 
-        # Check if we have a list of sources or savefiles
+        # Check if we have a 'sources' list as input
         if isinstance(sources,dict) and "ExistentialFileName" in sources:
             if sources["ExistentialFileName"][-1]=="/": source+="*"
             sources=glob.glob(sources["ExistentialFileName"]) if "*" in sources["ExistentialFileName"] else [sources["ExistentialFileName"]]
@@ -1747,10 +1745,8 @@ def TileSkyArea(sources=None,detectors=None,base_telescope_params=None,cloning_p
                 cloning_params["H5File"]=sources
             elif sources[0][-3:]=="dat":
                 cloning_params["SourceExName"]=sources #### This has potential to be broken easily...
-        elif isinstance(sources,list):
-            cloning_params["SourceExName"]=[source.ExistentialFileName for source in sources] ## should we delete the list here or find a way to check later if it doesn't already exist?
-        else:
-            sources=[sources.ExistentialFileName]*len(detectors) # Just a single source object
+        else: # handed list of sources or just one source
+            cloning_params["SourceExName"]=[source.ExistentialFileName for source in sources] if isinstance(source,list) else [sources.ExistentialFileName] ## should we delete the list here or find a way to check later if it doesn't already exist?
 
         # Need to know how many objects we will need --- later will include some source params in cloning params dict bith check that sources must == None to use cloning stuff
         CloningVals = list(cloning_params.values())
@@ -1773,8 +1769,6 @@ def TileSkyArea(sources=None,detectors=None,base_telescope_params=None,cloning_p
             sources=[GetSourceFromLisabetaData(ParamComb[CloningKeys.index("H5File")],**{"ExistentialFileName":ExName,"verbose":verbose}) for ParamComb,ExName in zip(CloningCombs,ExNames)]
         elif "SourceExName" in cloning_params:
             sources=[SYSs.SMBH_Merger(**{"ExistentialFileName":ParamComb[CloningKeys.index("SourceExName")],"verbose":verbose}) for ParamComb in CloningCombs]
-        else:
-            sources=[sources[ii] for ii in range(CPU_STARTs[MPI_rank],CPU_ENDs[MPI_rank])]
 
         # check what has changed in sources. Need this check to not be hard coded...
         SourceCheckParams=[("DeltatL_cut","Tcut")] # list of tuples (paramName,paramAlias) --- this also doesn't deal with multiple source params changing... ### NEEDS FIXING ###
@@ -1803,7 +1797,7 @@ def TileSkyArea(sources=None,detectors=None,base_telescope_params=None,cloning_p
         else:
             SourceIndices=[str(i) for i in range(1,len(sources)+1)]
 
-        # Create list of detectors NB:: exfile names depend on what was changed... Make sure to treat long numbers so we dont get stupid savefile names.
+        # Create list of detector dicts NB:: exfile names depend on what was changed... Make sure to treat long numbers so we dont get stupid savefile names.
         ### I am sure this can be optimized... ###
         DetectorNewExNames=[]
         for ii,ParamComb in enumerate(CloningCombs):
@@ -1824,31 +1818,9 @@ def TileSkyArea(sources=None,detectors=None,base_telescope_params=None,cloning_p
                     # incase we start playing with flags later?
                     vs=str(int(v))
                 KeyValStrings.append("{key}_{val}".format(key=k,val=vs))
-
+            
             # Use pairings with source IDs if given
             DetectorNewExNames.append(SaveFileCommon+"_SourceInd_"+SourceIndices[ii]+"__"+"_".join(KeyValStrings)+"."+BaseTelescopeExFileName.split(".")[-1])
-            #
-            # # Detector object -- load if file exists including clone changes in case we changed something (then we recalculate everything anyway)
-            # if os.path.isfile(ExName):
-            #     Dictii=dict(base_telescope_params,
-            #               **{"ExistentialFileName":BaseTelescopeExFileName,
-            #               "NewExistentialFileName":DetectorNewExName,
-            #               "verbose":verbose,
-            #               "cloning keys":CloningKeys,
-            #               "cloning values":ParamComb,
-            #               "telescope":BaseTelescopeName+"_"+"_".join(CloningKeys)+"_"+str(ii+1)},
-            #               **{CloningKeys[jj]:ParamComb[jj] for jj in range(len(CloningKeys)) if CloningKeys[jj] not in ["Tcut"]}))
-            # else:
-            #     Dictii=dict(base_telescope_params,
-            #               **{"ExistentialFileName":DetectorNewExName,
-            #               "verbose":verbose,
-            #               "cloning keys":CloningKeys,
-            #               "cloning values":ParamComb,
-            #               "telescope":BaseTelescopeName+"_"+"_".join(CloningKeys)+"_"+str(ii+1)},
-            #               **{CloningKeys[jj]:ParamComb[jj] for jj in range(len(CloningKeys)) if CloningKeys[jj] not in ["Tcut"]}))
-            #
-            # # Add to list
-            # detectors.append(SYDs.Athena(**Dictii))
     else:
         ###
         #
@@ -1976,7 +1948,7 @@ def TileSkyArea(sources=None,detectors=None,base_telescope_params=None,cloning_p
 
             # Detector object
             detector=SYDs.Athena(**Dictii) ## IF a param changed from existing detect file, Athena innit function forces detector_source_coverage = None.
-            
+
             # Tile
             if MPI_rank==0:
                 t_tile0=time.time()
@@ -1984,7 +1956,7 @@ def TileSkyArea(sources=None,detectors=None,base_telescope_params=None,cloning_p
             if detector.detector_source_coverage==None: go_params, map_struct, tile_structs, coverage_struct, detector = TileWithGwemopt(sources[i],detector,OutPutArch,verbose)
             if MPI_rank==0:
                 t_tile1=time.time()
-                print("Time for one source by master rank:",t_tile1-t_tile0,"s, Covered:",DetectorCovered)
+                print("Time for telescope",i,"/",len(DetectorNewExNames),"by master rank:",t_tile1-t_tile0,"s, Covered:",DetectorCovered)
 
             # Add to detectors output list if we not on cluster
             if MPI_size==1: detectors.append(detector)
@@ -2126,7 +2098,7 @@ def PrepareGwemoptDicts(source,detector,outDirExtension=None):
         go_params["outputDir"]+="/"+".".join(source.JsonFile.split("/")[-1].split(".")[:-1])
         if not outDirExtension==None:
             go_params["outputDir"]+="_"+outDirExtension
-    pathlib.Path(go_params["outputDir"]).mkdir(parents=True, exist_ok=True)
+    if source.PermissionToWrite: pathlib.Path(go_params["outputDir"]).mkdir(parents=True, exist_ok=True)
     if os.path.isfile(go_params["outputDir"]):
         print("WARNING: outputDir",go_params["outputDir"].split("/SYNEX/")[-1],"already exists... Files within will be overwriten.")
 

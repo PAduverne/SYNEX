@@ -1685,7 +1685,7 @@ def TileSkyArea(sources=None,detectors=None,base_telescope_params=None,base_sour
 
     TO DO:
     ------
-    1. Should we allow case where 'DeltatL_cut' can be in cloning? then we gotta check
+    1. Should we allow case where 'DeltatL_cut' can be in cloning_params? Then we gotta check
        filenames exist etc... this would allow us to move source creations to loop one by one too... PRIORITIZE THIS!
     2. Reduce memory usage by loading base telecope by master only and transfering?
     3. Do sources one by one to save data.
@@ -1818,40 +1818,48 @@ def TileSkyArea(sources=None,detectors=None,base_telescope_params=None,base_sour
                     # incase we start playing with flags later?
                     vs=str(int(v))
                 KeyValStrings.append("{key}_{val}".format(key=k,val=vs))
-            
+
             # Use pairings with source IDs if given
             DetectorNewExNames.append(SaveFileCommon+"_SourceInd_"+SourceIndices[ii]+"__"+"_".join(KeyValStrings)+"."+BaseTelescopeExFileName.split(".")[-1])
     else:
         ###
         #
-        # this section is not up to date -- need to sort case where we give a list of dictionaries,
-        # and we should divide between cores before we create the objects.
+        # This section is not up to date for cluster usage !!!!!!!!!!
+        # Need to divide between cores, maybe find way to reduce memory usage
+        # too like in the previous section where we pass only ExNames and create the
+        # objects one by one?
+        #
+        # Need to check case where sources and detectors lists are not equal...
         #
         ###
 
-        # No cloning params so see if we have input detectors
-        if detectors==None and base_telescope_params==None:
-            Nvals=1
-            detectors=[SYDs.Athena(**{"verbose":verbose})] if MPI_rank==0 else None
-        elif detectors==None and base_telescope_params!=None:
-            Nvals=1
-            detectors=[SYDs.Athena(**dict(base_telescope_params,**{"verbose":verbose}))] if MPI_rank==0 else None
-        elif detectors!=None and not isinstance(detectors,list):
-            Nvals=1
-            setattr(detectors,"verbose",verbose)
-            detectors=[detectors] if MPI_rank==0 else None # if only one detector given
+        # Set base Ex name for tiling call later -- maybe we can do better with the way things are structured here. Seems like there are two calls here...
+        # Maybe set the cloning stuff in a seperate function to clean things up here.
+        DetectorNewExNames=None
 
-        # No cloning params so see if we have input sources
-        if sources==None and base_source_params==None:
-            Nvals=1
-            sources=[SYDs.Athena(**{"verbose":verbose})] if MPI_rank==0 else None
-        elif sources==None and base_source_params!=None:
-            Nvals=1
-            sources=[SYDs.Athena(**dict(base_source_params,**{"verbose":verbose}))] if MPI_rank==0 else None
-        elif sources!=None and not isinstance(base_source_params,list):
-            Nvals=1
+        # No cloning params - create detectors list from inputs
+        if base_telescope_params==None and detectors==None:
+            detectors=[SYDs.Athena(**{"verbose":verbose})]
+        elif base_telescope_params!=None and detectors==None:
+            detectors=[SYDs.Athena(**dict(base_telescope_params,**{"verbose":verbose}))]
+        elif detectors!=None:
+            if base_telescope_params!=None and verbose: print("WARNING :: Case of input detector list and base params ambiguous. Setting base params to None.")
+            base_telescope_params=None
+            if isinstance(detectors,list):
+                detectors=[SYDs.Athena(**dict(d,**{"verbose":verbose})) if isinstance(d,dict) else setattr(d,"verbose",verbose) for d in detectors]
+            else:
+                detectors=[SYDs.Athena(**detectors)] if isinstance(detectors,dict) else [detectors]
+
+        # No cloning params - create sources list from inputs
+        if sources==None:
+            sources=[SYSs.SMBH_Merger(**{"verbose",verbose})]
+        elif isinstance(sources,dict):
+            sources=[SYSs.SMBH_Merger(**dict(sources,**{"verbose",verbose}))]
+        elif isinstance(sources,list):
+            sources=[SYSs.SMBH_Merger(**dict(s,**{"verbose",verbose})) if isinstance(s,dict) else setattr(s,"verbose",verbose) for s in sources]
+        else:
             setattr(sources,"verbose",verbose)
-            sources=[sources] if MPI_rank==0 else None # if only one detector given
+            sources=[sources] # if MPI_rank==0 else None # if only one detector given
 
         # Check lengths of lists of objects and decide how many total tilings to do -- NB: both detectors and sources should now be lists but we never specified if they are the same length or not... Need to work on this ambiguous case...
         Nsources,Ndetects = len(sources),len(detectors)
@@ -1870,7 +1878,7 @@ def TileSkyArea(sources=None,detectors=None,base_telescope_params=None,base_sour
             Nvals=1
 
         # Divide objects evenly between cores available
-        if Nvals>1:
+        if Nvals>1 and MPI_size>1:
             NValsPerCore=int(Nvals//MPI_size)
             CoreLenVals=[NValsPerCore+1 if ii<Nvals%MPI_size else NValsPerCore for ii in range(MPI_size)]
             CPU_ENDs=list(np.cumsum(CoreLenVals))
@@ -1886,20 +1894,11 @@ def TileSkyArea(sources=None,detectors=None,base_telescope_params=None,base_sour
             detectors=None
             sources=None
         else:
-            ### house-keeping and fill missing EM data ###
-            # Re-set verbosity in detectors
-            for d in detectors: setattr(d,"verbose",verbose)
-            # Re-set verbosity in sources, calculate EM flux and CTR
-            for s in sources:
-                setattr(s,"verbose",verbose)
-                # Calculate source EM flux data if missing
-                if not hasattr(source,"EM_Flux_Data"): source.GenerateEMFlux(fstart22=1e-4,TYPE="const",**{})
-                # Calculate source CTR data (detector dependent so force calculation here)
-                source.GenerateCTR(detector.ARF_file_loc_name,gamma=1.7)
-
-
-
-
+            # Fill missing EM data
+            for s,d in zip(sources,detectors):
+                if not hasattr(s,"EM_Flux_Data"): s.GenerateEMFlux(fstart22=1e-4,TYPE="const",**{})
+                # Calculate source CTR data (detector dependent)
+                s.GenerateCTR(d.ARF_file_loc_name,gamma=1.7)
 
     #####
     #
@@ -1913,8 +1912,32 @@ def TileSkyArea(sources=None,detectors=None,base_telescope_params=None,base_sour
     #
     #####
 
-    # Skip special case
-    if DetectorNewExNames!=None and sources!=None:
+    # Tile stuff
+    if detectors!=None and sources!=None:
+        # Output a check
+        print("Beginning tiling for",len(detectors),"detectors, and", len(sources),"sources...")
+
+        # Output location -- I think gwemopt_output folder is redundant now. Keep in case of relics.
+        OutPutArch=SaveInSubFile.strip("/") if SaveInSubFile else None
+
+        # Tile one by one using matching objects in each list
+        T_tiling_start=time.time()
+        for ii,(s,d) in enumerate(zip(sources,detectors)):
+            print("-"*100)
+            T_tiling_start_ii=time.time()
+            if d.detector_source_coverage==None: go_params, map_struct, tile_structs, coverage_struct, d = TileWithGwemopt(s,d,OutPutArch,verbose)
+            T_tiling_end_ii=time.time()
+            print("Time to tile object no.",ii+1,"out of",len(detectors),":",T_tiling_end_ii-T_tiling_start_ii,"s")
+        T_tiling_end=time.time()
+        TotTime=T_tiling_end-T_tiling_start
+        TotTime=str(TotTime)+" s" if TotTime<3600. else str(TotTime/3600.)+" hr"
+        print("-"*100)
+        print("Total time for",len(detectors),"objects:",TotTime)
+        print("-"*100)
+
+        # Return detectors output list if we are not on cluster
+        if MPI_size==1: return detectors
+    elif DetectorNewExNames!=None and sources!=None: # Skip special case where sources==None for one input object each on cluster...
         # Output check that cluster is provisioning correctly
         print(MPI_rank+1,"/",MPI_size,"with",len(DetectorNewExNames),"/",Nvals,"detectors to tile, and ",len(sources),"/",Nvals,"sources to tile.")
 
@@ -1956,10 +1979,16 @@ def TileSkyArea(sources=None,detectors=None,base_telescope_params=None,base_sour
             if detector.detector_source_coverage==None: go_params, map_struct, tile_structs, coverage_struct, detector = TileWithGwemopt(sources[i],detector,OutPutArch,verbose)
             if MPI_rank==0:
                 t_tile1=time.time()
-                print("Time for telescope",i,"/",len(DetectorNewExNames),"by master rank:",t_tile1-t_tile0,"s, Covered:",DetectorCovered)
+                print("Time for telescope",i,"/",len(DetectorNewExNames),"by master rank:",t_tile1-t_tile0,"s")
 
             # Add to detectors output list if we not on cluster
             if MPI_size==1: detectors.append(detector)
+
+        process=psutil.Process(os.getpid())
+        mem=process.memory_info().rss()/(1000000.)
+        ListOfMemoryUsage = comm.gather(mem,root=0)
+        print(type(ListOfMemoryUsage),np.shape(ListOfMemoryUsage))
+        print("Job memory info:",MPI_size,len(ListOfMemoryUsage),sum(ListOfMemoryUsage))
 
         # Return detectors output list if we are not on cluster
         if MPI_size==1: return detectors
@@ -2171,16 +2200,16 @@ def GetCoverageInfo(go_params, map_struct, tile_structs, coverage_struct, detect
     cov_source_pix=[]
     SourceTileTimeRanges=[]
     SourceTileTimeRanges_days=[]
-    TotExpTime=0.
+    print("start time checks:",cov_data[0,2],cov_data[1,2]-cov_data[0,2],24*60*60*(cov_data[1,2]-cov_data[0,2]),Time(cov_data[0,2], format='mjd', scale='utc').isot, Time(detector.detector_config_struct["gps_science_start"], format='gps', scale='utc').isot)
     for tile_ii,tile_pix in enumerate(cov_ipix):
-        TotExpTime+=cov_data[tile_ii,4]
+        TotExpTime_day=cov_data[tile_ii,2]-cov_data[0,2]
         # print(tile_ii, source_pix, tile_pix, cov_data[tile_ii,4], detector.detector_config_struct["exposuretime"], cov_data[tile_ii,4]/detector.detector_config_struct["exposuretime"])
         if source_pix in tile_pix:
             cov_source_tile += [tile_ii] # [tile_ii for tile_ii,tile_pix in enumerate(cov_ipix) if source_pix in tile_pix]
             cov_source_pix += list(tile_pix)
-            SourceTileTimeRanges_days.append([TotExpTime-cov_data[tile_ii,4],TotExpTime])
-            SourceTileTimeRange=[Time(detector.detector_config_struct["gps_science_start"]+TotExpTime-cov_data[tile_ii,4], format='gps', scale='utc').isot,
-                               Time(detector.detector_config_struct["gps_science_start"]+TotExpTime, format='gps', scale='utc').isot]
+            SourceTileTimeRanges_days.append([TotExpTime_day,TotExpTime_day+cov_data[tile_ii,4]/86400.])
+            SourceTileTimeRange=[Time(cov_data[tile_ii,2], format='mjd', scale='utc').isot,
+                               Time(cov_data[tile_ii,2]+cov_data[tile_ii,4]/86400., format='mjd', scale='utc').isot]
             SourceTileTimeRanges.append(SourceTileTimeRange)
             if all([pix not in cov_source_pix for pix in tile_pix]):
                 UniqueSourceCoverageCount+=1
@@ -2194,7 +2223,9 @@ def GetCoverageInfo(go_params, map_struct, tile_structs, coverage_struct, detect
                         "tile pixels containing source pixel":cov_source_pix, "No. source coverages":len(SourceTile_prob1),
                         "No. unique source coverages":UniqueSourceCoverageCount,
                         "Source tile timeranges (isot)": SourceTileTimeRanges,
-                        "Source tile timeranges (days)": SourceTileTimeRanges}
+                        "Source tile timeranges (days)": SourceTileTimeRanges_days}
+
+    print("Source tile timeranges checks:::",SourceTileTimeRanges, SourceTileTimeRanges_days)
 
     # Print summary if asked for
     if verbose:
@@ -2207,7 +2238,7 @@ def GetCoverageInfo(go_params, map_struct, tile_structs, coverage_struct, detect
         print(SourceTile_prob2,"\n")
         print("Source tile accumulated p:",SourceTile_accum_prob1,SourceTile_accum_prob2)
 
-    if len(cov_source_tile)>0: print("Coverage stuct exposures within range:",Time(cov_data[0,2],format='mjd', scale='utc').isot,Time(cov_data[-1,2],format='mjd', scale='utc').isot)
+    # if len(cov_source_tile)>0: print("Coverage stuct exposures within range:",Time(cov_data[0,2],format='mjd', scale='utc').isot,Time(cov_data[-1,2],format='mjd', scale='utc').isot)
 
     # Now add cuts to coverage info depending on photon flux
     if source!=None and len(cov_source_tile)>0:
@@ -3366,7 +3397,7 @@ def PlotOrbit(config_struct,MollProj=False,SaveFig=False):
     Plot orbit. Mostly to check we have done things right for orbital
     calculations in segments_athena.py.
 
-    SkyProj=True will use "mollweide" projection but this takes radians as input
+    MollProj=True will use "mollweide" projection but this takes radians as input
     and will give give some glitchy things for patch radii due to their small
     angular extents. If you set to cartesian (mollweide=False) patches will have
     radii in degrees and not have the same problem.
@@ -3401,7 +3432,7 @@ def PlotOrbit(config_struct,MollProj=False,SaveFig=False):
         ax.set_aspect(1)
 
     for i in range(len(Moon_RaDecs[0,:])):
-        if not SkyProj and i==0:
+        if not MollProj and i==0:
             m = plt.Circle((Moon_RaDecs[0,i]*Factor, Moon_RaDecs[1,i]*Factor), moon_radii[i]*Factor, color="cyan",label="Moon")
             e = plt.Circle((Earth_RaDecs[0,i]*Factor, Earth_RaDecs[1,i]*Factor), earth_radii[i]*Factor, color="blue",label="Earth")
             s = plt.Circle((Sun_RaDecs[0,i]*Factor, Sun_RaDecs[1,i]*Factor), sun_radii[i]*Factor, color="red",label="Sun")
@@ -3693,6 +3724,8 @@ def PlotSourcePhotons(detectors, labels=None, BoxPlot=True, SaveFig=False, SaveF
     Plot total accumulated photons for each list of detectors (in case we
     have several versions of the same cloned parameter but using eg different
     gwemopt flags...)
+
+    What if detectors don't have "cloning keys"/"cloning values" in detector_config_struct?
     """
     # Check if it's a list
     if not isinstance(detectors,list):
@@ -3717,14 +3750,14 @@ def PlotSourcePhotons(detectors, labels=None, BoxPlot=True, SaveFig=False, SaveF
     for ii in range(len(detectors)):
         if len(np.unique(SourcePreMergerCuts[ii]))>1:
             for jj in range(len(detectors[ii])):
-                detectors[ii][jj].detector_config_struct.update({"cloning key":"DeltatL_cut","cloning value":-sources[ii][jj].DeltatL_cut/86400.})
+                detectors[ii][jj].detector_config_struct.update({"cloning keys":"DeltatL_cut","cloning values":-sources[ii][jj].DeltatL_cut/86400.})
 
     # Did we change Tobs?
     DetectorTobs=[[detector.detector_go_params["Tobs"] for detector in detector_el] for detector_el in detectors]
     for ii in range(len(detectors)):
         if not np.array_equal(np.unique(DetectorTobs[ii]),DetectorTobs[ii][0]):
             for jj in range(len(detectors[ii])):
-                detectors[ii][jj].detector_config_struct.update({"cloning key":"Tobs","cloning value":DetectorTobs[ii][jj][1]})
+                detectors[ii][jj].detector_config_struct.update({"cloning keys":"Tobs","cloning values":DetectorTobs[ii][jj][1]})
 
     ###################################################################################################################
 
@@ -3736,11 +3769,11 @@ def PlotSourcePhotons(detectors, labels=None, BoxPlot=True, SaveFig=False, SaveF
 
     # Get the figure and axes for each list within detectors list
     if BoxPlot:
-        Xs = [detector.detector_config_struct["cloning value"] for detector_el in detectors for detector in detector_el] # This will store values cloned for sources too...
+        Xs = [detector.detector_config_struct["cloning values"] for detector_el in detectors for detector in detector_el] # This will store values cloned for sources too...
         Ys = [sum(detector.detector_source_coverage["Source photon counts"]) for detector_el in detectors for detector in detector_el]
         UniqueXs = pd.unique(Xs)
         UniqueXs.sort()
-        clone_key = detectors[0][0].detector_config_struct["cloning key"]
+        clone_key = detectors[0][0].detector_config_struct["cloning keys"]
         data_points = pd.DataFrame(data={clone_key:Xs, "photon_count":Ys})
         xdata_stats = data_points.groupby(by=clone_key).describe() # Default is only include numeric data
         print(xdata_stats)
@@ -3758,7 +3791,7 @@ def PlotSourcePhotons(detectors, labels=None, BoxPlot=True, SaveFig=False, SaveF
         Lines2D=[(PlotSourcePhotons_SingleDetList(detectors_el,sources=sources,fig=fig,label=label,BoxPlot=BoxPlot)) for detectors_el,label in zip(detectors,labels)]
 
         # Plot the mean
-        clone_key = detectors[0][0].detector_config_struct["cloning key"]
+        clone_key = detectors[0][0].detector_config_struct["cloning keys"]
         data_points = pd.DataFrame(data={clone_key:[x for Line2D in Lines2D for x in Line2D[2]],
                                    "photon_count":[y for Line2D in Lines2D for y in Line2D[3]]})
         xdata_stats = data_points.groupby(by=clone_key).describe() # Default is only include numeric data
@@ -3779,7 +3812,7 @@ def PlotSourcePhotons(detectors, labels=None, BoxPlot=True, SaveFig=False, SaveF
         if labels!=None: plt.legend(fontsize="x-small",ncol=data_points[clone_key].nunique()//10+1) # Wrap columns when we get more than 10 points
 
     # Sort special case of premerger time cut
-    if detectors[0][0].detector_config_struct["cloning key"]=="DeltatL_cut":
+    if detectors[0][0].detector_config_struct["cloning keys"]=="DeltatL_cut":
         ax=plt.gca()
         ax.invert_xaxis()
         X_Datas_unique = pd.unique(data_points[clone_key])

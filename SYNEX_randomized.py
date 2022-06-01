@@ -133,7 +133,8 @@ if is_master and len(JsonFiles)==0:
                     "p_jump": 0.5,
                     "init_method": "fisher",
                     "skip_fisher": False,
-                    "n_temps": 10}
+                    "n_temps": 10,
+                    "output_raw":False} # Don't save raw file... this is very memory intensive (740KB vs. 59 MB).
 
     # Loop over the variable values for each Json.
     JsonFiles = []

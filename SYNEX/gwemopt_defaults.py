@@ -140,8 +140,8 @@ go_params_default["true_distance"] = None       # Source param to be defined whe
 # FUNCTIONS BUT NEED TO CHECK THIS...
 config_struct_default = {
 "telescope" : "Athena_test",
-"cloning key" : None,
-"cloning value" : None,
+"cloning keys" : None,
+"cloning values" : None,
 "filt" : "c",
 "magnitude" : 18.7,
 "exposuretime" : None, # 10000.,    ### IN SECONDS, INCLUDES SLEW AND READONOUT TIME!

@@ -237,7 +237,7 @@ class SMBH_Merger:
             elif key == "approximant":
                 self.approximant = value
             elif key == 'DeltatL_cut':
-                self.DeltatL_cut = value # -100.*24.*60.*60. #
+                self.DeltatL_cut = value
             elif key == 'Lframe':
                 self.Lframe = value
             elif key=='lisabetaFile':

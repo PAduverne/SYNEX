@@ -97,7 +97,7 @@ Athena_kwargs={"ExistentialFileName":SYNEX_PATH+"/Saved_Telescope_Dicts/Athena_b
                } ### What about doPerturbativeTiling? ### "doPerturbativeTiling" : True
 
 # Get sources to test
-CutsToTest = ["5hr","10hr"] # ["1d","3d"] # ["1wk","2wk"] # ["3wk","1mon"] # ["5hr","10hr","1d","3d","1wk","2wk","3wk","1mon"] # ["5hr","10hr"] #
+CutsToTest = ["5hr","10hr","1d","3d","1wk","2wk","3wk","1mon"]
 SourceExNames = sorted([File for c in CutsToTest for File in glob.glob(SYNEX_PATH + "/Saved_Source_Dicts/Randomized_angles_spins_MRat_*_"+c+".dat")]) ### Makes "10" go in front of "1"... Problematic af.
 
 # Create Athena Detectors by cloning a base detector

@@ -1864,7 +1864,11 @@ def TileSkyArea(CloningTrackFile=None,sources=None,detectors=None,base_telescope
                 f.write(','.join(CloningKeys)+'\n')
                 f.write(BaseTelescopeName+'\n')
                 f.write(BaseTelescopeExFileName+'\n')
-                for DetEx,SouEx,Comb in zip(DetectorNewExNamesAll,SourceExNamesAll,CloningCombsAll): f.write(DetEx+":"+SouEx+":"+",".join([str(el) if not isinstance(el,(np.ndarray,list)) else str(el[-1]) for el in Comb])+'\n') ### Need a way to save arrays better for when we switch to gaps etc. Maybe then we will switch to a '.dat' savefile instead and just pickle everything.
+                for DetEx,SouEx,Comb in zip(DetectorNewExNamesAll,SourceExNamesAll,CloningCombsAll):
+                    print(DetEx)
+                    print(SouEx)
+                    print(Comb)
+                    f.write(DetEx+":"+SouEx+":"+",".join([str(el) if not isinstance(el,(np.ndarray,list)) else str(el[-1]) for el in Comb])+'\n') ### Need a way to save arrays better for when we switch to gaps etc. Maybe then we will switch to a '.dat' savefile instead and just pickle everything.
     else:
         ###
         #

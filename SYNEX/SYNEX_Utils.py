@@ -1721,7 +1721,7 @@ def TileSkyArea(CloningTrackFile=None,sources=None,detectors=None,base_telescope
                 Comb=[v if k!="Tobs" else np.array([0.,v]) for k,v in zip(CloningKeys,Comb)]
             CloningCombsAll.append(Comb) # What if we have a string? Like a flag or 'None' value?
         Nvals=len(CloningCombsAll)
-        
+
         # Work out how many items per cpu to reduce data usage asap
         NValsPerCore=int(Nvals//MPI_size)
         CoreLenVals=[NValsPerCore+1 if ii<Nvals%MPI_size else NValsPerCore for ii in range(MPI_size)]
@@ -1780,7 +1780,8 @@ def TileSkyArea(CloningTrackFile=None,sources=None,detectors=None,base_telescope
         # Need to know how many objects we will need --- later will include some source params in cloning params dict bith check that sources must == None to use cloning stuff
         CloningVals = list(cloning_params.values())
         CloningKeys = list(cloning_params.keys())
-        CloningCombsAll = list(itertools.product(*CloningVals)) # returns list of tuples of all possible combinations
+        CloningCombsAll = [list(Comb) for Comb in list(itertools.product(*CloningVals))] # returns list of tuples of all possible combinations
+        CloningCombsAll
         Nvals = len(CloningCombsAll)
 
         # Work out how many items per cpu to reduce data usage asap
@@ -1790,7 +1791,7 @@ def TileSkyArea(CloningTrackFile=None,sources=None,detectors=None,base_telescope
         CPU_STARTs=[0]+CPU_ENDs[:-1]
 
         # Assign subset of combinations to each core
-        CloningCombs = [list(CloningCombsAll[ii]) for ii in range(CPU_STARTs[MPI_rank],CPU_ENDs[MPI_rank])]
+        CloningCombs = [CloningCombsAll[ii] for ii in range(CPU_STARTs[MPI_rank],CPU_ENDs[MPI_rank])]
 
         # Create list of sources
         if "H5File" in cloning_params:

@@ -1852,8 +1852,8 @@ def TileSkyArea(CloningTrackFile=None,sources=None,detectors=None,base_telescope
         pathlib.Path(SYNEX_PATH+"/TileTrackFiles/").mkdir(parents=True, exist_ok=True)
         CloningTrackFile=SYNEX_PATH+"/TileTrackFiles/ProgressTrackFile.txt"
         SourceExNames=[s.ExistentialFileName for s in sources]
-        SourceExNamesAll=comm.gather(SourceExNames, root=0) if use_mpi else SourceExNames
-        DetectorNewExNamesAll=comm.gather(DetectorNewExNames, root=0) if use_mpi else DetectorNewExNames
+        SourceExNamesAll=comm.gather(SourceExNames, root=0) if MPI_size>1 else SourceExNames
+        DetectorNewExNamesAll=comm.gather(DetectorNewExNames, root=0) if MPI_size>1 else DetectorNewExNames
         if MPI_rank==0:
             with open(CloningTrackFile, 'w') as f:
                 f.write(str(SaveInSubFile)+'\n')

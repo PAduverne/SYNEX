@@ -1716,9 +1716,12 @@ def TileSkyArea(CloningTrackFile=None,sources=None,detectors=None,base_telescope
             linelist=line.split(":")
             DetectorNewExNamesAll.append(linelist[0])
             sourcesAll.append(SYSs.SMBH_Merger({"ExistentialFileName":linelist[1],"verbose":verbose}))
-            CloningCombsAll.append([float(el) if el!="None" else None for el in linelist[2].split(",")]) # What if we have a string? Like a flag or 'None' value?
+            Comb=[float(el) if el!="None" else None for el in linelist[2].split(",")]
+            if "Tobs" in CloningKeys:
+                Comb=[v if k!="Tobs" else np.array([0.,v]) for k,v in zip(CloningKeys,Comb)]
+            CloningCombsAll.append(Comb) # What if we have a string? Like a flag or 'None' value?
         Nvals=len(CloningCombsAll)
-
+        
         # Work out how many items per cpu to reduce data usage asap
         NValsPerCore=int(Nvals//MPI_size)
         CoreLenVals=[NValsPerCore+1 if ii<Nvals%MPI_size else NValsPerCore for ii in range(MPI_size)]
@@ -1860,7 +1863,7 @@ def TileSkyArea(CloningTrackFile=None,sources=None,detectors=None,base_telescope
                 f.write(','.join(CloningKeys)+'\n')
                 f.write(BaseTelescopeName+'\n')
                 f.write(BaseTelescopeExFileName+'\n')
-                for DetEx,SouEx,Comb in zip(DetectorNewExNamesAll,SourceExNamesAll,CloningCombsAll): f.write(DetEx+":"+SouEx+":"+",".join([str(el) for el in Comb])+'\n')
+                for DetEx,SouEx,Comb in zip(DetectorNewExNamesAll,SourceExNamesAll,CloningCombsAll): f.write(DetEx+":"+SouEx+":"+",".join([str(el) if not isinstance(el,(np.ndarray,list)) else str(el[-1]) for el in Comb])+'\n') ### Need a way to save arrays better for when we switch to gaps etc. Maybe then we will switch to a '.dat' savefile instead and just pickle everything.
     else:
         ###
         #

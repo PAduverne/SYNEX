@@ -1721,12 +1721,15 @@ def TileSkyArea(CloningTrackFile=None,sources=None,detectors=None,base_telescope
                 Comb=[v if k!="Tobs" else np.array([0.,v]) for k,v in zip(CloningKeys,Comb)]
             CloningCombsAll.append(Comb) # What if we have a string? Like a flag or 'None' value?
         Nvals=len(CloningCombsAll)
-
+        
         # Work out how many items per cpu to reduce data usage asap
         NValsPerCore=int(Nvals//MPI_size)
         CoreLenVals=[NValsPerCore+1 if ii<Nvals%MPI_size else NValsPerCore for ii in range(MPI_size)]
         CPU_ENDs=list(np.cumsum(CoreLenVals))
         CPU_STARTs=[0]+CPU_ENDs[:-1]
+
+        # Make base detector params dict
+        base_telescope_params=SYDs.Athena({"ExistentialFileName":BaseTelescopeExFileName,"verbose":verbose}).__dict__
 
         # Assign subsets to each core
         CloningCombs = [list(CloningCombsAll[ii]) for ii in range(CPU_STARTs[MPI_rank],CPU_ENDs[MPI_rank])]
@@ -1863,15 +1866,15 @@ def TileSkyArea(CloningTrackFile=None,sources=None,detectors=None,base_telescope
             DetectorNewExNamesAll = [el for subel in DetectorNewExNamesAll for el in subel]
             print("len checks:",len(DetectorNewExNamesAll), len(SourceExNamesAll), len(CloningCombsAll))
             with open(CloningTrackFile, 'w') as f:
-                f.write(str(SaveInSubFile)+'\n')
-                f.write(','.join(CloningKeys)+'\n')
-                f.write(BaseTelescopeName+'\n')
-                f.write(BaseTelescopeExFileName+'\n')
+                f.write(str(SaveInSubFile)) # +'\n')
+                f.write(','.join(CloningKeys)) # +'\n')
+                f.write(BaseTelescopeName) # +'\n')
+                f.write(BaseTelescopeExFileName) # +'\n')
                 for DetEx,SouEx,Comb in zip(DetectorNewExNamesAll,SourceExNamesAll,CloningCombsAll):
                     print(DetEx)
                     print(SouEx)
                     print(Comb)
-                    f.write(DetEx+":"+SouEx+":"+",".join([str(el) if not isinstance(el,(np.ndarray,list)) else str(el[-1]) for el in Comb])+'\n') ### Need a way to save arrays better for when we switch to gaps etc. Maybe then we will switch to a '.dat' savefile instead and just pickle everything.
+                    f.write(DetEx+":"+SouEx+":"+",".join([str(el) if not isinstance(el,(np.ndarray,list)) else str(el[-1]) for el in Comb])) # +'\n') ### Need a way to save arrays better for when we switch to gaps etc. Maybe then we will switch to a '.dat' savefile instead and just pickle everything.
     else:
         ###
         #

@@ -1857,7 +1857,10 @@ def TileSkyArea(CloningTrackFile=None,sources=None,detectors=None,base_telescope
         CloningTrackFile=SYNEX_PATH+"/TileTrackFiles/ProgressTrackFile.txt"
         SourceExNames=[s.ExistentialFileName for s in sources]
         SourceExNamesAll=comm.gather(SourceExNames, root=0) if MPI_size>1 else SourceExNames
+        SourceExNamesAll = [el for subel in SourceExNamesAll for el in subel]
         DetectorNewExNamesAll=comm.gather(DetectorNewExNames, root=0) if MPI_size>1 else DetectorNewExNames
+        DetectorNewExNamesAll = [el for subel in DetectorNewExNamesAll for el in subel]
+        print("len checks:",len(DetectorNewExNamesAll), len(SourceExNamesAll), len(CloningCombsAll))
         if MPI_rank==0:
             with open(CloningTrackFile, 'w') as f:
                 f.write(str(SaveInSubFile)+'\n')

@@ -104,12 +104,16 @@ SourceExNames = sorted([File for c in CutsToTest for File in glob.glob(SYNEX_PAT
 T_obs_array = [np.array([0.,1.]),np.array([0.,2.]),np.array([0.,3.]),np.array([0.,4.])]
 cloning_params={"Tobs":T_obs_array}
 
+# Use tracking file or clone new stuff?
+USETRACK=True
+CloningTrackFile=SYNEX_PATH+"/TileTrackFiles/ProgressTrackFile.txt" if USETRACK else None
+
 # Tile all combinations of cloning params and sources
 SaveInSubFile=None
 SaveFileCommonStart="Randomized_angles_spins_MRat"
 SourceIndexingByString="MRat_"
 T0 = time.time()
-SYU.TileSkyArea(sources=SourceExNames,detectors=None,base_telescope_params=Athena_kwargs,cloning_params=cloning_params,SaveInSubFile=SaveInSubFile,SaveFileCommonStart=SaveFileCommonStart,SourceIndexingByString=SourceIndexingByString,verbose=False)
+SYU.TileSkyArea(CloningTrackFile=CloningTrackFile,sources=SourceExNames,detectors=None,base_telescope_params=Athena_kwargs,cloning_params=cloning_params,SaveInSubFile=SaveInSubFile,SaveFileCommonStart=SaveFileCommonStart,SourceIndexingByString=SourceIndexingByString,verbose=False)
 T1 = time.time()
 print("Time to finish:",T1-T0,"s")
 

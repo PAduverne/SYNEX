@@ -1678,7 +1678,7 @@ def GetSourceFromLisabetaData(FileName, **kwargs):
 #                 ##########################################
 
 
-def TileSkyArea(sources=None,detectors=None,base_telescope_params=None,base_source_savefile=None,cloning_params=None,SaveInSubFile=None,SaveFileCommonStart=None,SourceIndexingByString=None,verbose=True):
+def TileSkyArea(CloningTrackFile=None,sources=None,detectors=None,base_telescope_params=None,base_source_savefile=None,cloning_params=None,SaveInSubFile=None,SaveFileCommonStart=None,SourceIndexingByString=None,verbose=True):
     """
     Global function to tile skyarea. This will handle all extra tiling we might add,
     including handling series inputs over lists of sources and/or detectors.
@@ -1702,8 +1702,34 @@ def TileSkyArea(sources=None,detectors=None,base_telescope_params=None,base_sour
         MPI_size=1
         MPI_rank=0
 
-    # Populate detectors if we have cloning parameters
-    if cloning_params!=None:
+    # See if we have a savefile for progress to pick up from...
+    if CloningTrackFile:
+        with open(CloningTrackFile, 'r') as f: lines=f.readlines()
+        SaveInSubFile=lines[0]
+        CloningKeys=lines[1].split(",")
+        BaseTelescopeName=lines[2]
+        BaseTelescopeExFileName=lines[3]
+        DetectorNewExNamesAll=[]
+        sourcesAll=[]
+        CloningCombsAll=[]
+        for line in lines[4:]:
+            linelist=line.split(":")
+            DetectorNewExNamesAll.append(linelist[0])
+            sourcesAll.append(SYSs.SMBH_Merger({"ExistentialFileName":linelist[1],"verbose":verbose}))
+            CloningCombsAll.append([float(el) if el!="None" else None for el in linelist[2].split(",")]) # What if we have a string? Like a flag or 'None' value?
+        Nvals=len(CloningCombsAll)
+
+        # Work out how many items per cpu to reduce data usage asap
+        NValsPerCore=int(Nvals//MPI_size)
+        CoreLenVals=[NValsPerCore+1 if ii<Nvals%MPI_size else NValsPerCore for ii in range(MPI_size)]
+        CPU_ENDs=list(np.cumsum(CoreLenVals))
+        CPU_STARTs=[0]+CPU_ENDs[:-1]
+
+        # Assign subsets to each core
+        CloningCombs = [list(CloningCombsAll[ii]) for ii in range(CPU_STARTs[MPI_rank],CPU_ENDs[MPI_rank])]
+        sources = [sourcesAll[ii] for ii in range(CPU_STARTs[MPI_rank],CPU_ENDs[MPI_rank])]
+        DetectorNewExNames = [DetectorNewExNamesAll[ii] for ii in range(CPU_STARTs[MPI_rank],CPU_ENDs[MPI_rank])]
+    elif cloning_params!=None:
         # Create base_telescope_params from whatever was handed to us, otherwise obtain from default vals
         if base_telescope_params==None:
             if detectors==None:
@@ -1751,8 +1777,8 @@ def TileSkyArea(sources=None,detectors=None,base_telescope_params=None,base_sour
         # Need to know how many objects we will need --- later will include some source params in cloning params dict bith check that sources must == None to use cloning stuff
         CloningVals = list(cloning_params.values())
         CloningKeys = list(cloning_params.keys())
-        CloningCombs = list(itertools.product(*CloningVals)) # returns list of tuples of all possible combinations
-        Nvals = len(CloningCombs)
+        CloningCombsAll = list(itertools.product(*CloningVals)) # returns list of tuples of all possible combinations
+        Nvals = len(CloningCombsAll)
 
         # Work out how many items per cpu to reduce data usage asap
         NValsPerCore=int(Nvals//MPI_size)
@@ -1761,7 +1787,7 @@ def TileSkyArea(sources=None,detectors=None,base_telescope_params=None,base_sour
         CPU_STARTs=[0]+CPU_ENDs[:-1]
 
         # Assign subset of combinations to each core
-        CloningCombs = [list(CloningCombs[ii]) for ii in range(CPU_STARTs[MPI_rank],CPU_ENDs[MPI_rank])]
+        CloningCombs = [list(CloningCombsAll[ii]) for ii in range(CPU_STARTs[MPI_rank],CPU_ENDs[MPI_rank])]
 
         # Create list of sources
         if "H5File" in cloning_params:
@@ -1821,6 +1847,20 @@ def TileSkyArea(sources=None,detectors=None,base_telescope_params=None,base_sour
 
             # Use pairings with source IDs if given
             DetectorNewExNames.append(SaveFileCommon+"_SourceInd_"+SourceIndices[ii]+"__"+"_".join(KeyValStrings)+"."+BaseTelescopeExFileName.split(".")[-1])
+
+        # Save everything to txt file for tracking long lists of stuff on cluster
+        pathlib.Path(SYNEX_PATH+"/TileTrackFiles/").mkdir(parents=True, exist_ok=True)
+        CloningTrackFile=SYNEX_PATH+"/TileTrackFiles/ProgressTrackFile.txt"
+        SourceExNames=[s.ExistentialFileName for s in sources]
+        SourceExNamesAll=comm.gather(SourceExNames, root=0) if use_mpi else SourceExNames
+        DetectorNewExNamesAll=comm.gather(DetectorNewExNames, root=0) if use_mpi else DetectorNewExNames
+        if MPI_rank==0:
+            with open(CloningTrackFile, 'w') as f:
+                f.write(str(SaveInSubFile)+'\n')
+                f.write(','.join(CloningKeys)+'\n')
+                f.write(BaseTelescopeName+'\n')
+                f.write(BaseTelescopeExFileName+'\n')
+                for DetEx,SouEx,Comb in zip(DetectorNewExNamesAll,SourceExNamesAll,CloningCombsAll): f.write(DetEx+":"+SouEx+":"+",".join([str(el) for el in Comb])+'\n')
     else:
         ###
         #

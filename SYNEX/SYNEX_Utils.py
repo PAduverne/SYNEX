@@ -1865,6 +1865,7 @@ def TileSkyArea(CloningTrackFile=None,sources=None,detectors=None,base_telescope
         if MPI_rank==0:
             SourceExNamesAll = [el for subel in SourceExNamesAll for el in subel]
             DetectorNewExNamesAll = [el for subel in DetectorNewExNamesAll for el in subel]
+            CloningCombsAll = [el for subel in CloningCombsAll for el in subel]
             with open(CloningTrackFile, 'w') as f:
                 f.write(str(SaveInSubFile)+'\n')
                 f.write(','.join(CloningKeys)+'\n')

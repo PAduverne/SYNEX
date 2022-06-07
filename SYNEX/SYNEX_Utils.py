@@ -1715,7 +1715,7 @@ def TileSkyArea(CloningTrackFile=None,sources=None,detectors=None,base_telescope
         for line in lines[4:]:
             linelist=line.split(":")
             DetectorNewExNamesAll.append(linelist[0])
-            sourcesAll.append(SYSs.SMBH_Merger({"ExistentialFileName":linelist[1],"verbose":verbose}))
+            sourcesAll.append(SYSs.SMBH_Merger(**{"ExistentialFileName":linelist[1],"verbose":verbose}))
             Comb=[float(el) if el!="None" else None for el in linelist[2].split(",")]
             if "Tobs" in CloningKeys:
                 Comb=[v if k!="Tobs" else np.array([0.,v]) for k,v in zip(CloningKeys,Comb)]
@@ -1783,9 +1783,9 @@ def TileSkyArea(CloningTrackFile=None,sources=None,detectors=None,base_telescope
         # Need to know how many objects we will need --- later will include some source params in cloning params dict bith check that sources must == None to use cloning stuff
         CloningVals = list(cloning_params.values())
         CloningKeys = list(cloning_params.keys())
-        CloningCombsAll = [list(Comb) for Comb in list(itertools.product(*CloningVals))] # returns list of tuples of all possible combinations
-        CloningCombsAll
-        Nvals = len(CloningCombsAll)
+        CloningCombs = [list(Comb) for Comb in list(itertools.product(*CloningVals))] # returns list of tuples of all possible combinations
+        CloningCombs
+        Nvals = len(CloningCombs)
 
         # Work out how many items per cpu to reduce data usage asap
         NValsPerCore=int(Nvals//MPI_size)
@@ -1794,7 +1794,7 @@ def TileSkyArea(CloningTrackFile=None,sources=None,detectors=None,base_telescope
         CPU_STARTs=[0]+CPU_ENDs[:-1]
 
         # Assign subset of combinations to each core
-        CloningCombs = [CloningCombsAll[ii] for ii in range(CPU_STARTs[MPI_rank],CPU_ENDs[MPI_rank])]
+        CloningCombs = [CloningCombs[ii] for ii in range(CPU_STARTs[MPI_rank],CPU_ENDs[MPI_rank])]
 
         # Create list of sources
         if "H5File" in cloning_params:
@@ -1861,6 +1861,7 @@ def TileSkyArea(CloningTrackFile=None,sources=None,detectors=None,base_telescope
         SourceExNames=[s.ExistentialFileName for s in sources]
         SourceExNamesAll=comm.gather(SourceExNames, root=0) if MPI_size>1 else SourceExNames
         DetectorNewExNamesAll=comm.gather(DetectorNewExNames, root=0) if MPI_size>1 else DetectorNewExNames
+        CloningCombsAll=comm.gather(CloningCombs, root=0) if MPI_size>1 else CloningCombs
         if MPI_rank==0:
             SourceExNamesAll = [el for subel in SourceExNamesAll for el in subel]
             DetectorNewExNamesAll = [el for subel in DetectorNewExNamesAll for el in subel]
@@ -2250,7 +2251,6 @@ def GetCoverageInfo(go_params, map_struct, tile_structs, coverage_struct, detect
     cov_source_pix=[]
     SourceTileTimeRanges=[]
     SourceTileTimeRanges_days=[]
-    print("start time checks:",cov_data[0,2],cov_data[1,2]-cov_data[0,2],24*60*60*(cov_data[1,2]-cov_data[0,2]),Time(cov_data[0,2], format='mjd', scale='utc').isot, Time(detector.detector_config_struct["gps_science_start"], format='gps', scale='utc').isot)
     for tile_ii,tile_pix in enumerate(cov_ipix):
         TotExpTime_day=cov_data[tile_ii,2]-cov_data[0,2]
         # print(tile_ii, source_pix, tile_pix, cov_data[tile_ii,4], detector.detector_config_struct["exposuretime"], cov_data[tile_ii,4]/detector.detector_config_struct["exposuretime"])
@@ -2274,8 +2274,6 @@ def GetCoverageInfo(go_params, map_struct, tile_structs, coverage_struct, detect
                         "No. unique source coverages":UniqueSourceCoverageCount,
                         "Source tile timeranges (isot)": SourceTileTimeRanges,
                         "Source tile timeranges (days)": SourceTileTimeRanges_days}
-
-    print("Source tile timeranges checks:::",SourceTileTimeRanges, SourceTileTimeRanges_days)
 
     # Print summary if asked for
     if verbose:

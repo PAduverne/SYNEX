@@ -1688,7 +1688,10 @@ def TileSkyArea(CloningTrackFile=None,sources=None,detectors=None,base_telescope
     1. Should we allow case where 'DeltatL_cut' can be in cloning_params? Then we gotta check
        filenames exist etc... this would allow us to move source creations to loop one by one too... PRIORITIZE THIS!
     2. Reduce memory usage by loading base telecope by master only and transfering?
-    3. Do sources one by one to save data.
+    3. Change construction and handling of tile tracking function to dataframe so we conserve organized data
+       and de-risk mixing combinations with save files. In it's current form (brute force saving to txt file) the permutations
+       and savefiles for all objects align again within the save file but we don't know if this is always the case across all
+       versions of mpi (because we use mpi_comm.gather to collect permuation info)
     4. Add changes to default go_params flags (Ncores etc) for case of single detector and single
        source input with MPI_size>1. Can we go one step further and calculate a share of cores
        to go into parallelizing gwemopt with remaining cores used to share input objects across.
@@ -1702,7 +1705,8 @@ def TileSkyArea(CloningTrackFile=None,sources=None,detectors=None,base_telescope
         MPI_size=1
         MPI_rank=0
 
-    # See if we have a savefile for progress to pick up from...
+    # See if we have a savefile for progress to pick up from... -- Change this later to dataframe which would be easier using indexing for combination labeling
+    # Otheriwise when we create the combinations file by gathering each node's set of cobs we risk de-prganizing things..
     if CloningTrackFile:
         with open(CloningTrackFile, 'r') as f: lines=f.readlines()
         SaveInSubFile=lines[0]
@@ -1729,7 +1733,7 @@ def TileSkyArea(CloningTrackFile=None,sources=None,detectors=None,base_telescope
         CPU_STARTs=[0]+CPU_ENDs[:-1]
 
         # Make base detector params dict
-        base_telescope_params=SYDs.Athena({"ExistentialFileName":BaseTelescopeExFileName,"verbose":verbose}).__dict__
+        if base_telescope_params==None: base_telescope_params=SYDs.Athena(**{"ExistentialFileName":BaseTelescopeExFileName,"verbose":verbose}).__dict__
 
         # Assign subsets to each core
         CloningCombs = [list(CloningCombsAll[ii]) for ii in range(CPU_STARTs[MPI_rank],CPU_ENDs[MPI_rank])]
@@ -1855,7 +1859,7 @@ def TileSkyArea(CloningTrackFile=None,sources=None,detectors=None,base_telescope
             # Use pairings with source IDs if given
             DetectorNewExNames.append(SaveFileCommon+"_SourceInd_"+SourceIndices[ii]+"__"+"_".join(KeyValStrings)+"."+BaseTelescopeExFileName.split(".")[-1])
 
-        # Save everything to txt file for tracking long lists of stuff on cluster
+        # Save everything to txt file for tracking long lists of stuff on cluster -- Maybe this would be better as a dataframe save ? Easier to load again and handle using indexing to combinations ?
         pathlib.Path(SYNEX_PATH+"/TileTrackFiles/").mkdir(parents=True, exist_ok=True)
         CloningTrackFile=SYNEX_PATH+"/TileTrackFiles/ProgressTrackFile.txt"
         SourceExNames=[s.ExistentialFileName for s in sources]

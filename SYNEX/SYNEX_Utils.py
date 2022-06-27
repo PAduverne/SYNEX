@@ -1707,6 +1707,7 @@ def TileSkyArea(CloningTrackFile=None,sources=None,detectors=None,base_telescope
 
     # See if we have a savefile for progress to pick up from... -- Change this later to dataframe which would be easier using indexing for combination labeling
     # Otheriwise when we create the combinations file by gathering each node's set of cobs we risk de-prganizing things..
+    # check for a default trackfile ? Would reduce input params...
     if CloningTrackFile:
         if MPI_rank==0:
             with open(CloningTrackFile, 'r') as f: lines=f.readlines()
@@ -1714,22 +1715,36 @@ def TileSkyArea(CloningTrackFile=None,sources=None,detectors=None,base_telescope
             CloningKeys=lines[1].split(",")
             BaseTelescopeName=lines[2]
             BaseTelescopeExFileName=lines[3]
-            data = lines[4:]
-            Nvals=len(data)
+            data_all = lines[4:]
+            Nvals=len(data_all)
         else:
             SaveInSubFile=None
             CloningKeys=None
             BaseTelescopeName=None
             BaseTelescopeExFileName=None
-            data=None
             Nvals=None
 
-        # Bcast static data across cores
-        if MPI_size>1: [SaveInSubFile,CloningKeys,BaseTelescopeName,BaseTelescopeExFileName,Nvals] = comm.bcast([SaveInSubFile,CloningKeys,BaseTelescopeName,BaseTelescopeExFileName,Nvals], root=0)
+        # Bcast static data across cores                    ##### CHECK EACH CORE HAS THE RIGHT VALS !!!
+        if MPI_size>1: [SaveInSubFile,CloningKeys,BaseTelescopeName,BaseTelescopeExFileName,Nvals] = comm.Bcast([SaveInSubFile,CloningKeys,BaseTelescopeName,BaseTelescopeExFileName,Nvals], root=0)
+        print("BCAST CHECK:",MPI_rank,SaveInSubFile,CloningKeys,BaseTelescopeName,BaseTelescopeExFileName,Nvals)
 
-        # Scatter data across cores
-        if MPI_size>1: data = comm.scatter(data, root=0)
-        CoreLenVals = len(data)
+        # Scatter data across cores                         ##### CHECK EACH CORE HAS THE RIGHT VALS !!!
+        if MPI_size>1:
+            nPerCore=int(Nvals//MPI_size)
+            if MPI_rank==0:
+                data_ii_start=0
+                data_ii_end=nPerCore if nPerCore<Nvals else Nvals
+                data = data_all[data_ii_start:data_ii_end]
+                for core_ii in range(1,MPI_size):
+                    data_ii_start=data_ii_end
+                    data_ii_end=nPerCore*(core_ii+1) if nPerCore*(core_ii+1)<Nvals else Nvals
+                    req = comm.isend(data_all[data_ii_start:data_ii_end], dest=core_ii)
+                    req.wait()
+            else:
+                req = comm.irecv(source=0)
+                data = req.wait()
+        CoreLenVals = len(data)                           ##### CHECK EACH CORE HAS THE RIGHT VALS !!!
+        print("SCATTER CHECK:",MPI_rank,CoreLenVals,nPerCore,Nvals)
 
         # Make base detector params dict
         if base_telescope_params==None: base_telescope_params=SYDs.Athena(**{"ExistentialFileName":BaseTelescopeExFileName,"verbose":verbose}).__dict__
@@ -1800,7 +1815,7 @@ def TileSkyArea(CloningTrackFile=None,sources=None,detectors=None,base_telescope
         CloningKeys = list(cloning_params.keys())
         CloningCombs = [list(Comb) for Comb in list(itertools.product(*CloningVals))] # returns list of tuples of all possible combinations
         Nvals = len(CloningCombs)
-        
+
         # Work out how many items per cpu to reduce data usage asap
         NValsPerCore=int(Nvals//MPI_size)
         CoreLenVals=[NValsPerCore+1 if ii<Nvals%MPI_size else NValsPerCore for ii in range(MPI_size)]
@@ -1873,7 +1888,7 @@ def TileSkyArea(CloningTrackFile=None,sources=None,detectors=None,base_telescope
         pathlib.Path(SYNEX_PATH+"/TileTrackFiles/").mkdir(parents=True, exist_ok=True)
         CloningTrackFile=SYNEX_PATH+"/TileTrackFiles/ProgressTrackFile.txt"
         SourceExNames=[s.ExistentialFileName for s in sources]
-        SourceExNamesAll=comm.gather(SourceExNames, root=0) if MPI_size>1 else SourceExNames
+        SourceExNamesAll=comm.gather(SourceExNames, root=0) if MPI_size>1 else SourceExNames ##################### This doesn't work - you need to loop through each process and send individually since each iteration is potentially a different number of data points per process.
         DetectorNewExNamesAll=comm.gather(DetectorNewExNames, root=0) if MPI_size>1 else DetectorNewExNames
         CloningCombsAll=comm.gather(CloningCombs, root=0) if MPI_size>1 else CloningCombs
         if MPI_rank==0:

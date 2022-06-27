@@ -1799,9 +1799,8 @@ def TileSkyArea(CloningTrackFile=None,sources=None,detectors=None,base_telescope
         CloningVals = list(cloning_params.values())
         CloningKeys = list(cloning_params.keys())
         CloningCombs = [list(Comb) for Comb in list(itertools.product(*CloningVals))] # returns list of tuples of all possible combinations
-        CloningCombs
         Nvals = len(CloningCombs)
-
+        
         # Work out how many items per cpu to reduce data usage asap
         NValsPerCore=int(Nvals//MPI_size)
         CoreLenVals=[NValsPerCore+1 if ii<Nvals%MPI_size else NValsPerCore for ii in range(MPI_size)]

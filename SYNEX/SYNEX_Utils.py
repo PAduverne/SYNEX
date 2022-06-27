@@ -1899,14 +1899,13 @@ def TileSkyArea(CloningTrackFile=None,sources=None,detectors=None,base_telescope
             SourceExNamesAll=SourceExNames
             DetectorNewExNamesAll=DetectorNewExNames
             CloningCombsAll=CloningCombs
-            for core_ii in range(MPI_size):
+            for core_ii in range(1,MPI_size):
                 SourceExNamesAll+=comm.recv(source=core_ii)
                 DetectorNewExNamesAll+=comm.recv(source=core_ii)
                 CloningCombsAll+=comm.recv(source=core_ii)
-        print("GATHER CHECK:",MPI_rank,len(SourceExNamesAll),len(DetectorNewExNamesAll),len(CloningCombsAll),SourceExNamesAll[-1],DetectorNewExNamesAll[-1],CloningCombsAll[-1])
-        
-        # Save everything to txt file for tracking long lists of stuff on cluster -- Maybe this would be better as a dataframe save ? Easier to load again and handle using indexing to combinations ?
-        if MPI_rank==0:
+            print("GATHER CHECK:",MPI_rank,len(SourceExNamesAll),len(DetectorNewExNamesAll),len(CloningCombsAll),SourceExNamesAll[-1],DetectorNewExNamesAll[-1],CloningCombsAll[-1])
+            
+            # Save everything to txt file for tracking long lists of stuff on cluster -- Maybe this would be better as a dataframe save ? Easier to load again and handle using indexing to combinations ?
             SourceExNamesAll = [el for subel in SourceExNamesAll for el in subel]
             DetectorNewExNamesAll = [el for subel in DetectorNewExNamesAll for el in subel]
             CloningCombsAll = [el for subel in CloningCombsAll for el in subel]

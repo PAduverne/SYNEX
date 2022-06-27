@@ -1719,14 +1719,17 @@ def TileSkyArea(CloningTrackFile=None,sources=None,detectors=None,base_telescope
             Nvals=len(data_all)
         else:
             SaveInSubFile=None
-            CloningKeys=None
             BaseTelescopeName=None
             BaseTelescopeExFileName=None
             Nvals=None
 
         # Bcast static data across cores                    ##### CHECK EACH CORE HAS THE RIGHT VALS !!!
-        if MPI_size>1: [SaveInSubFile,CloningKeys,BaseTelescopeName,BaseTelescopeExFileName,Nvals] = comm.Bcast([SaveInSubFile,CloningKeys,BaseTelescopeName,BaseTelescopeExFileName,Nvals], root=0)
-        print("BCAST CHECK:",MPI_rank,SaveInSubFile,CloningKeys,BaseTelescopeName,BaseTelescopeExFileName,Nvals)
+        if MPI_size>1:
+            SaveInSubFile = comm.bcast(SaveInSubFile,root=0)
+            BaseTelescopeName = comm.bcast(BaseTelescopeName,root=0)
+            BaseTelescopeExFileName = comm.bcast(BaseTelescopeExFileName,root=0)
+            Nvals = comm.bcast(Nvals,root=0)
+        print("BCAST CHECK:",MPI_rank,SaveInSubFile,BaseTelescopeName,BaseTelescopeExFileName,Nvals)
 
         # Scatter data across cores                         ##### CHECK EACH CORE HAS THE RIGHT VALS !!!
         if MPI_size>1:
@@ -1738,13 +1741,13 @@ def TileSkyArea(CloningTrackFile=None,sources=None,detectors=None,base_telescope
                 for core_ii in range(1,MPI_size):
                     data_ii_start=data_ii_end
                     data_ii_end=nPerCore*(core_ii+1) if nPerCore*(core_ii+1)<Nvals else Nvals
-                    req = comm.isend(data_all[data_ii_start:data_ii_end], dest=core_ii)
-                    req.wait()
+                    comm.send(CloningKeys, dest=core_ii)
+                    comm.send(data_all[data_ii_start:data_ii_end], dest=core_ii)
             else:
-                req = comm.irecv(source=0)
-                data = req.wait()
+                CloningKeys = comm.recv(source=0)
+                data = comm.recv(source=0)
         CoreLenVals = len(data)                           ##### CHECK EACH CORE HAS THE RIGHT VALS !!!
-        print("SCATTER CHECK:",MPI_rank,CoreLenVals,nPerCore,Nvals)
+        print("SCATTER CHECK:",MPI_rank,CloningKeys,CoreLenVals,nPerCore,Nvals)
 
         # Make base detector params dict
         if base_telescope_params==None: base_telescope_params=SYDs.Athena(**{"ExistentialFileName":BaseTelescopeExFileName,"verbose":verbose}).__dict__
@@ -1884,13 +1887,25 @@ def TileSkyArea(CloningTrackFile=None,sources=None,detectors=None,base_telescope
             # Use pairings with source IDs if given
             DetectorNewExNames.append(SaveFileCommon+"_SourceInd_"+SourceIndices[ii]+"__"+"_".join(KeyValStrings)+"."+BaseTelescopeExFileName.split(".")[-1])
 
-        # Save everything to txt file for tracking long lists of stuff on cluster -- Maybe this would be better as a dataframe save ? Easier to load again and handle using indexing to combinations ?
+        # Gether all information from each node
         pathlib.Path(SYNEX_PATH+"/TileTrackFiles/").mkdir(parents=True, exist_ok=True)
         CloningTrackFile=SYNEX_PATH+"/TileTrackFiles/ProgressTrackFile.txt"
         SourceExNames=[s.ExistentialFileName for s in sources]
-        SourceExNamesAll=comm.gather(SourceExNames, root=0) if MPI_size>1 else SourceExNames ##################### This doesn't work - you need to loop through each process and send individually since each iteration is potentially a different number of data points per process.
-        DetectorNewExNamesAll=comm.gather(DetectorNewExNames, root=0) if MPI_size>1 else DetectorNewExNames
-        CloningCombsAll=comm.gather(CloningCombs, root=0) if MPI_size>1 else CloningCombs
+        if MPI_rank>0:
+            comm.send(SourceExNames, dest=0)
+            comm.send(DetectorNewExNames, dest=0)
+            comm.send(CloningCombs, dest=0)
+        else:
+            SourceExNamesAll=SourceExNames
+            DetectorNewExNamesAll=DetectorNewExNames
+            CloningCombsAll=CloningCombs
+            for core_ii in range(MPI_size):
+                SourceExNamesAll+=comm.recv(source=core_ii)
+                DetectorNewExNamesAll+=comm.recv(source=core_ii)
+                CloningCombsAll+=comm.recv(source=core_ii)
+        print("GATHER CHECK:",MPI_rank,len(SourceExNamesAll),len(DetectorNewExNamesAll),len(CloningCombsAll),SourceExNamesAll[-1],DetectorNewExNamesAll[-1],CloningCombsAll[-1])
+        
+        # Save everything to txt file for tracking long lists of stuff on cluster -- Maybe this would be better as a dataframe save ? Easier to load again and handle using indexing to combinations ?
         if MPI_rank==0:
             SourceExNamesAll = [el for subel in SourceExNamesAll for el in subel]
             DetectorNewExNamesAll = [el for subel in DetectorNewExNamesAll for el in subel]

@@ -1708,37 +1708,48 @@ def TileSkyArea(CloningTrackFile=None,sources=None,detectors=None,base_telescope
     # See if we have a savefile for progress to pick up from... -- Change this later to dataframe which would be easier using indexing for combination labeling
     # Otheriwise when we create the combinations file by gathering each node's set of cobs we risk de-prganizing things..
     if CloningTrackFile:
-        with open(CloningTrackFile, 'r') as f: lines=f.readlines()
-        SaveInSubFile=lines[0]
-        CloningKeys=lines[1].split(",")
-        BaseTelescopeName=lines[2]
-        BaseTelescopeExFileName=lines[3]
-        DetectorNewExNamesAll=[]
-        sourcesAll=[]
-        CloningCombsAll=[]
-        for line in lines[4:]:
-            linelist=line.split(":")
-            DetectorNewExNamesAll.append(linelist[0])
-            sourcesAll.append(SYSs.SMBH_Merger(**{"ExistentialFileName":linelist[1],"verbose":verbose}))
-            Comb=[float(el) if el!="None" else None for el in linelist[2].split(",")]
-            if "Tobs" in CloningKeys:
-                Comb=[v if k!="Tobs" else np.array([0.,v]) for k,v in zip(CloningKeys,Comb)]
-            CloningCombsAll.append(Comb) # What if we have a string? Like a flag or 'None' value?
-        Nvals=len(CloningCombsAll)
+        if MPI_rank==0:
+            with open(CloningTrackFile, 'r') as f: lines=f.readlines()
+            SaveInSubFile=lines[0]
+            CloningKeys=lines[1].split(",")
+            BaseTelescopeName=lines[2]
+            BaseTelescopeExFileName=lines[3]
+            data = lines[4:]
+            Nvals=len(data)
+        else:
+            SaveInSubFile=None
+            CloningKeys=None
+            BaseTelescopeName=None
+            BaseTelescopeExFileName=None
+            data=None
+            Nvals=None
 
-        # Work out how many items per cpu to reduce data usage asap
-        NValsPerCore=int(Nvals//MPI_size)
-        CoreLenVals=[NValsPerCore+1 if ii<Nvals%MPI_size else NValsPerCore for ii in range(MPI_size)]
-        CPU_ENDs=list(np.cumsum(CoreLenVals))
-        CPU_STARTs=[0]+CPU_ENDs[:-1]
+        # Bcast static data across cores
+        if MPI_size>1: [SaveInSubFile,CloningKeys,BaseTelescopeName,BaseTelescopeExFileName,Nvals] = comm.bcast([SaveInSubFile,CloningKeys,BaseTelescopeName,BaseTelescopeExFileName,Nvals], root=0)
+
+        # Scatter data across cores
+        if MPI_size>1: data = comm.scatter(data, root=0)
+        CoreLenVals = len(data)
 
         # Make base detector params dict
         if base_telescope_params==None: base_telescope_params=SYDs.Athena(**{"ExistentialFileName":BaseTelescopeExFileName,"verbose":verbose}).__dict__
 
-        # Assign subsets to each core
-        CloningCombs = [list(CloningCombsAll[ii]) for ii in range(CPU_STARTs[MPI_rank],CPU_ENDs[MPI_rank])]
-        sources = [sourcesAll[ii] for ii in range(CPU_STARTs[MPI_rank],CPU_ENDs[MPI_rank])]
-        DetectorNewExNames = [DetectorNewExNamesAll[ii] for ii in range(CPU_STARTs[MPI_rank],CPU_ENDs[MPI_rank])]
+        # Configure data
+        DetectorNewExNames=[]
+        SourceNewExNames=[]
+        CloningCombs=[]
+        for line in data:
+            linelist=line.split(":")
+            DetectorNewExNames.append(linelist[0])
+            SourceNewExNames.append(linelist[1])
+            Comb=[float(el) if el!="None" else None for el in linelist[2].split(",")]
+            if "Tobs" in CloningKeys:
+                Comb=[v if k!="Tobs" else np.array([0.,v]) for k,v in zip(CloningKeys,Comb)]
+            CloningCombs.append(Comb) # What if we have a string? Like a flag or 'None' value?
+
+        # Create sources
+        sources=[SYSs.SMBH_Merger(**{"ExistentialFileName":ExName,"verbose":verbose}) for ExName in SourceNewExNames]
+
     elif cloning_params!=None:
         # Create base_telescope_params from whatever was handed to us, otherwise obtain from default vals
         if base_telescope_params==None:

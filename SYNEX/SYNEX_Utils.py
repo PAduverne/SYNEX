@@ -1729,7 +1729,7 @@ def TileSkyArea(CloningTrackFile=None,sources=None,detectors=None,base_telescope
             BaseTelescopeName = comm.bcast(BaseTelescopeName,root=0)
             BaseTelescopeExFileName = comm.bcast(BaseTelescopeExFileName,root=0)
             Nvals = comm.bcast(Nvals,root=0)
-        print("BCAST CHECK:",MPI_rank,SaveInSubFile,BaseTelescopeName,BaseTelescopeExFileName,Nvals)
+        print("BCAST CHECK:",MPI_rank,type(MPI_rank),SaveInSubFile,type(SaveInSubFile),BaseTelescopeName,type(BaseTelescopeName),BaseTelescopeExFileName,type(BaseTelescopeExFileName),Nvals,type(Nvals)) ### Think the types here are strings... output types too
 
         # Scatter data across cores                         ##### CHECK EACH CORE HAS THE RIGHT VALS !!!
         if MPI_size>1:
@@ -1741,13 +1741,14 @@ def TileSkyArea(CloningTrackFile=None,sources=None,detectors=None,base_telescope
                 for core_ii in range(1,MPI_size):
                     data_ii_start=data_ii_end
                     data_ii_end=nPerCore*(core_ii+1) if nPerCore*(core_ii+1)<Nvals else Nvals
+                    if core_ii==MPI_size-1: data_ii_end=Nvals ## Catch any extras left from rounding errors
                     comm.send(CloningKeys, dest=core_ii)
                     comm.send(data_all[data_ii_start:data_ii_end], dest=core_ii)
             else:
                 CloningKeys = comm.recv(source=0)
-                data = comm.recv(source=0)
+                data = comm.recv(source=0) ### strip '\n' from these and bcast vals too.
         CoreLenVals = len(data)                           ##### CHECK EACH CORE HAS THE RIGHT VALS !!!
-        print("SCATTER CHECK:",MPI_rank,CloningKeys,CoreLenVals,nPerCore,Nvals)
+        print("SCATTER CHECK:",MPI_rank,type(MPI_rank),CloningKeys,type(CloningKeys),type(CloningKeys[0]),CoreLenVals,type(CoreLenVals),nPerCore,type(nPerCore),Nvals,type(Nvals))
 
         # Make base detector params dict
         if base_telescope_params==None: base_telescope_params=SYDs.Athena(**{"ExistentialFileName":BaseTelescopeExFileName,"verbose":verbose}).__dict__
@@ -1903,18 +1904,16 @@ def TileSkyArea(CloningTrackFile=None,sources=None,detectors=None,base_telescope
                 SourceExNamesAll+=comm.recv(source=core_ii)
                 DetectorNewExNamesAll+=comm.recv(source=core_ii)
                 CloningCombsAll+=comm.recv(source=core_ii)
-            print("GATHER CHECK:",MPI_rank,len(SourceExNamesAll),len(DetectorNewExNamesAll),len(CloningCombsAll),SourceExNamesAll[-1],DetectorNewExNamesAll[-1],CloningCombsAll[-1])
-            
+
             # Save everything to txt file for tracking long lists of stuff on cluster -- Maybe this would be better as a dataframe save ? Easier to load again and handle using indexing to combinations ?
-            SourceExNamesAll = [el for subel in SourceExNamesAll for el in subel]
-            DetectorNewExNamesAll = [el for subel in DetectorNewExNamesAll for el in subel]
-            CloningCombsAll = [el for subel in CloningCombsAll for el in subel]
             with open(CloningTrackFile, 'w') as f:
                 f.write(str(SaveInSubFile)+'\n')
                 f.write(','.join(CloningKeys)+'\n')
                 f.write(BaseTelescopeName+'\n')
                 f.write(BaseTelescopeExFileName+'\n')
                 for DetEx,SouEx,Comb in zip(DetectorNewExNamesAll,SourceExNamesAll,CloningCombsAll):
+                    print("WRITING CHECK 1:",DetEx,SouEx,Comb)
+                    print("WRITING CHECK 2:",",".join([str(el) if not isinstance(el,(np.ndarray,list)) else str(el[-1]) for el in Comb]))
                     f.write(DetEx+":"+SouEx+":"+",".join([str(el) if not isinstance(el,(np.ndarray,list)) else str(el[-1]) for el in Comb])+'\n') ### Need a way to save arrays better for when we switch to gaps etc. Maybe then we will switch to a '.dat' savefile instead and just pickle everything.
     else:
         ###

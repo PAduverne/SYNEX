@@ -1726,8 +1726,9 @@ def TileSkyArea(CloningTrackFile=None,sources=None,detectors=None,base_telescope
         # Bcast static data across cores                    ##### CHECK EACH CORE HAS THE RIGHT VALS !!!
         if MPI_size>1:
             SaveInSubFile = comm.bcast(SaveInSubFile,root=0)
-            BaseTelescopeName = comm.bcast(BaseTelescopeName,root=0)
-            BaseTelescopeExFileName = comm.bcast(BaseTelescopeExFileName,root=0)
+            if isinstance(SaveInSubFile,str): SaveInSubFile.strip('\n')
+            BaseTelescopeName = comm.bcast(BaseTelescopeName,root=0).strip('\n')
+            BaseTelescopeExFileName = comm.bcast(BaseTelescopeExFileName,root=0).strip('\n')
             Nvals = comm.bcast(Nvals,root=0)
         print("BCAST CHECK:",MPI_rank,type(MPI_rank),SaveInSubFile,type(SaveInSubFile),BaseTelescopeName,type(BaseTelescopeName),BaseTelescopeExFileName,type(BaseTelescopeExFileName),Nvals,type(Nvals)) ### Think the types here are strings... output types too
 
@@ -1746,10 +1747,12 @@ def TileSkyArea(CloningTrackFile=None,sources=None,detectors=None,base_telescope
                     comm.send(data_all[data_ii_start:data_ii_end], dest=core_ii)
             else:
                 CloningKeys = comm.recv(source=0)
+                CloningKeys = [k.strip('\n') for k in CloningKeys]
                 data = comm.recv(source=0) ### strip '\n' from these and bcast vals too.
         CoreLenVals = len(data)                           ##### CHECK EACH CORE HAS THE RIGHT VALS !!!
         print("SCATTER CHECK:",MPI_rank,type(MPI_rank),CloningKeys,type(CloningKeys),type(CloningKeys[0]),CoreLenVals,type(CoreLenVals),nPerCore,type(nPerCore),Nvals,type(Nvals))
-
+        print("SCATTERED DATA CHECK:",data[0],type(data[0]))
+        
         # Make base detector params dict
         if base_telescope_params==None: base_telescope_params=SYDs.Athena(**{"ExistentialFileName":BaseTelescopeExFileName,"verbose":verbose}).__dict__
 

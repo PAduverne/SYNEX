@@ -1727,6 +1727,7 @@ def TileSkyArea(CloningTrackFile=None,sources=None,detectors=None,base_telescope
         if MPI_size>1:
             SaveInSubFile = comm.bcast(SaveInSubFile,root=0)
             if isinstance(SaveInSubFile,str): SaveInSubFile.strip('\n')
+            if SaveInSubFile=="None": SaveInSubFile=None
             BaseTelescopeName = comm.bcast(BaseTelescopeName,root=0).strip('\n')
             BaseTelescopeExFileName = comm.bcast(BaseTelescopeExFileName,root=0).strip('\n')
             Nvals = comm.bcast(Nvals,root=0)
@@ -1752,7 +1753,7 @@ def TileSkyArea(CloningTrackFile=None,sources=None,detectors=None,base_telescope
         CoreLenVals = len(data)                           ##### CHECK EACH CORE HAS THE RIGHT VALS !!!
         print("SCATTER CHECK:",MPI_rank,type(MPI_rank),CloningKeys,type(CloningKeys),type(CloningKeys[0]),CoreLenVals,type(CoreLenVals),nPerCore,type(nPerCore),Nvals,type(Nvals))
         print("SCATTERED DATA CHECK:",data[0],type(data[0]))
-        
+
         # Make base detector params dict
         if base_telescope_params==None: base_telescope_params=SYDs.Athena(**{"ExistentialFileName":BaseTelescopeExFileName,"verbose":verbose}).__dict__
 

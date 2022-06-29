@@ -1726,8 +1726,12 @@ def TileSkyArea(CloningTrackFile=None,sources=None,detectors=None,base_telescope
         # Bcast static data across cores                    ##### CHECK EACH CORE HAS THE RIGHT VALS !!!
         if MPI_size>1:
             SaveInSubFile = comm.bcast(SaveInSubFile,root=0)
-            if isinstance(SaveInSubFile,str): SaveInSubFile.strip('\n')
-            if SaveInSubFile=="None": SaveInSubFile=None
+            if isinstance(SaveInSubFile,str):
+                print("strip check",MPI_rank)
+                SaveInSubFile=SaveInSubFile.strip('\n')
+            if SaveInSubFile=="None":
+                print("convert check",MPI_rank)
+                SaveInSubFile=None
             BaseTelescopeName = comm.bcast(BaseTelescopeName,root=0).strip('\n')
             BaseTelescopeExFileName = comm.bcast(BaseTelescopeExFileName,root=0).strip('\n')
             Nvals = comm.bcast(Nvals,root=0)

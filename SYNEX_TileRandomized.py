@@ -50,6 +50,13 @@ except:
 
 ########################### Example - Tile randomized sources with several Athena params **ON ClUSTER** ###########################
 
+# See if we need to make souce files
+source_infer_data=glob.glob(SYNEX_PATH + "/inference_data/Randomized_angles_spins_MRat_*.h5") # We are no longer saving raw files so this is sufficient when searching for data files
+MAKE_SOURCES = len(source_infer_data)>0
+os.path.isfile(FileName)
+if MAKE_SOURCES:
+    Merger = SYU.GetSourceFromLisabetaData(FileName,**{"ExistentialFileName":FileName.split("/inference_data/")[-1].split(".h5")[0]})
+
 # Set verbosity
 verbose = False # Verbosity inside SYNEX (making objects etc)
 verbose2 = True # Verbosity in this script alone
@@ -105,7 +112,7 @@ T_obs_array = [np.array([0.,1.]),np.array([0.,2.]),np.array([0.,3.]),np.array([0
 cloning_params={"Tobs":T_obs_array}
 
 # Use tracking file or clone new stuff?
-USETRACK=True
+USETRACK=False
 CloningTrackFile=SYNEX_PATH+"/TileTrackFiles/ProgressTrackFile.txt" if USETRACK else None
 
 # Tile all combinations of cloning params and sources

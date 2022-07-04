@@ -99,12 +99,13 @@ if MAKE_SOURCES==True:
     if MPI_rank==0: print("Making source savefiles from inference data...")
     source_infer_data=glob.glob(SYNEX_PATH + "/inference_data/Randomized_angles_spins_MRat_*.h5") # We are no longer saving raw files so this is sufficient when searching for data files
     for FileName in source_infer_data:
-        ExName=SYNEX_PATH + "/Saved_Source_Dicts/" + FileName.split("/inference_data/")[-1].split(".h5")[0]
+        ExName=SYNEX_PATH + "/Saved_Source_Dicts/" + FileName.split("/inference_data/")[-1].split(".h5")[0] + ".dat"
         Merger = SYU.GetSourceFromLisabetaData(FileName,**{"ExistentialFileName":ExName,"verbose":verbose})
-    if MPI_rank==0: print("Done.")
+        Merger.ExistentialCrisis() # Need to ask for this explicitly on cluster since writting is restricted to save disk space.
 
 # Catch everything up
 comm.Barrier()
+if MPI_rank==0: print("Done.")
 
 # Telescope args
 t0 = '2034-01-01T00:00:00.00' # YYYY-MM-DDTHH:mm:SS.MS 01/01/2034

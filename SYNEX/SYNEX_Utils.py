@@ -1907,9 +1907,9 @@ def TileSkyArea(CloningTrackFile=None,sources=None,detectors=None,base_telescope
             comm.send(DetectorNewExNames, dest=0)
             comm.send(CloningCombs, dest=0)
         else:
-            SourceExNamesAll=SourceExNames
-            DetectorNewExNamesAll=DetectorNewExNames
-            CloningCombsAll=CloningCombs
+            SourceExNamesAll=copy.deepcopy(SourceExNames)
+            DetectorNewExNamesAll=copy.deepcopy(DetectorNewExNames)
+            CloningCombsAll=copy.deepcopy(CloningCombs)
             for core_ii in range(1,MPI_size):
                 SourceExNamesAll+=comm.recv(source=core_ii)
                 DetectorNewExNamesAll+=comm.recv(source=core_ii)

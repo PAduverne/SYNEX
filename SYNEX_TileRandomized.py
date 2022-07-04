@@ -33,6 +33,13 @@ try:
 except:
     a=1
 
+# mpi stuff
+try:
+    from mpi4py import MPI
+except ModuleNotFoundError:
+    MPI = None
+
+
 
 
 
@@ -49,6 +56,10 @@ except:
 
 
 ########################### Example - Tile randomized sources with several Athena params **ON ClUSTER** ###########################
+
+# Set verbosity
+verbose = False # Verbosity inside SYNEX (making objects etc)
+verbose2 = True # Verbosity in this script alone (troubleshooting)
 
 # Using MPI or not
 if MPI is not None:
@@ -89,15 +100,11 @@ if MAKE_SOURCES==True:
     source_infer_data=glob.glob(SYNEX_PATH + "/inference_data/Randomized_angles_spins_MRat_*.h5") # We are no longer saving raw files so this is sufficient when searching for data files
     for FileName in source_infer_data:
         ExName=SYNEX_PATH + "/Saved_Source_Dicts/" + FileName.split("/inference_data/")[-1].split(".h5")[0]
-        Merger = SYU.GetSourceFromLisabetaData(FileName,**{"ExistentialFileName":ExName})
+        Merger = SYU.GetSourceFromLisabetaData(FileName,**{"ExistentialFileName":ExName,"verbose":verbose})
     if MPI_rank==0: print("Done.")
 
 # Catch everything up
 comm.Barrier()
-
-# Set verbosity
-verbose = False # Verbosity inside SYNEX (making objects etc)
-verbose2 = True # Verbosity in this script alone (troubleshooting)
 
 # Telescope args
 t0 = '2034-01-01T00:00:00.00' # YYYY-MM-DDTHH:mm:SS.MS 01/01/2034

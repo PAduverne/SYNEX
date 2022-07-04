@@ -1894,6 +1894,10 @@ def TileSkyArea(CloningTrackFile=None,sources=None,detectors=None,base_telescope
             # Use pairings with source IDs if given
             DetectorNewExNames.append(SaveFileCommon+"_SourceInd_"+SourceIndices[ii]+"__"+"_".join(KeyValStrings)+"."+BaseTelescopeExFileName.split(".")[-1])
 
+        # Checks 1
+        if MPI_rank==0: print("Pre-write rank-0 check:",len(DetectorNewExNames),len(sources),len(CloningCombs))
+        if MPI_rank==2: print("Pre-write rank-2 check:",len(DetectorNewExNames),len(sources),len(CloningCombs))
+
         # Gether all information from each node
         pathlib.Path(SYNEX_PATH+"/TileTrackFiles/").mkdir(parents=True, exist_ok=True)
         CloningTrackFile=SYNEX_PATH+"/TileTrackFiles/ProgressTrackFile.txt"
@@ -1918,9 +1922,10 @@ def TileSkyArea(CloningTrackFile=None,sources=None,detectors=None,base_telescope
                 f.write(BaseTelescopeName+'\n')
                 f.write(BaseTelescopeExFileName+'\n')
                 for DetEx,SouEx,Comb in zip(DetectorNewExNamesAll,SourceExNamesAll,CloningCombsAll):
-                    print("WRITING CHECK 1:",DetEx,SouEx,Comb)
-                    print("WRITING CHECK 2:",",".join([str(el) if not isinstance(el,(np.ndarray,list)) else str(el[-1]) for el in Comb]))
                     f.write(DetEx+":"+SouEx+":"+",".join([str(el) if not isinstance(el,(np.ndarray,list)) else str(el[-1]) for el in Comb])+'\n') ### Need a way to save arrays better for when we switch to gaps etc. Maybe then we will switch to a '.dat' savefile instead and just pickle everything.
+        # Checks 2
+        if MPI_rank==0: print("Post-write rank-0 check:",len(DetectorNewExNames),len(sources),len(CloningCombs))
+        if MPI_rank==2: print("Post-write rank-2 check:",len(DetectorNewExNames),len(sources),len(CloningCombs))
     else:
         ###
         #
@@ -2079,13 +2084,13 @@ def TileSkyArea(CloningTrackFile=None,sources=None,detectors=None,base_telescope
             if detector.detector_source_coverage==None: go_params, map_struct, tile_structs, coverage_struct, detector = TileWithGwemopt(sources[i],detector,OutPutArch,verbose)
             if MPI_rank==0:
                 t_tile1=time.time()
-                print("Time for telescope",i,"/",len(DetectorNewExNames),"by master rank:",t_tile1-t_tile0,"s")
+                print("Time for telescope",i,"/",len(DetectorNewExNames),"by master rank:",t_tile1-t_tile0,"s, with source coverage tileranges:",detector.detector_source_coverage["Source tile timeranges (isot)"])
 
             # Add to detectors output list if we not on cluster
             if MPI_size==1: detectors.append(detector)
 
         process=psutil.Process(os.getpid())
-        mem=process.memory_info().rss()/(1000000.)
+        mem=process.memory_info().rss/(1000000.)
         ListOfMemoryUsage = comm.gather(mem,root=0)
         print(type(ListOfMemoryUsage),np.shape(ListOfMemoryUsage))
         print("Job memory info:",MPI_size,len(ListOfMemoryUsage),sum(ListOfMemoryUsage))

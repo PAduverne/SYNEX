@@ -50,16 +50,54 @@ except:
 
 ########################### Example - Tile randomized sources with several Athena params **ON ClUSTER** ###########################
 
+# Using MPI or not
+if MPI is not None:
+    MPI_size = MPI.COMM_WORLD.Get_size()
+    MPI_rank = MPI.COMM_WORLD.Get_rank()
+    comm = MPI.COMM_WORLD
+else:
+    MPI_size=1
+    MPI_rank=0
+
 # See if we need to make souce files
-source_infer_data=glob.glob(SYNEX_PATH + "/inference_data/Randomized_angles_spins_MRat_*.h5") # We are no longer saving raw files so this is sufficient when searching for data files
-MAKE_SOURCES = len(source_infer_data)>0
-os.path.isfile(FileName)
-if MAKE_SOURCES:
-    Merger = SYU.GetSourceFromLisabetaData(FileName,**{"ExistentialFileName":FileName.split("/inference_data/")[-1].split(".h5")[0]})
+USETRACK=False
+MAKE_SOURCES = True
+if MAKE_SOURCES==True:
+    # Split up sources across nodes
+    if MPI_size>1:
+        source_infer_datafiles=glob.glob(SYNEX_PATH + "/inference_data/Randomized_angles_spins_MRat_*.h5")
+        Nvals=len(source_infer_datafiles)
+        nPerCore=int(Nvals//MPI_size)
+        if MPI_rank==0:
+            data_ii_start=0
+            data_ii_end=nPerCore if nPerCore<Nvals else Nvals
+            source_infer_data = source_infer_datafiles[data_ii_start:data_ii_end]
+            for core_ii in range(1,MPI_size):
+                data_ii_start=data_ii_end
+                data_ii_end=nPerCore*(core_ii+1) if nPerCore*(core_ii+1)<Nvals else Nvals
+                if core_ii==MPI_size-1: data_ii_end=Nvals ## Catch any extras left from rounding errors
+                comm.send(source_infer_datafiles[data_ii_start:data_ii_end], dest=core_ii)
+        else:
+            source_infer_data = comm.recv(source=0)
+    else:
+        source_infer_data = glob.glob(SYNEX_PATH + "/inference_data/Randomized_angles_spins_MRat_*.h5")
+        Nvals=len(source_infer_datafiles)
+
+    # Turn data into savefiles
+    USETRACK=False
+    if MPI_rank==0: print("Making source savefiles from inference data...")
+    source_infer_data=glob.glob(SYNEX_PATH + "/inference_data/Randomized_angles_spins_MRat_*.h5") # We are no longer saving raw files so this is sufficient when searching for data files
+    for FileName in source_infer_data:
+        ExName=SYNEX_PATH + "/Saved_Source_Dicts/" + FileName.split("/inference_data/")[-1].split(".h5")[0]
+        Merger = SYU.GetSourceFromLisabetaData(FileName,**{"ExistentialFileName":ExName})
+    if MPI_rank==0: print("Done.")
+
+# Catch everything up
+comm.Barrier()
 
 # Set verbosity
 verbose = False # Verbosity inside SYNEX (making objects etc)
-verbose2 = True # Verbosity in this script alone
+verbose2 = True # Verbosity in this script alone (troubleshooting)
 
 # Telescope args
 t0 = '2034-01-01T00:00:00.00' # YYYY-MM-DDTHH:mm:SS.MS 01/01/2034
@@ -112,7 +150,6 @@ T_obs_array = [np.array([0.,1.]),np.array([0.,2.]),np.array([0.,3.]),np.array([0
 cloning_params={"Tobs":T_obs_array}
 
 # Use tracking file or clone new stuff?
-USETRACK=False
 CloningTrackFile=SYNEX_PATH+"/TileTrackFiles/ProgressTrackFile.txt" if USETRACK else None
 
 # Tile all combinations of cloning params and sources

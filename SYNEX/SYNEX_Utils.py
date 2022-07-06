@@ -1741,11 +1741,11 @@ def TileSkyArea(CloningTrackFile=None,sources=None,detectors=None,base_telescope
             remainder=Nvals-nPerCore*MPI_size
             if MPI_rank==0:
                 data_ii_start=0
-                data_ii_end=nPerCore+1 if (MPI_rank-1)<remainder else nPerCore ## Split any extras left from rounding errors evenly
+                data_ii_end=nPerCore+1 if MPI_rank<remainder else nPerCore ## Split any extras left from rounding errors evenly
                 data = data_all[data_ii_start:data_ii_end]
                 for core_ii in range(1,MPI_size):
                     data_ii_start=data_ii_end
-                    data_ii_end=nPerCore+1 if (MPI_rank-1)<remainder else nPerCore ## Split any extras left from rounding errors evenly
+                    data_ii_end=nPerCore+1 if MPI_rank<remainder else nPerCore ## Split any extras left from rounding errors evenly
                     comm.send(CloningKeys, dest=core_ii)
                     comm.send(data_all[data_ii_start:data_ii_end], dest=core_ii)
             else:

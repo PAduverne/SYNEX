@@ -1728,10 +1728,8 @@ def TileSkyArea(CloningTrackFile=None,sources=None,detectors=None,base_telescope
         if MPI_size>1:
             SaveInSubFile = comm.bcast(SaveInSubFile,root=0)
             if isinstance(SaveInSubFile,str):
-                print("strip check",MPI_rank)
                 SaveInSubFile=SaveInSubFile.strip('\n')
             if SaveInSubFile=="None":
-                print("convert check",MPI_rank)
                 SaveInSubFile=None
             BaseTelescopeName = comm.bcast(BaseTelescopeName,root=0).strip('\n')
             BaseTelescopeExFileName = comm.bcast(BaseTelescopeExFileName,root=0).strip('\n')
@@ -1740,14 +1738,14 @@ def TileSkyArea(CloningTrackFile=None,sources=None,detectors=None,base_telescope
         # Scatter data across cores                         ##### CHECK EACH CORE HAS THE RIGHT VALS !!!
         if MPI_size>1:
             nPerCore=int(Nvals//MPI_size)
+            remainder=Nvals-nPerCore*MPI_size
             if MPI_rank==0:
                 data_ii_start=0
-                data_ii_end=nPerCore if nPerCore<Nvals else Nvals
+                data_ii_end=nPerCore+1 if (MPI_rank-1)<remainder else nPerCore ## Split any extras left from rounding errors evenly
                 data = data_all[data_ii_start:data_ii_end]
                 for core_ii in range(1,MPI_size):
                     data_ii_start=data_ii_end
-                    data_ii_end=nPerCore*(core_ii+1) if nPerCore*(core_ii+1)<Nvals else Nvals
-                    if core_ii==MPI_size-1: data_ii_end=Nvals ## Catch any extras left from rounding errors
+                    data_ii_end=nPerCore+1 if (MPI_rank-1)<remainder else nPerCore ## Split any extras left from rounding errors evenly
                     comm.send(CloningKeys, dest=core_ii)
                     comm.send(data_all[data_ii_start:data_ii_end], dest=core_ii)
             else:
@@ -1894,10 +1892,6 @@ def TileSkyArea(CloningTrackFile=None,sources=None,detectors=None,base_telescope
             # Use pairings with source IDs if given
             DetectorNewExNames.append(SaveFileCommon+"_SourceInd_"+SourceIndices[ii]+"__"+"_".join(KeyValStrings)+"."+BaseTelescopeExFileName.split(".")[-1])
 
-        # Checks 1
-        if MPI_rank==0: print("Pre-write rank-0 check:",len(DetectorNewExNames),len(sources),len(CloningCombs))
-        if MPI_rank==2: print("Pre-write rank-2 check:",len(DetectorNewExNames),len(sources),len(CloningCombs))
-
         # Gether all information from each node
         pathlib.Path(SYNEX_PATH+"/TileTrackFiles/").mkdir(parents=True, exist_ok=True)
         CloningTrackFile=SYNEX_PATH+"/TileTrackFiles/ProgressTrackFile.txt"
@@ -1923,9 +1917,6 @@ def TileSkyArea(CloningTrackFile=None,sources=None,detectors=None,base_telescope
                 f.write(BaseTelescopeExFileName+'\n')
                 for DetEx,SouEx,Comb in zip(DetectorNewExNamesAll,SourceExNamesAll,CloningCombsAll):
                     f.write(DetEx+":"+SouEx+":"+",".join([str(el) if not isinstance(el,(np.ndarray,list)) else str(el[-1]) for el in Comb])+'\n') ### Need a way to save arrays better for when we switch to gaps etc. Maybe then we will switch to a '.dat' savefile instead and just pickle everything.
-        # Checks 2
-        if MPI_rank==0: print("Post-write rank-0 check:",len(DetectorNewExNames),len(sources),len(CloningCombs))
-        if MPI_rank==2: print("Post-write rank-2 check:",len(DetectorNewExNames),len(sources),len(CloningCombs))
     else:
         ###
         #

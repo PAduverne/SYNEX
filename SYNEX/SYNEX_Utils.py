@@ -1741,11 +1741,11 @@ def TileSkyArea(CloningTrackFile=None,sources=None,detectors=None,base_telescope
             remainder=Nvals-nPerCore*MPI_size
             if MPI_rank==0:
                 data_ii_start=0
-                data_ii_end=nPerCore+1 if MPI_rank<remainder else nPerCore ## Split any extras left from rounding errors evenly
+                data_ii_end=data_ii_start+nPerCore+1 if MPI_rank<remainder else data_ii_start+nPerCore ## Split any extras left from rounding errors evenly
                 data = data_all[data_ii_start:data_ii_end]
                 for core_ii in range(1,MPI_size):
                     data_ii_start=data_ii_end
-                    data_ii_end=nPerCore+1 if MPI_rank<remainder else nPerCore ## Split any extras left from rounding errors evenly
+                    data_ii_end=data_ii_start+(nPerCore+1) if MPI_rank<remainder else data_ii_start+nPerCore ## Split any extras left from rounding errors evenly
                     comm.send(CloningKeys, dest=core_ii)
                     comm.send(data_all[data_ii_start:data_ii_end], dest=core_ii)
             else:
@@ -2041,7 +2041,7 @@ def TileSkyArea(CloningTrackFile=None,sources=None,detectors=None,base_telescope
         OutPutArch=SaveInSubFile.strip("/") if SaveInSubFile else None
 
         # Initiate empty detectors output list if we are not on cluster
-        if MPI_size==1: detectors=[]
+        if MPI_size==1: detectors_out=[]
 
         # Loop over lists of sources and telescope save files
         for i,ExName in enumerate(DetectorNewExNames):
@@ -2072,22 +2072,16 @@ def TileSkyArea(CloningTrackFile=None,sources=None,detectors=None,base_telescope
             if MPI_rank==0:
                 t_tile0=time.time()
                 DetectorCovered=True if detector.detector_source_coverage==None else False
-            if detector.detector_source_coverage==None: go_params, map_struct, tile_structs, coverage_struct, detector = TileWithGwemopt(sources[i],detector,OutPutArch,verbose)
+            if detector.detector_source_coverage==None: go_params, map_struct, tile_structs, coverage_struct, detector_out = TileWithGwemopt(sources[i],detector,OutPutArch,verbose)
             if MPI_rank==0:
                 t_tile1=time.time()
                 print("Time for telescope",i,"/",len(DetectorNewExNames),"by master rank:",t_tile1-t_tile0,"s, with source coverage tileranges:",detector.detector_source_coverage["Source tile timeranges (isot)"])
 
             # Add to detectors output list if we not on cluster
-            if MPI_size==1: detectors.append(detector)
-
-        process=psutil.Process(os.getpid())
-        mem=process.memory_info().rss/(1000000.)
-        ListOfMemoryUsage = comm.gather(mem,root=0)
-        print(type(ListOfMemoryUsage),np.shape(ListOfMemoryUsage))
-        print("Job memory info:",MPI_size,len(ListOfMemoryUsage),sum(ListOfMemoryUsage))
+            if MPI_size==1: detectors_out.append(detector_out)
 
         # Return detectors output list if we are not on cluster
-        if MPI_size==1: return detectors
+        if MPI_size==1: return detectors_out
     else:
         print(MPI_rank,"/",MPI_size,"with 0 /",Nvals,"detectors to tile, and 0 /",Nvals,"sources to tile.")
 

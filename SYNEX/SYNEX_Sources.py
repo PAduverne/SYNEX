@@ -447,6 +447,12 @@ class SMBH_Merger:
             if os.path.isfile(JsonFileLocAndName):
                 if self.verbose: print("Using similar Json file found \n"+JsonFileLocAndName)
                 self.JsonFile=JsonFileLocAndName
+        if self.JsonFile and self.H5File:
+            JsonFileLocAndName,H5FileLocAndName=SYU.CompleteLisabetaDataAndJsonFileNames(self.JsonFile)
+            if os.path.isfile(JsonFileLocAndName) and os.path.isfile(H5FileLocAndName):
+                if self.verbose: print("Using similar Json file found \n"+JsonFileLocAndName+"and similar H5 file found \n"+H5FileLocAndName)
+                self.JsonFile=JsonFileLocAndName
+                self.H5File=H5FileLocAndName
 
         # If we resurrected with mutation, keep a reference to where this class came from
         if MUTATED:
@@ -490,19 +496,25 @@ class SMBH_Merger:
 
         # Now check if sky_map needs creating or reading -- adaptation for 3D case needed here...
         if MUTATED and self.H5File!=None and os.path.isfile(self.H5File):
+            if self.sky_map==None:
+                self.sky_map = self.H5File.split("inference_data")[0] + 'Skymap_files' + self.H5File.split("inference_data")[-1]
+                self.sky_map = self.sky_map[:-3] + '.fits'
             self.CreateSkyMapStruct()
         elif self.sky_map!=None and os.path.isfile(self.sky_map):
             self.LoadSkymap()
         elif self.sky_map!=None and not os.path.isfile(self.sky_map) and self.H5File!=None and os.path.isfile(self.H5File):
             self.CreateSkyMapStruct()
-        elif self.sky_map==None and self.H5File!=None and os.path.isfile(self.H5File):
+        elif self.sky_map==None and self.H5File!=None and self.H5File!=None:
             # Default name
             self.sky_map = self.H5File.split("inference_data")[0] + 'Skymap_files' + self.H5File.split("inference_data")[-1]
             self.sky_map = self.sky_map[:-3] + '.fits'
             if os.path.isfile(self.sky_map):
                 self.LoadSkymap()
             else:
-                self.CreateSkyMapStruct()
+                try:
+                    self.CreateSkyMapStruct()
+                except:
+                    if self.verbose: print("No h5 data located- skipping skymap calculation.")
 
         # run through gwemopt checker with a dummy params dict
         # should we do this? If we change things in the real go_params in SYNEX_Utils, will this rework things as required

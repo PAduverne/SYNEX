@@ -199,8 +199,25 @@ class Athena:
                 # Use these values as default to modify with remaining keys in '**kwargs'
                 detector_go_params = SavedDict["detector_go_params"]
                 detector_config_struct = SavedDict["detector_config_struct"]
-                if "detector_source_coverage" in SavedDict:
+                if "detector_source_coverage" in SavedDict and SavedDict["detector_source_coverage"]!=None:
                     detector_source_coverage = SavedDict["detector_source_coverage"] # None if not calculated yet
+                    # Make sure we adapt the savefiles to this achitecture if we need to... (e.g. if copied across from cluster)
+                    if detector_source_coverage["source JsonFile"]!=None and "/SYNEX/" in detector_source_coverage["source JsonFile"]: detector_source_coverage["source JsonFile"]=SYNEX_PATH+"/"+detector_source_coverage["source JsonFile"].split("/SYNEX/")[-1]
+                    if detector_source_coverage["source H5File"]!=None and "/SYNEX/" in detector_source_coverage["source H5File"]: detector_source_coverage["source H5File"]=SYNEX_PATH+"/"+detector_source_coverage["source H5File"].split("/SYNEX/")[-1]
+                    if detector_source_coverage["source save file"]!=None and "/SYNEX/" in detector_source_coverage["source save file"]: detector_source_coverage["source save file"]=SYNEX_PATH+"/"+detector_source_coverage["source save file"].split("/SYNEX/")[-1]
+                    # Check for file architecture missing when copied from cluster...
+                    if detector_source_coverage["source JsonFile"]!=None and not os.path.isfile(detector_source_coverage["source JsonFile"]):
+                        # Can't find file- check for missing architecture
+                        FileWithArch = SYNEX_PATH + "/inference_param_files/" + "/".join(self.ExistentialFileName.split("/Saved_Telescope_Dicts/")[-1].split("/")[:-1]) + "/" + detector_source_coverage["source JsonFile"].split("/")[-1]
+                        if os.path.isfile(FileWithArch): detector_source_coverage["source JsonFile"]=FileWithArch
+                    if detector_source_coverage["source H5File"]!=None and not os.path.isfile(detector_source_coverage["source H5File"]):
+                        # Can't find file- check for missing architecture
+                        FileWithArch = SYNEX_PATH + "/inference_data/" + "/".join(self.ExistentialFileName.split("/Saved_Telescope_Dicts/")[-1].split("/")[:-1]) + "/" + detector_source_coverage["source H5File"].split("/")[-1]
+                        if os.path.isfile(FileWithArch): detector_source_coverage["source H5File"]=FileWithArch
+                    if detector_source_coverage["source save file"]!=None and not os.path.isfile(detector_source_coverage["source save file"]):
+                        # Can't find file- check for missing architecture
+                        FileWithArch = SYNEX_PATH + "/Saved_Source_Dicts/" + "/".join(self.ExistentialFileName.split("/Saved_Telescope_Dicts/")[-1].split("/")[:-1]) + "/" + detector_source_coverage["source save file"].split("/")[-1]
+                        if os.path.isfile(FileWithArch): detector_source_coverage["source save file"]=FileWithArch
                 else:
                     detector_source_coverage = None # None if not calculated yet
                 if "detector_tile_struct" in SavedDict:

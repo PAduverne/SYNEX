@@ -401,62 +401,56 @@ def GWEMOPTPathChecks(go_params, config_struct):
     params dictionary. This will check the locations as well as file names are
     coherent with telescope type... But haven't coded that yet...
 
-    TO DO: Need to add checks that the proper file locations are specified (tile_files etc)...
+    TO DO: Need to add check for when we specify a file or folder outside SYNEx architecture that
+    e.g. has been transfered from cluster and so no longer exists on new system. In this case should we just
+    output an error so we ask the user to input a FileName/NewFileName? I.e. we can instead
+    input "MUTATED=True" at run time and then specify, for example, NeworbitFile...
     """
 
     PATH_VARS = ["outputDir", "tilingDir", "catalogDir"] # , "configDirectory"]
     FILE_VARS = ["coverageFiles", "lightcurveFiles"]
-    CONFIG_FILE_VARS = ["tesselationFile"]
+    CONFIG_FILE_VARS = ["tesselationFile","orbitFile"]
 
     # Check if paths are complete
     for PathVar in PATH_VARS:
-        if len(go_params[PathVar].split("SYNEX"))==1:
-            # Needs proper gwemopt_output or whatever added...
-            go_params[PathVar] = SYNEX_PATH+go_params[PathVar]
+        # Make sure SYNEX_PATH is correct e.g. after copying across from cluster run.
+        if "/SYNEX/" in go_params[PathVar]: go_params[PathVar]=go_params[PathVar].split("/SYNEX/")[-1]
+        go_params[PathVar]=SYNEX_PATH+"/"+go_params[PathVar]
         # Check if it exists
-        try:
-            pathlib.Path(go_params[PathVar]).mkdir(parents=True, exist_ok=True)
-        except:
-            go_params[PathVar] = SYNEX_PATH+"/"+go_params[PathVar].split("/SYNEX/")[-1]
-            pathlib.Path(go_params[PathVar]).mkdir(parents=True, exist_ok=True)
+        pathlib.Path(go_params[PathVar]).mkdir(parents=True, exist_ok=True)
 
     # Now specified files
     for FileVar in FILE_VARS:
-        if len(go_params[FileVar].split("SYNEX"))==1:
-            # Needs SYNEX_PATH added
-            go_params[FileVar] = SYNEX_PATH+go_params[FileVar]
+        # Make sure SYNEX_PATH is correct e.g. after copying across from cluster run.
+        if "/SYNEX/" in go_params[FileVar]: go_params[FileVar]=go_params[FileVar].split("/SYNEX/")[-1]
+        go_params[FileVar] = SYNEX_PATH + "/" + go_params[FileVar]
         # Check file endings to match gwemopt hardcoded stuff
         if len(go_params[FileVar].split("."))==1:
             go_params[FileVar] = go_params[FileVar] + ".dat"
         elif go_params[FileVar].split(".")[-1]!="dat":
             go_params[FileVar] = go_params[FileVar].split(".")[0] + ".dat"
         # Check if it exists
-        try:
-            PathOnly = "/".join(go_params[FileVar].split("/")[:-1])
-            pathlib.Path(PathOnly).mkdir(parents=True, exist_ok=True)
-        except:
-            go_params[FileVar] = SYNEX_PATH+"/"+go_params[FileVar].split("/SYNEX/")[-1]
-            PathOnly = "/".join(go_params[FileVar].split("/")[:-1])
-            pathlib.Path(PathOnly).mkdir(parents=True, exist_ok=True)
+        PathOnly = "/".join(go_params[FileVar].split("/")[:-1])
+        pathlib.Path(PathOnly).mkdir(parents=True, exist_ok=True)
 
     # Now config_struct paths
     for FileVar in CONFIG_FILE_VARS:
-        if len(config_struct[FileVar].split("SYNEX"))==1:
-            # Needs SYNEX_PATH added
-            config_struct[FileVar] = SYNEX_PATH+config_struct[FileVar]
+        if "/SYNEX/" in config_struct[FileVar]: config_struct[FileVar]=config_struct[FileVar].split("/SYNEX/")[-1]
+        config_struct[FileVar] = SYNEX_PATH + "/" + config_struct[FileVar]
         # Check file endings to match gwemopt hardcoded stuff
         if len(config_struct[FileVar].split("."))==1:
-            config_struct[FileVar] = config_struct[FileVar] + ".tess"
-        elif config_struct[FileVar].split(".")[-1]!="tess":
-            config_struct[FileVar] = ".".join(config_struct[FileVar].split(".")[:-1]) + ".tess"
+            if FileVar in ["tesselationFile"]:
+                config_struct[FileVar] += ".tess"
+            elif FileVar in ["orbitFile"]:
+                config_struct[FileVar] += ".dat"
+        else:
+            if FileVar in ["tesselationFile"] and config_struct[FileVar].split(".")[-1]!="tess":
+                config_struct[FileVar] = ".".join(config_struct[FileVar].split(".")[:-1]) + ".tess"
+            elif FileVar in ["orbitFile"] and config_struct[FileVar].split(".")[-1]!="dat":
+                config_struct[FileVar] = ".".join(config_struct[FileVar].split(".")[:-1]) + ".dat"
         # Check if it exists
-        try:
-            PathOnly = "/".join(config_struct[FileVar].split("/")[:-1])
-            pathlib.Path(PathOnly).mkdir(parents=True, exist_ok=True)
-        except:
-            config_struct[FileVar] = SYNEX_PATH+"/"+config_struct[FileVar].split("/SYNEX/")[-1]
-            PathOnly = "/".join(config_struct[FileVar].split("/")[:-1])
-            pathlib.Path(PathOnly).mkdir(parents=True, exist_ok=True)
+        PathOnly = "/".join(config_struct[FileVar].split("/")[:-1])
+        pathlib.Path(PathOnly).mkdir(parents=True, exist_ok=True)
 
     return go_params, config_struct
 
@@ -1446,7 +1440,6 @@ def GetSMBHGWDetection_FreqSeries(source, detector, freqs=None, **kwargs):
             s = s + ', ' +  key + '="' + str(value) + '"'
         else:
             s = s + ', ' +  key + '=' + str(value)
-    print(s)
     # return lisa.GenerateLISATDIFreqseries_SMBH(param_dict, freqs,
     # timetomerger_max=1.0, minf=1e-05, t0=0.0, tref=0.0, phiref=0.0, fref_for_phiref=0.0, fref_for_tref=0.0,
     # force_phiref_fref=True, toffset=0.0, acc=0.0001, approximant="IMRPhenomHM", DeltatL_cut=14400.0, TDI="TDIAET",
@@ -1820,7 +1813,7 @@ def TileSkyArea(CloningTrackFile=None,sources=None,detectors=None,base_telescope
             elif sources[0][-3:]=="dat":
                 cloning_params["SourceExName"]=sources #### This has potential to be broken easily...
         else: # handed list of sources or just one source
-            cloning_params["SourceExName"]=[source.ExistentialFileName for source in sources] if isinstance(source,list) else [sources.ExistentialFileName] ## should we delete the list here or find a way to check later if it doesn't already exist?
+            cloning_params["SourceExName"]=[source.ExistentialFileName for source in sources] if isinstance(sources,list) else [sources.ExistentialFileName] ## should we delete the list here or find a way to check later if it doesn't already exist?
 
         # Need to know how many objects we will need --- later will include some source params in cloning params dict bith check that sources must == None to use cloning stuff
         CloningVals = list(cloning_params.values())
@@ -2051,6 +2044,8 @@ def TileSkyArea(CloningTrackFile=None,sources=None,detectors=None,base_telescope
         for i,ExName in enumerate(DetectorNewExNames):
             # Detector object vals -- load if file exists but include clone vals in case we changed something
             # (then we recalculate everything)
+            print("Detector construction check 1:",i,os.path.isfile(ExName),ExName,CloningCombs[i])
+            print("Detector construction check 2:",[(CloningKeys[jj],CloningCombs[i][jj]) for jj in range(len(CloningKeys)) if CloningKeys[jj] not in ["Tcut"]])
             if os.path.isfile(ExName):
                 Dictii=dict(base_telescope_params,
                           **{"ExistentialFileName":BaseTelescopeExFileName,
@@ -2076,10 +2071,13 @@ def TileSkyArea(CloningTrackFile=None,sources=None,detectors=None,base_telescope
             if MPI_rank==0:
                 t_tile0=time.time()
                 DetectorCovered=True if detector.detector_source_coverage==None else False
-                print("Extra checks:",sources[i].M,sources[i].q,sources[i].m1,sources[i].m2,sources[i].chi1,sources[i].chi2,-sources[i].DeltatL_cut/(24*60*60),detector.detector_go_params["Tobs"],detector.detector_go_params["tilesType"])
-            if detector.detector_source_coverage==None: go_params, map_struct, tile_structs, coverage_struct, detector = TileWithGwemopt(sources[i],detector,OutPutArch,verbose)
+                PrintMsg=detector.detector_source_coverage["source save file"] if detector.detector_source_coverage!=None else "No source coverage..."
+                print("Pre-tile master node check:",PrintMsg)
+            if detector.detector_source_coverage==None: go_params, map_struct, tile_structs, coverage_struct, detector_out = TileWithGwemopt(sources[i],detector,OutPutArch,verbose)
             if MPI_rank==0:
                 t_tile1=time.time()
+                PrintMsg=detector.detector_source_coverage["source save file"] if detector.detector_source_coverage!=None else "No source coverage..."
+                print("Post-tile master node check:",PrintMsg)
                 print("Time for telescope",i+1,"/",len(DetectorNewExNames),"by master rank:",t_tile1-t_tile0,"s, with source coverage tileranges:",detector.detector_source_coverage["Source tile timeranges (isot)"])
 
             # Add to detectors output list if we not on cluster
@@ -3981,7 +3979,7 @@ def PlotSourcePhotons_SingleDetList(detectors,sources=None,fig=None,label=None,B
 #                                   #
 #####################################
 
-def DecTreeReg(detectors):
+def CreateDataFrameFromDetectorList(detectors):
     """
     Code to test how accumulated photon count varies with a subset of
     tested parameters. In essence, if we randomize over many parameters and find
@@ -4014,7 +4012,7 @@ def DecTreeReg(detectors):
 
     # List of all params of interest... This should not be hardcoded moving forward as a priori we don't know what is interesting...
     SourceTestParamKeys = ["M","q","chi1","chi2","lambda","beta", "dist", "DeltatL_cut"]
-    DetectorTestParamKeys = ["Tobs", "exposuretime","n_photons","DaysToSourceExp"]
+    DetectorTestParamKeys = ["Tobs", "exposuretime","n_photons_per_tile","n_photons","DaysToSourceExp"]
     AllTestParamKeys = SourceTestParamKeys+DetectorTestParamKeys
     AllTestParams = {key:[] for key in AllTestParamKeys}
 
@@ -4041,18 +4039,19 @@ def DecTreeReg(detectors):
                 AllTestParams[key].append(d.detector_config_struct[key])
 
         # Add total source photons captured
+        AllTestParams["n_photons_per_tile"].append(d.detector_source_coverage["Source photon counts"])
         AllTestParams["n_photons"].append(round(sum(d.detector_source_coverage["Source photon counts"])))
 
         # Add first day after detector start of science at which source is exposed -- append 'NAN' if source never exposed
         if len(d.detector_source_coverage["Source tile timeranges (days)"])>0:
             AllTestParams["DaysToSourceExp"].append(d.detector_source_coverage["Source tile timeranges (days)"])
         else:
-            AllTestParams["DaysToSourceExp"].append(np.nan)
+            AllTestParams["DaysToSourceExp"].append([[np.nan]])
 
     # Create DataFrame
     data = pd.DataFrame(data=AllTestParams)
 
-    # Return data frame
+    # Return dataframe
     return data
 
 

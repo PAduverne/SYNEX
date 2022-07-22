@@ -1741,17 +1741,21 @@ def TileSkyArea(CloningTrackFile=None,sources=None,detectors=None,base_telescope
             remainder=Nvals-nPerCore*MPI_size
             if MPI_rank==0:
                 data_ii_start=0
-                data_ii_end=data_ii_start+nPerCore+1 if MPI_rank<remainder else data_ii_start+nPerCore ## Split any extras left from rounding errors evenly
+                data_ii_end=data_ii_start+nPerCore
+                if remainder>0: data_ii_end+=1 ## Split any extras left from rounding errors evenly
                 data = data_all[data_ii_start:data_ii_end]
                 for core_ii in range(1,MPI_size):
                     data_ii_start=data_ii_end
-                    data_ii_end=data_ii_start+(nPerCore+1) if MPI_rank<remainder else data_ii_start+nPerCore ## Split any extras left from rounding errors evenly
+                    data_ii_end=data_ii_start+nPerCore
+                    if core_ii<remainder: data_ii_end+=1 ## Split any extras left from rounding errors evenly
                     comm.send(CloningKeys, dest=core_ii)
                     comm.send(data_all[data_ii_start:data_ii_end], dest=core_ii)
             else:
                 CloningKeys = comm.recv(source=0)
                 CloningKeys = [k.strip('\n') for k in CloningKeys]
                 data = comm.recv(source=0) ### strip '\n' from these and bcast vals too.
+        else:
+            data = data_all
         CoreLenVals = len(data)                           ##### CHECK EACH CORE HAS THE RIGHT VALS !!!
 
         # Make base detector params dict
@@ -2041,7 +2045,7 @@ def TileSkyArea(CloningTrackFile=None,sources=None,detectors=None,base_telescope
         OutPutArch=SaveInSubFile.strip("/") if SaveInSubFile else None
 
         # Initiate empty detectors output list if we are not on cluster
-        if MPI_size==1: detectors_out=[]
+        if MPI_size==1: detectors=[]
 
         # Loop over lists of sources and telescope save files
         for i,ExName in enumerate(DetectorNewExNames):
@@ -2072,16 +2076,17 @@ def TileSkyArea(CloningTrackFile=None,sources=None,detectors=None,base_telescope
             if MPI_rank==0:
                 t_tile0=time.time()
                 DetectorCovered=True if detector.detector_source_coverage==None else False
-            if detector.detector_source_coverage==None: go_params, map_struct, tile_structs, coverage_struct, detector_out = TileWithGwemopt(sources[i],detector,OutPutArch,verbose)
+                print("Extra checks:",sources[i].M,sources[i].q,sources[i].m1,sources[i].m2,sources[i].chi1,sources[i].chi2,-sources[i].DeltatL_cut/(24*60*60),detector.detector_go_params["Tobs"],detector.detector_go_params["tilesType"])
+            if detector.detector_source_coverage==None: go_params, map_struct, tile_structs, coverage_struct, detector = TileWithGwemopt(sources[i],detector,OutPutArch,verbose)
             if MPI_rank==0:
                 t_tile1=time.time()
-                print("Time for telescope",i,"/",len(DetectorNewExNames),"by master rank:",t_tile1-t_tile0,"s, with source coverage tileranges:",detector.detector_source_coverage["Source tile timeranges (isot)"])
+                print("Time for telescope",i+1,"/",len(DetectorNewExNames),"by master rank:",t_tile1-t_tile0,"s, with source coverage tileranges:",detector.detector_source_coverage["Source tile timeranges (isot)"])
 
             # Add to detectors output list if we not on cluster
-            if MPI_size==1: detectors_out.append(detector_out)
+            if MPI_size==1: detectors.append(detector)
 
         # Return detectors output list if we are not on cluster
-        if MPI_size==1: return detectors_out
+        if MPI_size==1: return detectors
     else:
         print(MPI_rank,"/",MPI_size,"with 0 /",Nvals,"detectors to tile, and 0 /",Nvals,"sources to tile.")
 

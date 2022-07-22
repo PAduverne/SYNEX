@@ -416,38 +416,52 @@ def GWEMOPTPathChecks(go_params, config_struct):
         # Strip out some stuff that can change when transfering files between systems
         if "/SYNEX/" in go_params[FileVar]: go_params[FileVar]=go_params[FileVar].split("/SYNEX/")[-1]
         if len(go_params[FileVar].split("."))>1: go_params[FileVar] = ".".join(go_params[FileVar].split(".")[:-1])
-        if FileVar in PATH_VARS: go_params[PATH_VARS].strip("/") # No trailing slash
+        go_params[FileVar].strip("/") # No trailing slashes either side of path / file
 
         # Add file ends
-        if FileVar in ["coverageFiles"]:
-            if "/gwemopt_cover_files/" not in go_params[FileVar]: go_params[FileVar]="/gwemopt_cover_files/"+go_params[FileVar]
-            go_params[FileVar] += ".tess"
-        elif FileVar in ["lightcurveFiles"]:
-            if "/lightcurveFiles/" not in go_params[FileVar]: go_params[FileVar]="/lightcurveFiles/"+go_params[FileVar]
-            go_params[FileVar] += ".dat"
+        if FileVar in FILE_VARS: go_params[FileVar] += ".dat"
+
+        # Add correct directories
+        if FileVar=="coverageFiles":
+            if "gwemopt_cover_files/" not in go_params[FileVar]: go_params[FileVar]="gwemopt_cover_files/"+go_params[FileVar]
+        elif FileVar=="lightcurveFiles":
+            if "gwemopt/lightcurves/" not in go_params[FileVar]: go_params[FileVar]="gwemopt/lightcurves/"+go_params[FileVar]
+        elif FileVar=="outputDir":
+            if "gwemopt_output/" not in go_params[FileVar]: go_params[FileVar]="gwemopt_output/"+go_params[FileVar]
+        elif FileVar=="tilingDir":
+            if "Tile_files/" not in go_params[FileVar]: go_params[FileVar]="Tile_files/"+go_params[FileVar]
+        elif FileVar=="catalogDir":
+            if "gwemopt_catalogs/" not in go_params[FileVar]: go_params[FileVar]="gwemopt_catalogs/"+go_params[FileVar]
 
         # Add correct SYNEX_PATH for current system
         go_params[FileVar] = SYNEX_PATH + "/" + go_params[FileVar]
 
         # Check if paths exist yet
         PathOnly = go_params[FileVar]
-        if FileVar in FILE_VARS
+        if FileVar in FILE_VARS:
             PathOnly = "/".join(go_params[FileVar].split("/")[:-1])
         pathlib.Path(PathOnly).mkdir(parents=True, exist_ok=True)
+
+        print(FileVar, go_params[FileVar])
 
     # Now config_struct paths
     for FileVar in CONFIG_FILE_VARS:
         # Strip out some stuff that can change when transfering files between systems
         if "/SYNEX/" in config_struct[FileVar]: config_struct[FileVar]=config_struct[FileVar].split("/SYNEX/")[-1]
         if len(config_struct[FileVar].split("."))>1: config_struct[FileVar] = ".".join(config_struct[FileVar].split(".")[:-1])
+        config_struct[FileVar].strip("/") # No trailing slashes either side of path / file
 
         # Add file ends
         if FileVar in ["tesselationFile"]:
-            if "/gwemopt_tess_files/" not in config_struct[FileVar]: config_struct[FileVar]="/gwemopt_tess_files/"+config_struct[FileVar]
             config_struct[FileVar] += ".tess"
         elif FileVar in ["orbitFile"]:
-            if "/orbit_files/" not in config_struct[FileVar]: config_struct[FileVar]="/orbit_files/"+config_struct[FileVar]
             config_struct[FileVar] += ".dat"
+
+        # Add correct directories
+        if FileVar=="tesselationFile":
+            if "gwemopt_tess_files/" not in config_struct[FileVar]: config_struct[FileVar]="gwemopt_tess_files/"+config_struct[FileVar]
+        elif FileVar=="orbitFile":
+            if "orbit_files/" not in config_struct[FileVar]: config_struct[FileVar]="orbit_files/"+config_struct[FileVar]
 
         # Add correct SYNEX_PATH for current system
         config_struct[FileVar] = SYNEX_PATH + "/" + config_struct[FileVar]
@@ -455,6 +469,8 @@ def GWEMOPTPathChecks(go_params, config_struct):
         # Check if paths exist yet
         PathOnly = "/".join(config_struct[FileVar].split("/")[:-1])
         pathlib.Path(PathOnly).mkdir(parents=True, exist_ok=True)
+
+        print(FileVar, config_struct[FileVar])
 
     return go_params, config_struct
 
@@ -642,11 +658,16 @@ def GetPosteriorStats(FileName, ModeJumpLimit=None, LogLikeJumpLimit=None):
 
 def GetTotSkyAreaFromPostData(FileName,ConfLevel=0.9):
     """
-    Counting function to give the total sky area for a confidence level given some
-    posterior data
+    Counting function to give the total sky area for a confidence level given eiher
+    a Json or h5 filename for lisabeta data.
+
+    REQUIRES lisabeta full inference to have been run to completion.
     """
+    # Check what filename we were given
+    JsonFileLocAndName,H5FileLocAndName=CompleteLisabetaDataAndJsonFileNames(FileName)
+
     # Unpack data
-    [infer_params, inj_param_vals, static_params, meta_data] = read_h5py_file(FileName)
+    [infer_params, inj_param_vals, static_params, meta_data] = read_h5py_file(H5FileLocAndName)
     if not inj_param_vals: # Raw files at first didn't record this, so make sure it's there...
         # Get the inj values from the processed data file instead
         DataFileLocAndName_NotRaw = DataFileLocAndName[:-7] + ".h5"
@@ -722,8 +743,6 @@ def GetTotSkyAreaFromPostData(FileName,ConfLevel=0.9):
         hist2D_pops[hist2D_pops==np.max(hist2D_pops)] = 0.
         iiloop+=1
     print("Counted bin total population = ", Count*100.*ConfLevel/CutLim, "% of total population.")
-    if Count*100.*ConfLevel/CutLim>98.:
-        print(DataFileLocAndName)
 
     return TotArea
 

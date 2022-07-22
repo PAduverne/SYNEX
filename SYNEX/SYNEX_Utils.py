@@ -408,47 +408,51 @@ def GWEMOPTPathChecks(go_params, config_struct):
     """
 
     PATH_VARS = ["outputDir", "tilingDir", "catalogDir"] # , "configDirectory"]
-    FILE_VARS = ["coverageFiles", "lightcurveFiles"]
+    FILE_VARS = ["coverageFiles", "lightcurveFiles"] ### lightcurveFiles will be used when we eventually interface with EM stuff
     CONFIG_FILE_VARS = ["tesselationFile","orbitFile"]
 
-    # Check if paths are complete
-    for PathVar in PATH_VARS:
-        # Make sure SYNEX_PATH is correct e.g. after copying across from cluster run.
-        if "/SYNEX/" in go_params[PathVar]: go_params[PathVar]=go_params[PathVar].split("/SYNEX/")[-1]
-        go_params[PathVar]=SYNEX_PATH+"/"+go_params[PathVar]
-        # Check if it exists
-        pathlib.Path(go_params[PathVar]).mkdir(parents=True, exist_ok=True)
-
     # Now specified files
-    for FileVar in FILE_VARS:
-        # Make sure SYNEX_PATH is correct e.g. after copying across from cluster run.
+    for FileVar in FILE_VARS+PATH_VARS:
+        # Strip out some stuff that can change when transfering files between systems
         if "/SYNEX/" in go_params[FileVar]: go_params[FileVar]=go_params[FileVar].split("/SYNEX/")[-1]
+        if len(go_params[FileVar].split("."))>1: go_params[FileVar] = ".".join(go_params[FileVar].split(".")[:-1])
+        if FileVar in PATH_VARS: go_params[PATH_VARS].strip("/") # No trailing slash
+
+        # Add file ends
+        if FileVar in ["coverageFiles"]:
+            if "/gwemopt_cover_files/" not in go_params[FileVar]: go_params[FileVar]="/gwemopt_cover_files/"+go_params[FileVar]
+            go_params[FileVar] += ".tess"
+        elif FileVar in ["lightcurveFiles"]:
+            if "/lightcurveFiles/" not in go_params[FileVar]: go_params[FileVar]="/lightcurveFiles/"+go_params[FileVar]
+            go_params[FileVar] += ".dat"
+
+        # Add correct SYNEX_PATH for current system
         go_params[FileVar] = SYNEX_PATH + "/" + go_params[FileVar]
-        # Check file endings to match gwemopt hardcoded stuff
-        if len(go_params[FileVar].split("."))==1:
-            go_params[FileVar] = go_params[FileVar] + ".dat"
-        elif go_params[FileVar].split(".")[-1]!="dat":
-            go_params[FileVar] = go_params[FileVar].split(".")[0] + ".dat"
-        # Check if it exists
-        PathOnly = "/".join(go_params[FileVar].split("/")[:-1])
+
+        # Check if paths exist yet
+        PathOnly = go_params[FileVar]
+        if FileVar in FILE_VARS
+            PathOnly = "/".join(go_params[FileVar].split("/")[:-1])
         pathlib.Path(PathOnly).mkdir(parents=True, exist_ok=True)
 
     # Now config_struct paths
     for FileVar in CONFIG_FILE_VARS:
+        # Strip out some stuff that can change when transfering files between systems
         if "/SYNEX/" in config_struct[FileVar]: config_struct[FileVar]=config_struct[FileVar].split("/SYNEX/")[-1]
+        if len(config_struct[FileVar].split("."))>1: config_struct[FileVar] = ".".join(config_struct[FileVar].split(".")[:-1])
+
+        # Add file ends
+        if FileVar in ["tesselationFile"]:
+            if "/gwemopt_tess_files/" not in config_struct[FileVar]: config_struct[FileVar]="/gwemopt_tess_files/"+config_struct[FileVar]
+            config_struct[FileVar] += ".tess"
+        elif FileVar in ["orbitFile"]:
+            if "/orbit_files/" not in config_struct[FileVar]: config_struct[FileVar]="/orbit_files/"+config_struct[FileVar]
+            config_struct[FileVar] += ".dat"
+
+        # Add correct SYNEX_PATH for current system
         config_struct[FileVar] = SYNEX_PATH + "/" + config_struct[FileVar]
-        # Check file endings to match gwemopt hardcoded stuff
-        if len(config_struct[FileVar].split("."))==1:
-            if FileVar in ["tesselationFile"]:
-                config_struct[FileVar] += ".tess"
-            elif FileVar in ["orbitFile"]:
-                config_struct[FileVar] += ".dat"
-        else:
-            if FileVar in ["tesselationFile"] and config_struct[FileVar].split(".")[-1]!="tess":
-                config_struct[FileVar] = ".".join(config_struct[FileVar].split(".")[:-1]) + ".tess"
-            elif FileVar in ["orbitFile"] and config_struct[FileVar].split(".")[-1]!="dat":
-                config_struct[FileVar] = ".".join(config_struct[FileVar].split(".")[:-1]) + ".dat"
-        # Check if it exists
+
+        # Check if paths exist yet
         PathOnly = "/".join(config_struct[FileVar].split("/")[:-1])
         pathlib.Path(PathOnly).mkdir(parents=True, exist_ok=True)
 

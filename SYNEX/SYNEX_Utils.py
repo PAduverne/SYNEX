@@ -85,7 +85,6 @@ warnings.filterwarnings("ignore")
 # import lalsimulation
 
 # mpi stuff
-import psutil
 try:
     from mpi4py import MPI
 except ModuleNotFoundError:
@@ -427,11 +426,11 @@ def GWEMOPTPathChecks(go_params, config_struct):
         elif FileVar=="lightcurveFiles":
             if "gwemopt/lightcurves/" not in go_params[FileVar]: go_params[FileVar]="gwemopt/lightcurves/"+go_params[FileVar]
         elif FileVar=="outputDir":
-            if "gwemopt_output/" not in go_params[FileVar]: go_params[FileVar]="gwemopt_output/"+go_params[FileVar]
+            if "gwemopt_output" not in go_params[FileVar]: go_params[FileVar]="gwemopt_output/"+go_params[FileVar]
         elif FileVar=="tilingDir":
-            if "Tile_files/" not in go_params[FileVar]: go_params[FileVar]="Tile_files/"+go_params[FileVar]
+            if "Tile_files" not in go_params[FileVar]: go_params[FileVar]="Tile_files/"+go_params[FileVar]
         elif FileVar=="catalogDir":
-            if "gwemopt_catalogs/" not in go_params[FileVar]: go_params[FileVar]="gwemopt_catalogs/"+go_params[FileVar]
+            if "gwemopt_catalogs" not in go_params[FileVar]: go_params[FileVar]="gwemopt_catalogs/"+go_params[FileVar]
 
         # Add correct SYNEX_PATH for current system
         go_params[FileVar] = SYNEX_PATH + "/" + go_params[FileVar]
@@ -441,8 +440,6 @@ def GWEMOPTPathChecks(go_params, config_struct):
         if FileVar in FILE_VARS:
             PathOnly = "/".join(go_params[FileVar].split("/")[:-1])
         pathlib.Path(PathOnly).mkdir(parents=True, exist_ok=True)
-
-        print(FileVar, go_params[FileVar])
 
     # Now config_struct paths
     for FileVar in CONFIG_FILE_VARS:
@@ -469,8 +466,6 @@ def GWEMOPTPathChecks(go_params, config_struct):
         # Check if paths exist yet
         PathOnly = "/".join(config_struct[FileVar].split("/")[:-1])
         pathlib.Path(PathOnly).mkdir(parents=True, exist_ok=True)
-
-        print(FileVar, config_struct[FileVar])
 
     return go_params, config_struct
 
@@ -1878,7 +1873,7 @@ def TileSkyArea(CloningTrackFile=None,sources=None,detectors=None,base_telescope
         if SaveInSubFile: FolderArch += SaveInSubFile
         if FolderArch[-1]=="/": FolderArch=FolderArch[:-1]
         pathlib.Path(FolderArch).mkdir(parents=True, exist_ok=True)
-        SaveFileCommon=FolderArch+"/"+SaveFileCommonStart if SaveFileCommonStart else FolderArch+"/"+BaseTelescopeExFileName.split("/")[-1]
+        SaveFileCommon=FolderArch+"/"+SaveFileCommonStart if SaveFileCommonStart else FolderArch+"/"+BaseTelescopeExFileName.split("/")[-1].strip(".dat")
 
         # Get system IDs if we want them i.e. if we randomized some params and want to organize accordingly
         if SourceIndexingByString:
@@ -1888,7 +1883,8 @@ def TileSkyArea(CloningTrackFile=None,sources=None,detectors=None,base_telescope
             SourceIndices=[str(i) for i in range(1,len(sources)+1)]
 
         # Create list of detector dicts NB:: exfile names depend on what was changed... Make sure to treat long numbers so we dont get stupid savefile names.
-        ### I am sure this can be optimized... ###
+        ### I am sure this can be optimized... ### -- Probably better to turn CloningCombs into a numpy array...
+        # Seee if we changed the sources first...
         DetectorNewExNames=[]
         for ii,ParamComb in enumerate(CloningCombs):
             # New Existential filename
@@ -1907,10 +1903,15 @@ def TileSkyArea(CloningTrackFile=None,sources=None,detectors=None,base_telescope
                 elif isinstance(v,bool):
                     # incase we start playing with flags later?
                     vs=str(int(v))
-                KeyValStrings.append("{key}_{val}".format(key=k,val=vs))
+                if k!="SourceExName": KeyValStrings.append("{key}_{val}".format(key=k,val=vs))
 
             # Use pairings with source IDs if given
-            DetectorNewExNames.append(SaveFileCommon+"_SourceInd_"+SourceIndices[ii]+"__"+"_".join(KeyValStrings)+"."+BaseTelescopeExFileName.split(".")[-1])
+            if SourceIndexingByString:
+                DetectorNewExNames.append(SaveFileCommon+"_SourceInd_"+SourceIndices[ii]+"__"+"_".join(KeyValStrings)+"."+BaseTelescopeExFileName.split(".")[-1])
+            elif SaveFileCommonStart:
+                DetectorNewExNames.append(SaveFileCommon+"_"+SourceIndices[ii]+"__"+"_".join(KeyValStrings)+"."+BaseTelescopeExFileName.split(".")[-1])
+            else:
+                DetectorNewExNames.append(SaveFileCommon+"CombinationNo_"+SourceIndices[ii]+"__"+"_".join(KeyValStrings)+"."+BaseTelescopeExFileName.split(".")[-1])
 
         # Gether all information from each node
         pathlib.Path(SYNEX_PATH+"/TileTrackFiles/").mkdir(parents=True, exist_ok=True)
@@ -2061,31 +2062,20 @@ def TileSkyArea(CloningTrackFile=None,sources=None,detectors=None,base_telescope
         OutPutArch=SaveInSubFile.strip("/") if SaveInSubFile else None
 
         # Initiate empty detectors output list if we are not on cluster
-        if MPI_size==1: detectors=[]
+        if MPI_size==1: detectors_out=[]
 
         # Loop over lists of sources and telescope save files
         for i,ExName in enumerate(DetectorNewExNames):
             # Detector object vals -- load if file exists but include clone vals in case we changed something
             # (then we recalculate everything)
-            print("Detector construction check 1:",i,os.path.isfile(ExName),ExName,CloningCombs[i])
-            print("Detector construction check 2:",[(CloningKeys[jj],CloningCombs[i][jj]) for jj in range(len(CloningKeys)) if CloningKeys[jj] not in ["Tcut"]])
-            if os.path.isfile(ExName):
-                Dictii=dict(base_telescope_params,
-                          **{"ExistentialFileName":BaseTelescopeExFileName,
-                          "NewExistentialFileName":ExName,
-                          "verbose":verbose,
-                          "cloning keys":CloningKeys,
-                          "cloning values":CloningCombs[i],
-                          "telescope":BaseTelescopeName+"_"+"_".join(CloningKeys)+"_"+str(i+1)},
-                          **{CloningKeys[jj]:CloningCombs[i][jj] for jj in range(len(CloningKeys)) if CloningKeys[jj] not in ["Tcut"]})
-            else:
-                Dictii=dict(base_telescope_params,
-                          **{"ExistentialFileName":ExName,
-                          "verbose":verbose,
-                          "cloning keys":CloningKeys,
-                          "cloning values":CloningCombs[i],
-                          "telescope":BaseTelescopeName+"_"+"_".join(CloningKeys)+"_"+str(i+1)},
-                          **{CloningKeys[jj]:CloningCombs[i][jj] for jj in range(len(CloningKeys)) if CloningKeys[jj] not in ["Tcut"]})
+            Dictii=dict(base_telescope_params,
+                      **{"ExistentialFileName":BaseTelescopeExFileName,
+                      "NewExistentialFileName":ExName,
+                      "verbose":verbose,
+                      "cloning keys":CloningKeys,
+                      "cloning values":CloningCombs[i],
+                      "telescope":BaseTelescopeName+"_"+"_".join(CloningKeys)+"_"+str(i+1)},
+                      **{CloningKeys[jj]:CloningCombs[i][jj] for jj in range(len(CloningKeys)) if CloningKeys[jj] not in ["Tcut"]})
 
             # Detector object
             detector=SYDs.Athena(**Dictii) ## IF a param changed from existing detect file, Athena innit function forces detector_source_coverage = None.
@@ -2095,19 +2085,19 @@ def TileSkyArea(CloningTrackFile=None,sources=None,detectors=None,base_telescope
                 t_tile0=time.time()
                 DetectorCovered=True if detector.detector_source_coverage==None else False
                 PrintMsg=detector.detector_source_coverage["source save file"] if detector.detector_source_coverage!=None else "No source coverage..."
-                print("Pre-tile master node check:",PrintMsg)
+                print("Pre-tiling master node check:",PrintMsg)
             if detector.detector_source_coverage==None: go_params, map_struct, tile_structs, coverage_struct, detector_out = TileWithGwemopt(sources[i],detector,OutPutArch,verbose)
             if MPI_rank==0:
                 t_tile1=time.time()
-                PrintMsg=detector.detector_source_coverage["source save file"] if detector.detector_source_coverage!=None else "No source coverage..."
-                print("Post-tile master node check:",PrintMsg)
-                print("Time for telescope",i+1,"/",len(DetectorNewExNames),"by master rank:",t_tile1-t_tile0,"s, with source coverage tileranges:",detector.detector_source_coverage["Source tile timeranges (isot)"])
+                PrintMsg=detector_out.detector_source_coverage["source save file"] if detector_out.detector_source_coverage!=None else "No source coverage..."
+                print("Post-tiling master node check:",PrintMsg)
+                print("Time for telescope",i+1,"/",len(DetectorNewExNames),"by master rank:",t_tile1-t_tile0,"s, with source coverage tileranges:",detector_out.detector_source_coverage["Source tile timeranges (isot)"],"\n")
 
             # Add to detectors output list if we not on cluster
-            if MPI_size==1: detectors.append(detector)
+            if MPI_size==1: detectors_out.append(detector_out)
 
         # Return detectors output list if we are not on cluster
-        if MPI_size==1: return detectors
+        if MPI_size==1: return detectors_out
     else:
         print(MPI_rank,"/",MPI_size,"with 0 /",Nvals,"detectors to tile, and 0 /",Nvals,"sources to tile.")
 
@@ -4033,6 +4023,12 @@ def CreateDataFrameFromDetectorList(detectors):
     # detect -- {Tobs, Texp}
     # FoMs -- {n_photons, DaysToSourceExp}
     ###
+
+    # Did we get a list?
+    if not isinstance(detectors,list): detectors=[detectors]
+
+    # Did we get a set of savefiles?
+    if isinstance(detectors[0],str): detectors=[SYDs.Athena(**{"ExistentialFileName":ExName}) for ExName in detectors]
 
     # List of all params of interest... This should not be hardcoded moving forward as a priori we don't know what is interesting...
     SourceTestParamKeys = ["M","q","chi1","chi2","lambda","beta", "dist", "DeltatL_cut"]

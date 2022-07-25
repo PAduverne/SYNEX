@@ -309,10 +309,7 @@ class Athena:
                     TessFileExt+=1
                     detector_config_struct["tesselationFile"] = "_".join(detector_config_struct["tesselationFile"].split("_")[:-1]) + "_" + str(TessFileExt) + "." + detector_config_struct["tesselationFile"].split(".")[-1]
 
-        # Check that file names are all coherent with SYNEX_PATH and telescope name
-        detector_go_params, detector_config_struct = SYU.GWEMOPTPathChecks(detector_go_params,detector_config_struct)
-
-        # Get/Calculate orbit
+        # Get/Calculate orbit filename and location
         if not detector_config_struct["orbitFile"]:
             if self.verbose: print("Creating new orbit file name...")
             t = Time(detector_config_struct["gps_science_start"], format='gps', scale='utc').isot
@@ -345,6 +342,10 @@ class Athena:
                     orbitFileExt+=1
                     detector_config_struct["orbitFile"] = "_".join(detector_config_struct["orbitFile"].split("_")[:-1]) + "_" + str(orbitFileExt) + "." + detector_config_struct["orbitFile"].split(".")[-1]
 
+        # Check that file names up till here are all coherent with SYNEX_PATH and telescope name etc
+        detector_go_params, detector_config_struct = SYU.GWEMOPTPathChecks(detector_go_params,detector_config_struct)
+
+        # Get/Calculate orbit
         # NB : SAVETOFILE=True will force it to recalculate and overwrite any existing 'orbitFile'
         # Unless use_mpi is True (then PermissionToWrite=False), in which case never save so we don't overrun disk quota.
         if not self.PermissionToWrite:
@@ -354,6 +355,8 @@ class Athena:
         else:
             SAVETOFILE=False
         import SYNEX.segments_athena as segs_a
+        orbitFilePath="/".join(detector_config_struct["orbitFile"].split("/")[:-1])
+        pathlib.Path(orbitFilePath).mkdir(parents=True, exist_ok=True)
         detector_config_struct = segs_a.get_telescope_orbit(detector_config_struct,SAVETOFILE=SAVETOFILE,verbose=self.verbose)
 
         # Set as class attributes

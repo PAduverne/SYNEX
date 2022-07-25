@@ -3172,7 +3172,6 @@ def PlotHistsLambdaBeta(FileName, SaveFig=False, ParamToPlot="beta"): # "lambda"
 
     # Sctter plot of lambda and beta posterior chains, marginalized over all other params
     for PlotParam in ParamToPlot:
-        print(PlotParam)
         if PlotParam == "beta":
             iiParam = 0
         elif PlotParam == "lambda":
@@ -3209,7 +3208,7 @@ def PlotInferenceData(FileName, SaveFig=False):
     JsonFileLocAndName,H5FileLocAndName = CompleteLisabetaDataAndJsonFileNames(FileName)
 
     # Unpack the data
-    [infer_params, inj_param_vals, static_params, meta_data] = read_h5py_file(DataFileLocAndName)
+    [infer_params, inj_param_vals, static_params, meta_data] = read_h5py_file(H5FileLocAndName)
     if not inj_param_vals: # Raw files at first didn't record this, so make sure it's there...
         # Get the inj values from the processed data file instead
         DataFileLocAndName_NotRaw = DataFileLocAndName[:-7] + ".h5"
@@ -3282,11 +3281,14 @@ def PlotInferenceLambdaBeta(FileName, bins=50, SkyProjection=False, SaveFig=Fals
     Plotting function to output corner plots of inference data.
     Need to add the post-processing stuff from Sylvain's example online?
     """
-    # Update somee general properties
+    # Update some general properties
     # GeneralPlotFormatting()
 
+    # Check filenames
+    JsonFileLocAndName,H5FileLocAndName = CompleteLisabetaDataAndJsonFileNames(FileName)
+
     # Unpack the data
-    [infer_params, inj_param_vals, static_params, meta_data] = read_h5py_file(FileName)
+    [infer_params, inj_param_vals, static_params, meta_data] = read_h5py_file(H5FileLocAndName)
     ndim = len(infer_params.keys())
     labels = list(infer_params.keys())
     if np.size(infer_params[labels[0]][0])>1:
@@ -3316,10 +3318,8 @@ def PlotInferenceLambdaBeta(FileName, bins=50, SkyProjection=False, SaveFig=Fals
         InjParam_InjVals.append(inj_param_vals["source_params_Lframe"][key][0]) # Lframe is right.
 
     # Scatter plot of labmda and beta posterior chains, marginalized over all other params
-    fig = plt.figure()
-    ax = plt.gca()
-    if SkyProjection:
-        plt.subplot(111, projection="mollweide") # To match gwemopt projections
+    # fig,ax = plt.figure()
+    if SkyProjection: plt.subplot(111, projection="mollweide") # To match gwemopt projections
 
     # Get 2D hitogram data
     levels = [1.-0.997, 1.-0.95, 1.-0.9, 1.-0.68] # Plot contours for 1 sigma, 90% confidence, 2 sigma, and 3 sigma
@@ -3382,6 +3382,7 @@ def PlotInferenceLambdaBeta(FileName, bins=50, SkyProjection=False, SaveFig=Fals
     # Plot contour
     contour = plt.contour(X, Y, Z, levels)
     plt.clabel(contour, colors ='k', fmt=labels_dict, fontsize=2)
+    ax=plt.gca()
 
     # Add injected and mode vertical and horizontal lines
     if not SkyProjection:
@@ -3391,8 +3392,8 @@ def PlotInferenceLambdaBeta(FileName, bins=50, SkyProjection=False, SaveFig=Fals
         ax.axvline(SampleModes[5], color="b", linestyle=":")
 
     # Add points at injected and mode values
-    ax.plot(InjParam_InjVals[5], InjParam_InjVals[0], "sr")
-    ax.plot(SampleModes[5], SampleModes[0], "sb")
+    plt.plot(InjParam_InjVals[5], InjParam_InjVals[0], "sr")
+    plt.plot(SampleModes[5], SampleModes[0], "sb")
 
     # Labels
     if not SkyProjection:
@@ -3401,8 +3402,8 @@ def PlotInferenceLambdaBeta(FileName, bins=50, SkyProjection=False, SaveFig=Fals
 
     # show now or return?
     if not return_data:
-        plt.show()
         plt.grid()
+        plt.show()
 
         # save the figure if asked
         if SaveFig:

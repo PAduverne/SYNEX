@@ -73,7 +73,7 @@ if is_master and len(JsonFiles)==0:
     OneHour = 60.*60.
     OneDay = 24.*OneHour
     OneWeek = 7.*OneWeek
-    T_obs_end_to_mergers = [-30.*OneDay,-3.*OneWeek,-2.OneWeek,-OneWeek,
+    T_obs_end_to_mergers = [-30.*OneDay,-3.*OneWeek,-2.*OneWeek,-OneWeek,
                         -3.*OneDay,-OneDay,-10.*OneHour,-5.*OneHour,None]
     T_obs_labels = ["1mon","3wk","2wk","1wk","3d","1d",
                         "10hr","5hr","0cut"]

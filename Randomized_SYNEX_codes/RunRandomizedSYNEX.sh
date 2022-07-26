@@ -18,14 +18,14 @@ export PYTHONPATH=/home/baird/.local/lib:/usr/lib:$PYTHONPATH
 export PYTHONPATH=/soft/anaconda3/lib:$PYTHONPATH
 
 # Get list of json files to run
-JSONFILE_LIST=(`python3 ${SLURM_SUBMIT_DIR}/SYNEX/SYNEX_randomized.py`)
+JSONFILE_LIST=(`python3 /SYNEX_randomized.py`)
 len=${#JSONFILE_LIST[@]}
 
-# Lisabeta command to run inference
-LAUNCH_INFER=${SLURM_SUBMIT_DIR}/SYNEX/lisabeta/lisabeta/inference/ptemcee_smbh.py
+# Lisabeta command to run inference -- change this if submitting elsewhere
+LAUNCH_INFER=${SLURM_SUBMIT_DIR}/../lisabeta/lisabeta/inference/ptemcee_smbh.py
 
 # Output file
-OUT_FILE = ${SLURM_SUBMIT_DIR}/RandomizedSYNEX.txt
+OUT_FILE = RandomizedSYNEX.txt
 
 # Execute each json one-by-one
 for (( i=0; i<$len; i++ ))

@@ -1,10 +1,16 @@
 import numpy as np
-import glob,copy,sys
+import glob,copy,sys,os
+
+# Define SYNEX_PATH variable, add to path if not already there
+try:
+    from SYNEX.SYNEX_Utils import SYNEX_PATH
+except:
+    SYNEX_PATH=os.popen('pwd').read().split("SYNEX")[0]+"SYNEX"
+    sys.path.insert(1, SYNEX_PATH)
 
 from SYNEX import SYNEX_Detectors as SYDs
 from SYNEX import SYNEX_Sources as SYSs
 from SYNEX import SYNEX_Utils as SYU
-from SYNEX.SYNEX_Utils import SYNEX_PATH
 
 try:
     from mpi4py import MPI
@@ -72,7 +78,7 @@ if is_master and len(JsonFiles)==0:
     # Set Tcut if looking at pre-merger - 'None' to ignore
     OneHour = 60.*60.
     OneDay = 24.*OneHour
-    OneWeek = 7.*OneWeek
+    OneWeek = 7.*OneDay
     T_obs_end_to_mergers = [-30.*OneDay,-3.*OneWeek,-2.*OneWeek,-OneWeek,
                         -3.*OneDay,-OneDay,-10.*OneHour,-5.*OneHour,None]
     T_obs_labels = ["1mon","3wk","2wk","1wk","3d","1d",

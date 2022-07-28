@@ -63,7 +63,7 @@ go_params_default["doCoverage"] = True # Not sure what it is yet because it's li
 go_params_default["doSchedule"] = True # We always want to do this
 go_params_default["doTiles"] = True # We always want to calculate these unless we already have them, in which case we can set this to False.
 go_params_default["doMinimalTiling"] = True # This is a flag to tile only 90% CL area of skymap instead of the whole sky - if False the runtime is huge and plotting tesselation shows the whole sky is tiled
-go_params_default["doCalcTiles"] = True # We always want to calculate these unless we already have them, in which case we can set this to False.
+go_params_default["doCalcTiles"] = True # Calculates the no. of "hierarchical" tiles based on sky area prob threashold and FoV. We always want to calculate these unless we already have them, in which case we can set this to False.
 
 
 # Define remaining fields that are dependent on out implementation (e.g. paths etc)
@@ -76,12 +76,12 @@ go_params_default["coverageFiles"] = SYNEX_PATH+"/gwemopt_cover_files/Athena_tes
 go_params_default["lightcurveFiles"] = SYNEX_PATH+"/gwemopt/lightcurves/Me2017_H4M050V20.dat" ### THIS NEEDS TO BE CHANGED LATER WHEN WE HAVE SOME LIGHTCURVES...
 go_params_default["tilesType"] = "moc" #  Tiling options are moc/greedy/hierarchical/ranked/galaxy.
 go_params_default["scheduleType"] = "greedy" # Scheduling options are greedy/sear/weighted/airmass_weighted, or with _slew.
-go_params_default["timeallocationType"] = "powerlaw" # "absmag" / "powerlaw" / "waw" / "manual" / "pem"
+go_params_default["timeallocationType"] = "powerlaw" # "absmag" / "powerlaw" / "waw" / "manual" / "pem" 
 go_params_default["configDirectory"] = None # SYNEX_PATH+"/gwemopt_conf_files" # Is this needed? I don't think so...
 go_params_default["gpstime"] = None # 1703721618.0 # 01/01/2034 00:00:00.000 UTC -- time of event -- set by source and if not by detectors
 go_params_default["Ninj"] = 1000
 go_params_default["Ndet"] = 1
-go_params_default["Ntiles"] = None # 50 # Speific to tilesType=hierarchical and greedy
+go_params_default["Ntiles"] = None # 50 # Speific to tilesType=hierarchical and greedy. Needs to be set if "doCalcTiles"=False.
 go_params_default["Ntiles_cr"] = 0.70 # Speific to tilesType=hierarchical and greedy (I think)
 go_params_default["Dscale"] = 1.0
 go_params_default["nside"] = 128

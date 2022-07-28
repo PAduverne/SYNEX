@@ -11,7 +11,7 @@ eval "$(/soft/anaconda3/bin/conda shell.bash hook)"
 module load openmpi/3.1.6
 conda activate fast-mpi4py
 
-# Export PATH and PYTHON_PATH
+# Export PATH and PYTHONPATH
 export PATH=/soft/anaconda3/condabin:/home/baird/.local/bin:$PATH
 export PATH=/soft/anaconda3/bin:$PATH
 export PYTHONPATH=/home/baird/.local/lib:/usr/lib:$PYTHONPATH

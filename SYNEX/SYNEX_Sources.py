@@ -413,7 +413,7 @@ class SMBH_Merger:
         if not hasattr(self,"acc"):
                 self.acc = 1e-4     # Included
         if not hasattr(self,"approximant"):
-                self.approximant = "IMRPhenomD"     # Included
+                self.approximant = "IMRPhenomHM"     # Included
         if not hasattr(self,"DeltatL_cut"):
                 self.DeltatL_cut = None     # Included
         if not hasattr(self,"Lframe"):

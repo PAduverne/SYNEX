@@ -1,7 +1,9 @@
+# General stuff
 import numpy as np
 import glob,copy,sys,os
 
 # Define SYNEX_PATH variable, add to path if not already there
+#  -- move to shell script?
 try:
     from SYNEX.SYNEX_Utils import SYNEX_PATH
 except:
@@ -12,6 +14,7 @@ from SYNEX import SYNEX_Detectors as SYDs
 from SYNEX import SYNEX_Sources as SYSs
 from SYNEX import SYNEX_Utils as SYU
 
+# MPI
 try:
     from mpi4py import MPI
 except ModuleNotFoundError:

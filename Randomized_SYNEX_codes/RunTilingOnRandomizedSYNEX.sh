@@ -50,13 +50,15 @@ then
 
   # Remove from lisabeta data list all completed systems
   for H5FILE in ${H5FILE_ssh_LIST} ; do
-    SaveFileTMP=${H5FILE/%.h5/.dat}
+    SaveFileTMP = "$H5FILE" | sed 's/.h5//'
+    # SaveFileTMP=${H5FILE/%.h5/.dat}
     for file in ${SAVEFILE_LIST[@]} ; do
-      if [[ $file == $SaveFileTMP ]] ; then
+      file2 = "$file" | sed 's/.dat//'
+      if [[ $file2 == $SaveFileTMP ]] ; then
         break
       fi
     done
-    FILES_TO_TRANSFER+=("$H5FILE" | sed 's/.h5//')
+    FILES_TO_TRANSFER+=("$SaveFileTMP")
     # Stop when we have 10 sources to transfer
     if [[ ${#FILES_TO_TRANSFER[@]} -eq 10 ]] ; then
       break

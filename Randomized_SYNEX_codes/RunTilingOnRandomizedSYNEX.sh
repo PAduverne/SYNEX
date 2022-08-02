@@ -28,11 +28,10 @@ export SYNEX_DIR=~/SYNEX
 ##########
 
 # Directory to check for existing data on cluster
-CLUST_JSON_DIR=${SYNEX_DIR}/inference_param_files/Randomized_*.json
+CLUST_JSON_DIR=${SYNEX_DIR}/inference_param_files/
 
 # If Is inference_param_files directory empty, grab 10 more sources to transfer
-# if [[ len_json_list -eq 0 ]]
-if [ "$(ls -A $CLUST_JSON_DIR)" ]
+if [ "$(ls -A $CLUST_JSON_DIR)" ] ### JSON DIR lust be empty for this to work.
 then
   # Some useful commands
   SSH_COMM = "scp -i ~/.ssh/id_rsa baird@apcssh.in2p3.fr:/home/baird"

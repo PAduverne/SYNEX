@@ -32,7 +32,7 @@ JSONFILE_LIST_CLUST=(ls ${SYNEX_DIR}/inference_param_files/Randomized_*.json)
 len_json_list=${#JSONFILE_LIST_CLUST[@]}
 
 # If so, then grab up to 10 more sources
-if [len_json_list -eq 0]
+if [[ len_json_list -eq 0 ]]
 then
   # Some useful commands
   SSH_COMM = "scp -i ~/.ssh/id_rsa baird@apcssh.in2p3.fr:/home/baird"

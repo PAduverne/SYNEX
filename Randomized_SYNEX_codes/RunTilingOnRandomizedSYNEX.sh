@@ -28,7 +28,7 @@ export SYNEX_DIR=~/SYNEX
 ##########
 
 # Is inference_param_files directory empty?
-JSONFILE_LIST_CLUST=(ls ${SYNEX_DIR}/inference_param_files)
+JSONFILE_LIST_CLUST=(ls ${SYNEX_DIR}/inference_param_files/Randomized_*.json)
 len_json_list=${#JSONFILE_LIST_CLUST[@]}
 
 # If so, then grab up to 10 more sources
@@ -39,7 +39,7 @@ then
   SCP_COMM = "scp -i ~/.ssh/id_rsa baird@apcssh.in2p3.fr:/home/baird"
 
   # Get list of all systems
-  H5FILE_ssh_LIST=($SSH_COMM/ 'ls *.h5')
+  H5FILE_ssh_LIST=($SSH_COMM/ 'ls Randomized_*.h5')
   len_H5FILE_ssh_LIST=${#H5FILE_ssh_LIST[@]}
 
   # Get list of all source save files

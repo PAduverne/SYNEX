@@ -75,7 +75,7 @@ then
 fi
 
 # gwemopt command to run tiling -- change this if submitting elsewhere
-LAUNCH_INFER=${SLURM_SUBMIT_DIR}/SYNEX/SYNEX_TileRandomized.py
+LAUNCH_INFER=${SYNEX_DIR}/Randomized_SYNEX_codes/SYNEX_TileRandomized.py
 
 # Output file
 OUT_FILE=TiledRandomizedSYNEX.txt

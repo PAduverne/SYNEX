@@ -31,24 +31,26 @@ export SYNEX_DIR=~/SYNEX
 CLUST_JSON_DIR=${SYNEX_DIR}/inference_param_files/
 
 # If Is inference_param_files directory empty, grab 10 more sources to transfer
-if [ "$(ls -A $CLUST_JSON_DIR)" ] ### JSON DIR lust be empty for this to work.
+if [ ! "$(ls -A $CLUST_JSON_DIR)" ] ### JSON DIR lust be empty for this to work.
 then
   # Some useful commands
-  SSH_COMM = "scp -i ~/.ssh/id_rsa baird@apcssh.in2p3.fr:/home/baird"
-  SCP_COMM = "scp -i ~/.ssh/id_rsa baird@apcssh.in2p3.fr:/home/baird"
+  ssh_home=baird@apcssh.in2p3.fr:/home/baird
 
   # Get list of all systems
-  H5FILE_ssh_LIST=($SSH_COMM/ 'ls Randomized_*.h5')
+  H5FILE_ssh_LIST=(ssh -i ~/.ssh/id_rsa ${ssh_home} 'ls Randomized_*.h5')
   len_H5FILE_ssh_LIST=${#H5FILE_ssh_LIST[@]}
 
+  # check things are ok
+  echo "Test test test:" $len_H5FILE_ssh_LIST ${H5FILE_ssh_LIST[1]}
+
   # Get list of all source save files
-  SAVEFILE_LIST=($SSH_COMM/ 'ls sources/*.dat')
+  SAVEFILE_LIST=(ssh -i ~/.ssh/id_rsa ${ssh_home} 'ls sources/*.dat')
 
   # Initiate container for files to transfer across
   FILES_TO_TRANSFER=()
 
   # Remove from lisabeta data list all completed systems
-  for H5FILE in ${H5FILE_ssh_LIST} ; do
+  for H5FILE in ${H5FILE_ssh_LIST[@]} ; do
     SaveFileTMP = "$H5FILE" | sed 's/.h5//'
     # SaveFileTMP=${H5FILE/%.h5/.dat}
     for file in ${SAVEFILE_LIST[@]} ; do
@@ -65,8 +67,8 @@ then
   done
 
   # Transfer all files
-  SCP_COMM/${FILES_TO_TRANSFER[@]}.h5 ${SYNEX_DIR}/inference_data/
-  SCP_COMM/${FILES_TO_TRANSFER[@]}.json ${SYNEX_DIR}/inference_param_files/
+  scp -i ~/.ssh/id_rsa ${ssh_home}/${FILES_TO_TRANSFER[@]}.h5 ${SYNEX_DIR}/inference_data/
+  scp -i ~/.ssh/id_rsa ${ssh_home}/${FILES_TO_TRANSFER[@]}.json ${SYNEX_DIR}/inference_param_files/
 
   # # Now set flags for tiling command options
   # USETRACK=False # This will be created using new sources

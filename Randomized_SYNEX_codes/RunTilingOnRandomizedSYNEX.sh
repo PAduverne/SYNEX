@@ -89,5 +89,17 @@ OUT_FILE=TiledRandomizedSYNEX.txt
 # Run the job
 time mpirun -np $SLURM_NTASKS python3 ${LAUNCH_TILING} > $OUT_FILE
 
+# Copy everything back to APCSSH
+SourceSaves=($(ls ${SYNEX_DIR}/Saved_Source_Dicts/Randomized_*.dat))
+SourceSaves=($(echo "${SourceSaves[@]}" | tr ' ' ','))
+TelesSaves=($(ls ${SYNEX_DIR}/Saved_Telescope_Dicts/Randomized_*.dat))
+TelesSaves=($(echo "${TelesSaves[@]}" | tr ' ' ','))
+scp -i ~/.ssh/id_rsa ${SourceSaves[@]} baird@apcssh.in2p3.fr:/home/baird/sources/
+scp -i ~/.ssh/id_rsa ${TelesSaves[@]} baird@apcssh.in2p3.fr:/home/baird/telescopes/
+
+# Clear folders
+rm ${SYNEX_DIR}/Saved_Telescope_Dicts/Randomized_*
+rm ${SYNEX_DIR}/Saved_Source_Dicts/Randomized_*
+
 # happy end
 exit 0

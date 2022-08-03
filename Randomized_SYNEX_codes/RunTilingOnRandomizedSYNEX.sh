@@ -34,20 +34,21 @@ CLUST_JSON_DIR=${SYNEX_DIR}/inference_param_files/
 if [ ! "$(ls -A $CLUST_JSON_DIR)" ] ### JSON DIR lust be empty for this to work.
 then
   # Some useful commands
-  ssh_home=baird@apcssh.in2p3.fr:/home/baird
+  ssh_home=baird@apcssh.in2p3.fr
+  ssh_home2=baird@apcssh.in2p3.fr:/home/baird/
 
   # Get list of all systems
-  H5FILE_ssh_LIST=(ssh -i ~/.ssh/id_rsa ${ssh_home} 'ls Randomized_*.h5')
+  H5FILE_ssh_LIST=($(ssh -i ~/.ssh/id_rsa ${ssh_home} 'ls Randomized_*.h5'))
   len_H5FILE_ssh_LIST=${#H5FILE_ssh_LIST[@]}
 
   # check things are ok
   echo "Test test test:" $len_H5FILE_ssh_LIST ${H5FILE_ssh_LIST[1]}
 
   # Get list of all source save files
-  SAVEFILE_LIST=(ssh -i ~/.ssh/id_rsa ${ssh_home} 'ls sources/*.dat')
+  SAVEFILE_LIST=($(ssh -i ~/.ssh/id_rsa ${ssh_home} 'ls sources/'))
 
   # Initiate container for files to transfer across
-  FILES_TO_TRANSFER=()
+  TRANSFERFILES=()
 
   # Remove from lisabeta data list all completed systems
   for H5FILE in ${H5FILE_ssh_LIST[@]} ; do
@@ -59,16 +60,16 @@ then
         break
       fi
     done
-    FILES_TO_TRANSFER+=("$SaveFileTMP")
+    TRANSFERFILES+=("$SaveFileTMP")
     # Stop when we have 10 sources to transfer
-    if [[ ${#FILES_TO_TRANSFER[@]} -eq 10 ]] ; then
+    if [[ ${#TRANSFERFILES[@]} -eq 10 ]] ; then
       break
     fi
   done
 
   # Transfer all files
-  scp -i ~/.ssh/id_rsa ${ssh_home}/${FILES_TO_TRANSFER[@]}.h5 ${SYNEX_DIR}/inference_data/
-  scp -i ~/.ssh/id_rsa ${ssh_home}/${FILES_TO_TRANSFER[@]}.json ${SYNEX_DIR}/inference_param_files/
+  scp -i ~/.ssh/id_rsa ${ssh_home2}/${TRANSFERFILES[@]}.h5 ${SYNEX_DIR}/inference_data/
+  scp -i ~/.ssh/id_rsa ${ssh_home2}/${TRANSFERFILES[@]}.json ${SYNEX_DIR}/inference_param_files/
 
   # # Now set flags for tiling command options
   # USETRACK=False # This will be created using new sources
@@ -76,13 +77,13 @@ then
 fi
 
 # gwemopt command to run tiling -- change this if submitting elsewhere
-LAUNCH_INFER=${SYNEX_DIR}/Randomized_SYNEX_codes/SYNEX_TileRandomized.py
+LAUNCH_TILING=${SYNEX_DIR}/Randomized_SYNEX_codes/SYNEX_TileRandomized.py
 
 # Output file
 OUT_FILE=TiledRandomizedSYNEX.txt
 
 # Run the job
-time mpirun -np $SLURM_NTASKS python3 ${LAUNCH_INFER} > $OUT_FILE
+time mpirun -np $SLURM_NTASKS python3 ${LAUNCH_TILING} > $OUT_FILE
 
 # happy end
 exit 0

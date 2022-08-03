@@ -94,8 +94,16 @@ SourceSaves=($(ls ${SYNEX_DIR}/Saved_Source_Dicts/Randomized_*.dat))
 TelesSaves=($(ls ${SYNEX_DIR}/Saved_Telescope_Dicts/Randomized_*.dat))
 len=${#SourceSaves[@]}
 for (( i=0; i<$len; i++ )) ; do
-  scp -i ~/.ssh/id_rsa ${SourceSaves[$i]} ${ssh_home2}/sources/
-  scp -i ~/.ssh/id_rsa ${TelesSaves[$i]} ${ssh_home2}/telescopes/
+  SourceSave="${SourceSaves[$i]}"
+  TelesSave="${TelesSaves[$i]}"
+  # THIS?
+  # scp -i ~/.ssh/id_rsa $SourceSave ${ssh_home2}/sources/
+  # scp -i ~/.ssh/id_rsa $TelesSave ${ssh_home2}/telescopes/
+  # OR THIS? -- this works on cluster but we have a problem with naming of telescope files
+  #             They aren't working properly with the Tcuts too and I think it's probably
+  #             because our limit was to 10 source files instead of 90 for 10 systems at all Tcuts... Need to verify this !!!
+  scp -i ~/.ssh/id_rsa $SourceSave baird@apcssh.in2p3.fr:/home/baird/sources/
+  scp -i ~/.ssh/id_rsa $TelesSave baird@apcssh.in2p3.fr:/home/baird/telescopes/
 done
 
 # Clear folders

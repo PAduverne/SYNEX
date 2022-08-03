@@ -52,10 +52,10 @@ then
 
   # Remove from lisabeta data list all completed systems
   for H5FILE in ${H5FILE_ssh_LIST[@]} ; do
-    SaveFileTMP = "$H5FILE" | sed 's/.h5//'
+    SaveFileTMP="$H5FILE" | sed 's/.h5//'
     # SaveFileTMP=${H5FILE/%.h5/.dat}
     for file in ${SAVEFILE_LIST[@]} ; do
-      file2 = "$file" | sed 's/.dat//'
+      file2="$file" | sed 's/.dat//'
       if [[ $file2 == $SaveFileTMP ]] ; then
         break
       fi

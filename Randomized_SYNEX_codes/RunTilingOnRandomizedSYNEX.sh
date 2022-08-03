@@ -92,8 +92,10 @@ time mpirun -np $SLURM_NTASKS python3 ${LAUNCH_TILING} > $OUT_FILE
 # Copy everything back to APCSSH
 SourceSaves=($(ls ${SYNEX_DIR}/Saved_Source_Dicts/Randomized_*.dat))
 SourceSaves=($(echo "${SourceSaves[@]}" | tr ' ' ','))
+SourceSaves=($(echo "${SourceSaves[@]}" | tr '.dat' ''))
 TelesSaves=($(ls ${SYNEX_DIR}/Saved_Telescope_Dicts/Randomized_*.dat))
 TelesSaves=($(echo "${TelesSaves[@]}" | tr ' ' ','))
+TelesSaves=($(echo "${TelesSaves[@]}" | tr '.dat' ''))
 scp -i ~/.ssh/id_rsa {${SourceSaves[@]}} baird@apcssh.in2p3.fr:/home/baird/sources/
 scp -i ~/.ssh/id_rsa {${TelesSaves[@]}} baird@apcssh.in2p3.fr:/home/baird/telescopes/
 

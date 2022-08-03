@@ -96,12 +96,17 @@ SourceSaves=($(echo "${SourceSaves[@]}" | tr '.dat' ''))
 TelesSaves=($(ls ${SYNEX_DIR}/Saved_Telescope_Dicts/Randomized_*.dat))
 TelesSaves=($(echo "${TelesSaves[@]}" | tr ' ' ','))
 TelesSaves=($(echo "${TelesSaves[@]}" | tr '.dat' ''))
-scp -i ~/.ssh/id_rsa {${SourceSaves[@]}} baird@apcssh.in2p3.fr:/home/baird/sources/
-scp -i ~/.ssh/id_rsa {${TelesSaves[@]}} baird@apcssh.in2p3.fr:/home/baird/telescopes/
+echo "Filesearch checks:"
+echo ${SourceSaves[@]}
+echo ${TelesSaves[@]}
+scp -i ~/.ssh/id_rsa {${SourceSaves[@]}}.dat ${ssh_home2}/sources/
+scp -i ~/.ssh/id_rsa {${TelesSaves[@]}}.dat ${ssh_home2}/telescopes/
 
 # Clear folders
-rm ${SYNEX_DIR}/Saved_Telescope_Dicts/Randomized_*
-rm ${SYNEX_DIR}/Saved_Source_Dicts/Randomized_*
+# rm ${SYNEX_DIR}/Saved_Telescope_Dicts/Randomized_*
+# rm ${SYNEX_DIR}/Saved_Source_Dicts/Randomized_*
+# rm ${SYNEX_DIR}/inference_param_files/Randomized_*
+# rm ${SYNEX_DIR}/inference_data/Randomized_*
 
 # happy end
 exit 0

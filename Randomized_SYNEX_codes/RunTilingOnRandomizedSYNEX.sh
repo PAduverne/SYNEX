@@ -3,7 +3,7 @@
 #SBATCH --partition=bigmem
 #SBATCH --ntasks=32
 #SBATCH --time=7-00:00:00
-#SBATCH --mem-per-cpu=3500MB # 10 systems all Tcut, otherwise errors...
+#SBATCH --mem-per-cpu=3500MB # 10 systems all Tcut, otherwise out of memory
 #SBATCH --mail-type=ALL
 
 # Activate conda env to use mpi4py etc
@@ -65,7 +65,7 @@ then
     fi
 
     # Stop when we have 10 sources to transfer
-    if [[ ${#TRANSFERFILES[@]} -eq 10 ]] ; then
+    if [[ ${#TRANSFERFILES[@]} -eq 90 ]] ; then
       break
     fi
   done
@@ -91,16 +91,12 @@ time mpirun -np $SLURM_NTASKS python3 ${LAUNCH_TILING} > $OUT_FILE
 
 # Copy everything back to APCSSH
 SourceSaves=($(ls ${SYNEX_DIR}/Saved_Source_Dicts/Randomized_*.dat))
-SourceSaves=($(echo "${SourceSaves[@]}" | tr ' ' ','))
-SourceSaves=($(echo "${SourceSaves[@]}" | tr '.dat' ''))
 TelesSaves=($(ls ${SYNEX_DIR}/Saved_Telescope_Dicts/Randomized_*.dat))
-TelesSaves=($(echo "${TelesSaves[@]}" | tr ' ' ','))
-TelesSaves=($(echo "${TelesSaves[@]}" | tr '.dat' ''))
-echo "Filesearch checks:"
-echo ${SourceSaves[@]}
-echo ${TelesSaves[@]}
-scp -i ~/.ssh/id_rsa {${SourceSaves[@]}}.dat ${ssh_home2}/sources/
-scp -i ~/.ssh/id_rsa {${TelesSaves[@]}}.dat ${ssh_home2}/telescopes/
+len=${#SourceSaves[@]}
+for (( i=0; i<$len; i++ )) ; do
+  scp -i ~/.ssh/id_rsa ${SourceSaves[$i]} ${ssh_home2}/sources/
+  scp -i ~/.ssh/id_rsa ${TelesSaves[$i]} ${ssh_home2}/telescopes/
+done
 
 # Clear folders
 # rm ${SYNEX_DIR}/Saved_Telescope_Dicts/Randomized_*

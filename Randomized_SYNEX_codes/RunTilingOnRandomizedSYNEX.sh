@@ -71,9 +71,9 @@ then
   done
 
   # Transfer all files
-  TRANSFERFILES2=($(echo "${TRANSFERFILES[@]}" | tr ' ' ','))
-  scp -i ~/.ssh/id_rsa ${ssh_home2}/${TRANSFERFILES2[@]}.h5 ${SYNEX_DIR}/inference_data/
-  scp -i ~/.ssh/id_rsa ${ssh_home2}/${TRANSFERFILES2[@]}.json ${SYNEX_DIR}/inference_param_files/
+  FILES=($(echo "${TRANSFERFILES[@]}" | tr ' ' ','))
+  scp -i ~/.ssh/id_rsa ${ssh_home2}/{${FILES[@]}}.h5 ${SYNEX_DIR}/inference_data/
+  scp -i ~/.ssh/id_rsa ${ssh_home2}/{${FILES[@]}}.json ${SYNEX_DIR}/inference_param_files/
 
   # # Now set flags for tiling command options
   # USETRACK=False # This will be created using new sources
@@ -94,8 +94,8 @@ SourceSaves=($(ls ${SYNEX_DIR}/Saved_Source_Dicts/Randomized_*.dat))
 SourceSaves=($(echo "${SourceSaves[@]}" | tr ' ' ','))
 TelesSaves=($(ls ${SYNEX_DIR}/Saved_Telescope_Dicts/Randomized_*.dat))
 TelesSaves=($(echo "${TelesSaves[@]}" | tr ' ' ','))
-scp -i ~/.ssh/id_rsa ${SourceSaves[@]} baird@apcssh.in2p3.fr:/home/baird/sources/
-scp -i ~/.ssh/id_rsa ${TelesSaves[@]} baird@apcssh.in2p3.fr:/home/baird/telescopes/
+scp -i ~/.ssh/id_rsa {${SourceSaves[@]}} baird@apcssh.in2p3.fr:/home/baird/sources/
+scp -i ~/.ssh/id_rsa {${TelesSaves[@]}} baird@apcssh.in2p3.fr:/home/baird/telescopes/
 
 # Clear folders
 rm ${SYNEX_DIR}/Saved_Telescope_Dicts/Randomized_*

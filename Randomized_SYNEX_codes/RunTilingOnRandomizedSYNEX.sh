@@ -35,7 +35,7 @@ if [ ! "$(ls -A $CLUST_JSON_DIR)" ] ### JSON DIR lust be empty for this to work.
 then
   # Some useful commands
   ssh_home=baird@apcssh.in2p3.fr
-  ssh_home2=baird@apcssh.in2p3.fr:/home/baird/
+  ssh_home2=baird@apcssh.in2p3.fr:/home/baird
 
   # Get list of all systems
   H5FILE_ssh_LIST=($(ssh -i ~/.ssh/id_rsa ${ssh_home} 'ls Randomized_*.h5'))
@@ -52,15 +52,21 @@ then
 
   # Remove from lisabeta data list all completed systems
   for H5FILE in ${H5FILE_ssh_LIST[@]} ; do
-    SaveFileTMP="$H5FILE" | sed 's/.h5//'
-    # SaveFileTMP=${H5FILE/%.h5/.dat}
+    ADDH5=1
+
     for file in ${SAVEFILE_LIST[@]} ; do
-      file2="$file" | sed 's/.dat//'
-      if [[ $file2 == $SaveFileTMP ]] ; then
+      if [[ $file == ${H5FILE/%.h5/.dat} ]] ; then
+        echo $H5FILE ${H5FILE/%.h5/.dat} $file
+        ADDH5=0
         break
       fi
     done
-    TRANSFERFILES+=("$SaveFileTMP")
+
+    # Add H5 file if we are allowed
+    if [[ ADDH5 -eq 1 ]] ; then
+      TRANSFERFILES+=("${H5FILE/%.h5}")
+    fi
+
     # Stop when we have 10 sources to transfer
     if [[ ${#TRANSFERFILES[@]} -eq 10 ]] ; then
       break

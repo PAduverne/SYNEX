@@ -75,14 +75,15 @@ if MAKE_SOURCES==True:
     for FileName in source_infer_data:
         ExName=FileName.split("/inference_data/")[-1].replace(".h5",".dat")
         ExName=SourceSaveFolder+ExName
-        Merger=SYU.GetSourceFromLisabetaData(FileName,
+        if not os.path.isfile(ExName): # Make and save if not there already
+            Merger=SYU.GetSourceFromLisabetaData(FileName,
                             **{"ExistentialFileName":ExName,"verbose":verbose})
-        # Explicit save
-        Merger.ExistentialCrisis()
+            # Explicit save
+            Merger.ExistentialCrisis()
 
-# Line up all nodes before continuing
-comm.Barrier()
-if MPI_rank==0: print("Done.")
+    # Line up all nodes before continuing
+    comm.Barrier()
+    if MPI_rank==0: print("Done.")
 
 # Telescope base args -- move this to a default file and change by user input?
 t0 = '2034-01-01T00:00:00.00' # YYYY-MM-DDTHH:mm:SS.MS 01/01/2034

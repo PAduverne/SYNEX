@@ -41,9 +41,6 @@ then
   H5FILE_ssh_LIST=($(ssh -i ~/.ssh/id_rsa ${ssh_home} 'ls Randomized_*.h5'))
   len_H5FILE_ssh_LIST=${#H5FILE_ssh_LIST[@]}
 
-  # check things are ok
-  echo "Test test test:" $len_H5FILE_ssh_LIST ${H5FILE_ssh_LIST[1]}
-
   # Get list of all source save files
   SAVEFILE_LIST=($(ssh -i ~/.ssh/id_rsa ${ssh_home} 'ls sources/'))
 
@@ -74,8 +71,9 @@ then
   done
 
   # Transfer all files
-  scp -i ~/.ssh/id_rsa ${ssh_home2}/${TRANSFERFILES[@]}.h5 ${SYNEX_DIR}/inference_data/
-  scp -i ~/.ssh/id_rsa ${ssh_home2}/${TRANSFERFILES[@]}.json ${SYNEX_DIR}/inference_param_files/
+  TRANSFERFILES2=($(echo "${TRANSFERFILES[@]}" | tr ' ' ','))
+  scp -i ~/.ssh/id_rsa ${ssh_home2}/${TRANSFERFILES2[@]}.h5 ${SYNEX_DIR}/inference_data/
+  scp -i ~/.ssh/id_rsa ${ssh_home2}/${TRANSFERFILES2[@]}.json ${SYNEX_DIR}/inference_param_files/
 
   # # Now set flags for tiling command options
   # USETRACK=False # This will be created using new sources

@@ -1835,7 +1835,7 @@ def TileSkyArea(CloningTrackFile=None,sources=None,detectors=None,base_telescope
 
         # Remove source related params from cloning dict since we replaced with source ExNames instead
         SourceCloneParams = ["Tcut","DeltatL_cut"] ## In case we ad more later
-        DO_TCUT=True if all([key in cloning_params for key in SourceCloneParams]) else False
+        DO_TCUT=True if any([key in cloning_params for key in SourceCloneParams]) else False
         sourceTcut = cloning_params.pop("Tcut",None) ### Keep these seperate in case we need to access dictionary values in future developements
         sourceDeltatL_cut = cloning_params.pop("DeltatL_cut",None)
 
@@ -1869,7 +1869,7 @@ def TileSkyArea(CloningTrackFile=None,sources=None,detectors=None,base_telescope
                 CloningKeys[CloningKeys.index("SourceExName")]="Tcut"
             SourcePVals=[-s.DeltatL_cut/86400. for s in sources]
             CloningCombs=[[v if k!="Tcut" else SourcePVals[iparam] for v,k in zip(comb,CloningKeys)] for iparam,comb in enumerate(CloningCombs)] # Inner list comp here is wried. Redo using list[list.index(val)]=NewVal maybe? but I think we are also restructuring here... In which case does this carry over when we don't have a source param cloned???
-        
+
         # Add structure to detector savefile location and name if requested
         FolderArch = "/".join(BaseTelescopeExFileName.split("/")[:-1])
         if SaveInSubFile and SaveInSubFile[0]!="/": SaveInSubFile="/"+SaveInSubFile

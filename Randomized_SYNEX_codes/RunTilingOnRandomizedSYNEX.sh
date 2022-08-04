@@ -71,7 +71,7 @@ then
     fi
 
     # Stop when we have 10 sources to transfer
-    if [[ ${#TRANSFERFILES[@]} -eq 70 ]] ; then
+    if [[ ${#TRANSFERFILES[@]} -eq 40 ]] ; then
       break
     fi
   done
@@ -97,19 +97,17 @@ time mpirun -np $SLURM_NTASKS python3 ${LAUNCH_TILING} > $OUT_FILE
 
 # Copy everything back to APCSSH
 SourceSaves=($(ls ${SYNEX_DIR}/Saved_Source_Dicts/Randomized_*.dat))
-TelesSaves=($(ls ${SYNEX_DIR}/Saved_Telescope_Dicts/Randomized_*.dat))
-len=${#SourceSaves[@]}
-for (( i=0; i<$len; i++ )) ; do
-  SourceSave="${SourceSaves[$i]}"
-  TelesSave="${TelesSaves[$i]}"
-  # THIS?
-  # scp -i ~/.ssh/id_rsa $SourceSave ${ssh_home2}/sources/
-  # scp -i ~/.ssh/id_rsa $TelesSave ${ssh_home2}/telescopes/
-  # OR THIS? -- this works on cluster but we have a problem with naming of telescope files
-  #             They aren't working properly with the Tcuts too and I think it's probably
-  #             because our limit was to 10 source files instead of 90 for 10 systems at all Tcuts... Need to verify this !!!
+# len=${#SourceSaves[@]}
+for SourceSave in ${SourceSaves[@]} ; do
   scp -i ~/.ssh/id_rsa $SourceSave baird@apcssh.in2p3.fr:/home/baird/sources/
+  # scp -i ~/.ssh/id_rsa $SourceSave ${ssh_home2}/sources/ # ???
+done
+
+TelesSaves=($(ls ${SYNEX_DIR}/Saved_Telescope_Dicts/Randomized_*.dat))
+# len=${#TelesSaves[@]}
+for TelesSave in ${TelesSaves[@]} ; do
   scp -i ~/.ssh/id_rsa $TelesSave baird@apcssh.in2p3.fr:/home/baird/telescopes/
+  # scp -i ~/.ssh/id_rsa $TelesSave ${ssh_home2}/telescopes/ # ???
 done
 
 # Clear folders

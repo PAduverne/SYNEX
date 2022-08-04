@@ -1833,6 +1833,12 @@ def TileSkyArea(CloningTrackFile=None,sources=None,detectors=None,base_telescope
         else: # handed list of sources or just one source
             cloning_params["SourceExName"]=[source.ExistentialFileName for source in sources] if isinstance(sources,list) else [sources.ExistentialFileName] ## should we delete the list here or find a way to check later if it doesn't already exist?
 
+        # Remove source related params from cloning dict since we replaced with source ExNames instead
+        SourceCloneParams = ["Tcut","DeltatL_cut"] ## In case we ad more later
+        DO_TCUT=True if all([key in cloning_params for key in SourceCloneParams]) else False
+        sourceTcut = cloning_params.pop("Tcut",None) ### Keep these seperate in case we need to access dictionary values in future developements
+        sourceDeltatL_cut = cloning_params.pop("DeltatL_cut",None)
+
         # Need to know how many objects we will need --- later will include some source params in cloning params dict bith check that sources must == None to use cloning stuff
         CloningVals = list(cloning_params.values())
         CloningKeys = list(cloning_params.keys())
@@ -1855,18 +1861,15 @@ def TileSkyArea(CloningTrackFile=None,sources=None,detectors=None,base_telescope
         elif "SourceExName" in cloning_params:
             sources=[SYSs.SMBH_Merger(**{"ExistentialFileName":ParamComb[CloningKeys.index("SourceExName")],"verbose":verbose}) for ParamComb in CloningCombs]
 
-        # check what has changed in sources. Need this check to not be hard coded...
-        SourceCheckParams=[("DeltatL_cut","Tcut")] # list of tuples (paramName,paramAlias) --- this also doesn't deal with multiple source params changing... ### NEEDS FIXING ###
-        for p in SourceCheckParams:
-            SourcePVals = [-getattr(s,p[0])/86400. if p[1]=="Tcut" else getattr(s,p[0]) for s in sources]
-            SourcePValsUnique = np.unique(SourcePVals)
-            if len(SourcePValsUnique)>1: #  and len(SourcePValsUnique)!=len(sources):
-                if "H5File" in CloningKeys:
-                    CloningKeys[CloningKeys.index("H5File")]=p[1]
-                elif "SourceExName" in CloningKeys:
-                    CloningKeys[CloningKeys.index("SourceExName")]=p[1]
-                CloningCombs=[[v if k!=p[1] else SourcePVals[iparam] for v,k in zip(comb,CloningKeys)] for iparam,comb in enumerate(CloningCombs)]
-
+        # Get values of cloned source params
+        if DO_TCUT:
+            if "H5File" in CloningKeys:
+                CloningKeys[CloningKeys.index("H5File")]="Tcut"
+            elif "SourceExName" in CloningKeys:
+                CloningKeys[CloningKeys.index("SourceExName")]="Tcut"
+            SourcePVals=[-s.DeltatL_cut/86400. for s in sources]
+            CloningCombs=[[v if k!="Tcut" else SourcePVals[iparam] for v,k in zip(comb,CloningKeys)] for iparam,comb in enumerate(CloningCombs)] # Inner list comp here is wried. Redo using list[list.index(val)]=NewVal maybe? but I think we are also restructuring here... In which case does this carry over when we don't have a source param cloned???
+        
         # Add structure to detector savefile location and name if requested
         FolderArch = "/".join(BaseTelescopeExFileName.split("/")[:-1])
         if SaveInSubFile and SaveInSubFile[0]!="/": SaveInSubFile="/"+SaveInSubFile

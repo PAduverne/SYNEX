@@ -134,10 +134,13 @@ SearchString=SYNEX_PATH+"/Saved_Source_Dicts/Randomized_angles_spins_MRat_*_"
 SourceExNames = sorted([File for c in CutsToTest for File in
     glob.glob(SearchString+c+".dat")]) ### Makes "10" go in front of "1"...
 
-# What to vary when cloning base detector args ---- to be user input
+# Detector params to clone
 T_obs_array = [np.array([0.,1.]),np.array([0.,2.]),
                    np.array([0.,3.]),np.array([0.,4.])]
-cloning_params={"Tobs":T_obs_array}
+
+# Dictionary of what we want cloned
+cloning_params={"Tobs":T_obs_array,
+                "Tcut":True} # Only check source keys are in dict, not the dict values.
 
 # Use tracking file or clone new stuff?
 if USETRACK:

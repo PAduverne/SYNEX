@@ -1860,7 +1860,7 @@ def TileSkyArea(CloningTrackFile=None,sources=None,detectors=None,base_telescope
         for p in SourceCheckParams:
             SourcePVals = [-getattr(s,p[0])/86400. if p[1]=="Tcut" else getattr(s,p[0]) for s in sources]
             SourcePValsUnique = np.unique(SourcePVals)
-            if len(SourcePValsUnique)>1 and len(SourcePValsUnique)!=len(sources):
+            if len(SourcePValsUnique)>1: #  and len(SourcePValsUnique)!=len(sources):
                 if "H5File" in CloningKeys:
                     CloningKeys[CloningKeys.index("H5File")]=p[1]
                 elif "SourceExName" in CloningKeys:
@@ -4016,6 +4016,7 @@ def CreateDataFrameFromDetectorList(detectors):
     ------
         - Figure out ambiguous case when we have variable names that match for lisabeta and gwemopt.
           Need to introduce a way to discern when we want one or the other.
+        - What if we pass a bunch of detectors without tiling? Would this ever happen?
     """
     ###
     # Variables of interest:

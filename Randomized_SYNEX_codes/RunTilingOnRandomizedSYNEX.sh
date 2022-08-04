@@ -30,6 +30,12 @@ export SYNEX_DIR=~/SYNEX
 # Directory to check for existing data on cluster
 CLUST_JSON_DIR=${SYNEX_DIR}/inference_param_files/
 
+
+### Include an else if the JSON dir isn't empty in which caase we send the options to
+### the tiling function to use the track file and complete the stuff still there.
+### Can we maybe also include a check if the fil is empty? In which case we we proceed
+### to Tiling without source creation etc?
+
 # If Is inference_param_files directory empty, grab 10 more sources to transfer
 if [ ! "$(ls -A $CLUST_JSON_DIR)" ] ### JSON DIR lust be empty for this to work.
 then
@@ -65,7 +71,7 @@ then
     fi
 
     # Stop when we have 10 sources to transfer
-    if [[ ${#TRANSFERFILES[@]} -eq 90 ]] ; then
+    if [[ ${#TRANSFERFILES[@]} -eq 70 ]] ; then
       break
     fi
   done

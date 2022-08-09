@@ -3996,7 +3996,31 @@ def PlotSourcePhotons_SingleDetList(detectors,sources=None,fig=None,label=None,B
 #                                   #
 #####################################
 
-def CreateDataFrameFromDetectorList(detectors):
+def GetDataFrame(detectors=None, SaveFile=None):
+    """
+    Function to get or create a dataframe from a list or array of
+    telescopes with tiling information.
+
+    INPUT:
+    ------
+        - Detectors :: list/array of SYNEX detectors or telescope savefile names.
+            Must have gwemopt output information (e.g. detector.detector_source_coverage!=None).
+        - SaveFile :: string.
+            Savefile and directory in which dataframe should be saved or loaded from.
+            If the file already exists and a list of detectors given also, then the
+            savefile will be overwritten. Otherwise the file will be loaded or
+            created given input parameters.
+    """
+    # Work out what we want to do based on inputs.
+    if detectors==None and SaveFile==None:
+        raise ValueError("Need to give either a list of detectors, a savefile to load, or a list of detectors and savefile to save the dataframe to.")
+    elif detectors==None and SaveFile:
+        store = pd.HDFStore(SaveFile)
+        return store['data']
+    else:
+        return CreateDataFrameFromDetectorList(detectors=detectors, SaveFile=SaveFile)
+
+def CreateDataFrameFromDetectorList(detectors, SaveFile=None):
     """
     Code to test how accumulated photon count varies with a subset of
     tested parameters. In essence, if we randomize over many parameters and find
@@ -4008,18 +4032,10 @@ def CreateDataFrameFromDetectorList(detectors):
 
     INPUT:
     ------
-        - Detectors :: list of SYNEX detectors.
-            Each list element can also be a list of detector objects such that
-            the input list is pre-grouped by test parameters that we want to test (?) --- Maybe not a needed feature...
-
-        - TestParams :: Dict
-            list of variable names to be tested (e.g. ["Tobs","DeltatL_cut"]).
-
-    TO DO:
-    ------
-        - Figure out ambiguous case when we have variable names that match for lisabeta and gwemopt.
-          Need to introduce a way to discern when we want one or the other.
-        - What if we pass a bunch of detectors without tiling? Would this ever happen?
+        - Detectors :: list/array of SYNEX detectors or telescope savefile names.
+            Must have gwemopt output information (e.g. detector.detector_source_coverage!=None).
+        - SaveFile :: string.
+            Savefile and directory in which dataframe should be saved.
     """
     ###
     # Variables of interest:
@@ -4074,6 +4090,23 @@ def CreateDataFrameFromDetectorList(detectors):
 
     # Create DataFrame
     data = pd.DataFrame(data=AllTestParams)
+
+    # Savefile name and location (force placement in ../SYNEX/DataFrames/ directory)
+    SaveFileDir=SYNEX_PATH + '/DataFrames/'
+    if SaveFile:
+        if SaveFile[-1]=="/": SaveFile+="data" # IF we are only given a directory
+        SaveFile=".".join(SaveFile.split('.')[:-1]) + ".h5" # Make sure file type is right
+        SaveFile=SaveFile.split("/SYNEX/")[-1] # Take out path to SYNEX in case this is changed between systems
+        SaveFile=SaveFileDir+SaveFile.split("/DataFrames/")[-1] # Make sure we save in the right place
+    else:
+        SaveFile=SaveFileDir+'data.h5'
+
+    # Check path exists
+    pathlib.Path("/".join(SaveFile.split("/")[:-1])).mkdir(parents=True, exist_ok=True)
+
+    # Save dataframe
+    store = pd.HDFStore(SaveFile)
+    store['data'] = data  # save it
 
     # Return dataframe
     return data

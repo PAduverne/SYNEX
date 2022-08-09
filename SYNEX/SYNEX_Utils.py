@@ -3984,17 +3984,11 @@ def PlotSourcePhotons_SingleDetList(detectors,sources=None,fig=None,label=None,B
 
 
 
-#              ###############################################
-#              #                                             #
-#              #   SYNEX -- Optimization Utility functions   #
-#              #                                             #
-#              ###############################################
-
-#####################################
-#                                   #
-#    Decision Tree Regression(?)    #
-#                                   #
-#####################################
+#              #####################################
+#              #                                   #
+#              #   SYNEX -- Post tiling analysis   #
+#              #                                   #
+#              #####################################
 
 def GetDataFrame(detectors=None, SaveFile=None):
     """
@@ -4026,9 +4020,6 @@ def CreateDataFrameFromDetectorList(detectors, SaveFile=None):
     tested parameters. In essence, if we randomize over many parameters and find
     very little variation when marginalising over all but one parameter,
     then we need to find a fast-ish way to hypothesis test subsets of parameters.
-
-    Algoirthm follows principles outlined here:
-    https://www.saedsayad.com/decision_tree_reg.htm#:~:text=Decision%20tree%20builds%20regression%20or,decision%20nodes%20and%20leaf%20nodes.
 
     INPUT:
     ------

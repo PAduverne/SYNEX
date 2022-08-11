@@ -3,7 +3,7 @@
 #SBATCH --partition=bigmem
 #SBATCH --ntasks=32
 #SBATCH --time=7-00:00:00
-#SBATCH --mem-per-cpu=3500MB # 10 systems all Tcut, otherwise out of memory
+#SBATCH --mem-per-cpu=3500MB # 40 source H5 data files, otherwise out of memory
 #SBATCH --mail-type=ALL
 
 # Activate conda env to use mpi4py etc
@@ -23,32 +23,32 @@ export SYNEX_DIR=~/SYNEX
 
 ##########
 ###
-### Enough memory for 90 systems at a time - see what needs doing ###
+### Enough memory for 40 systems at a time - see what needs doing ###
 ###
 ##########
 
 # Directory to check for existing data on cluster
 CLUST_JSON_DIR=${SYNEX_DIR}/inference_param_files/
 
-
-### Include an else if the JSON dir isn't empty in which caase we send the options to
-### the tiling function to use the track file and complete the stuff still there.
-### Can we maybe also include a check if the fil is empty? In which case we we proceed
-### to Tiling without source creation etc?
+### Include an else if the JSON dir isn't empty in which caase we send the options
+### to the tiling function to use the track file and complete the stuff still
+### there. Can we maybe also include a check if the fil is empty? In which case
+### we we proceed to Tiling without source creation etc?
 
 # If Is inference_param_files directory empty, grab 10 more sources to transfer
 if [ ! "$(ls -A $CLUST_JSON_DIR)" ] ### JSON DIR lust be empty for this to work.
 then
-  # Some useful commands
+  # Some useful directories and files
   ssh_home=baird@apcssh.in2p3.fr
   ssh_home2=baird@apcssh.in2p3.fr:/home/baird
+  rsa=~/.ssh/id_rsa
 
   # Get list of all systems
-  H5FILE_ssh_LIST=($(ssh -i ~/.ssh/id_rsa ${ssh_home} 'ls Randomized_*.h5'))
+  H5FILE_ssh_LIST=($(ssh -i $rsa ${ssh_home} 'ls Randomized_*.h5'))
   len_H5FILE_ssh_LIST=${#H5FILE_ssh_LIST[@]}
 
   # Get list of all source save files
-  SAVEFILE_LIST=($(ssh -i ~/.ssh/id_rsa ${ssh_home} 'ls sources/'))
+  SAVEFILE_LIST=($(ssh -i $rsa ${ssh_home} 'ls sources/'))
 
   # Initiate container for files to transfer across
   TRANSFERFILES=()
@@ -56,10 +56,8 @@ then
   # Remove from lisabeta data list all completed systems
   for H5FILE in ${H5FILE_ssh_LIST[@]} ; do
     ADDH5=1
-
     for file in ${SAVEFILE_LIST[@]} ; do
       if [[ $file == ${H5FILE/%.h5/.dat} ]] ; then
-        echo $H5FILE ${H5FILE/%.h5/.dat} $file
         ADDH5=0
         break
       fi
@@ -70,7 +68,7 @@ then
       TRANSFERFILES+=("${H5FILE/%.h5}")
     fi
 
-    # Stop when we have 10 sources to transfer
+    # Stop when we have 40 source data files to transfer
     if [[ ${#TRANSFERFILES[@]} -eq 40 ]] ; then
       break
     fi
@@ -78,8 +76,8 @@ then
 
   # Transfer all files
   FILES=($(echo "${TRANSFERFILES[@]}" | tr ' ' ','))
-  scp -i ~/.ssh/id_rsa ${ssh_home2}/{${FILES[@]}}.h5 ${SYNEX_DIR}/inference_data/
-  scp -i ~/.ssh/id_rsa ${ssh_home2}/{${FILES[@]}}.json ${SYNEX_DIR}/inference_param_files/
+  scp -i $rsa ${ssh_home2}/{${FILES[@]}}.h5 ${SYNEX_DIR}/inference_data/
+  scp -i $rsa ${ssh_home2}/{${FILES[@]}}.json ${SYNEX_DIR}/inference_param_files/
 
   # # Now set flags for tiling command options
   # USETRACK=False # This will be created using new sources
@@ -97,24 +95,23 @@ time mpirun -np $SLURM_NTASKS python3 ${LAUNCH_TILING} > $OUT_FILE
 
 # Copy everything back to APCSSH
 SourceSaves=($(ls ${SYNEX_DIR}/Saved_Source_Dicts/Randomized_*.dat))
-# len=${#SourceSaves[@]}
 for SourceSave in ${SourceSaves[@]} ; do
-  scp -i ~/.ssh/id_rsa $SourceSave baird@apcssh.in2p3.fr:/home/baird/sources/
-  # scp -i ~/.ssh/id_rsa $SourceSave ${ssh_home2}/sources/ # ???
+  scp -i $rsa $SourceSave baird@apcssh.in2p3.fr:/home/baird/sources/
+  # scp -i $rsa $SourceSave ${ssh_home2}/sources/ # ???
 done
 
 TelesSaves=($(ls ${SYNEX_DIR}/Saved_Telescope_Dicts/Randomized_*.dat))
 # len=${#TelesSaves[@]}
 for TelesSave in ${TelesSaves[@]} ; do
-  scp -i ~/.ssh/id_rsa $TelesSave baird@apcssh.in2p3.fr:/home/baird/telescopes/
-  # scp -i ~/.ssh/id_rsa $TelesSave ${ssh_home2}/telescopes/ # ???
+  scp -i $rsa $TelesSave baird@apcssh.in2p3.fr:/home/baird/telescopes/
+  # scp -i $rsa $TelesSave ${ssh_home2}/telescopes/ # ???
 done
 
 # Clear folders
-# rm ${SYNEX_DIR}/Saved_Telescope_Dicts/Randomized_*
-# rm ${SYNEX_DIR}/Saved_Source_Dicts/Randomized_*
-# rm ${SYNEX_DIR}/inference_param_files/Randomized_*
-# rm ${SYNEX_DIR}/inference_data/Randomized_*
+rm ${SYNEX_DIR}/Saved_Telescope_Dicts/Randomized_*
+rm ${SYNEX_DIR}/Saved_Source_Dicts/Randomized_*
+rm ${SYNEX_DIR}/inference_param_files/Randomized_*
+rm ${SYNEX_DIR}/inference_data/Randomized_*
 
 # happy end
 exit 0

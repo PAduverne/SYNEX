@@ -140,7 +140,7 @@ T_obs_array = [np.array([0.,1.]),np.array([0.,2.]),
 
 # Dictionary of what we want cloned
 cloning_params={"Tobs":T_obs_array,
-                "Tcut":True} # Only check source keys are in dict, not the dict values.
+                "Tcut":True} # Only checks for source keys in dict, not values.
 
 # Use tracking file or clone new stuff?
 if USETRACK:

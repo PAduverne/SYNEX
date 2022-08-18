@@ -4103,7 +4103,7 @@ def CreateDataFrameFromDetectorList(detectors, SaveFile=None):
     SaveFileDir=SYNEX_PATH + '/DataFrames/'
     if SaveFile:
         if SaveFile[-1]=="/": SaveFile+="data" # IF we are only given a directory
-        SaveFile=".".join(SaveFile.split('.')[:-1]) + ".h5" # Make sure file type is right
+        if "." in SaveFile: SaveFile=".".join(SaveFile.split('.')[:-1]) + ".h5" # Make sure file type is right
         SaveFile=SaveFile.split("/SYNEX/")[-1] # Take out path to SYNEX in case this is changed between systems
         SaveFile=SaveFileDir+SaveFile.split("/DataFrames/")[-1] # Make sure we save in the right place
     else:

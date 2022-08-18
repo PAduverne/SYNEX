@@ -9,6 +9,7 @@ import os
 from datetime import date
 import pathlib
 import pickle
+import json
 # import statistics
 from scipy import stats
 from scipy.stats import norm
@@ -21,7 +22,9 @@ import lal
 import lalsimulation as lalsim
 
 import lisabeta.pyconstants as pyconstants
+import lisabeta.lisa.lisa_fisher as lisa_fisher
 import lisabeta.lisa.lisa as lisa
+import lisabeta.lisa.lisatools as lisatools
 
 # mpi stuff
 try:
@@ -515,16 +518,14 @@ class SMBH_Merger:
                     self.CreateSkyMapStruct()
                 except:
                     if self.verbose: print("No h5 data located- skipping skymap calculation.")
-
-        # run through gwemopt checker with a dummy params dict
-        # should we do this? If we change things in the real go_params in SYNEX_Utils, will this rework things as required
-        # when passed again through the checker? Maybe just send through the med / std function...
-        # dummy_go_params={}
-        # self.sky_map=gou.read_skymap(dummy_go_params,is3D=self.do3D,map_struct=self.sky_map)
+                    self.PostSkyArea = None
+                    self.FisherSkyArea = None
+        else:
+            self.PostSkyArea = self.calculatePostSkyArea()
+            self.FisherSkyArea = self.calculateFisherSkyArea()
 
         # Save it all to file!
-        if self.PermissionToWrite:
-            self.ExistentialCrisis()
+        if self.PermissionToWrite: self.ExistentialCrisis()
 
     def LoadSkymap(self):
         """
@@ -562,6 +563,12 @@ class SMBH_Merger:
 
         self.map_struct["ra"] = ra
         self.map_struct["dec"] = dec
+
+        # Posterior data sky area :: in sq. deg
+        self.PostSkyArea = self.calculatePostSkyArea()
+
+        # Fisher sky area :: in sq. deg
+        self.FisherSkyArea = self.calculateFisherSkyArea()
 
     def CreateSkyMapStruct(self,SkyMapFileName=None):
         # if SkyMapFileName given then preferentially save to this filename.
@@ -671,8 +678,80 @@ class SMBH_Merger:
         # create class attribute
         self.map_struct=map_struct
 
+        # Posterior data sky area :: in sq. deg
+        self.PostSkyArea = self.calculatePostSkyArea()
+
+        # Fisher sky area :: in sq. deg
+        self.FisherSkyArea = self.calculateFisherSkyArea()
+
         # Save to file
         SYU.WriteSkymapToFile(self.map_struct,self.sky_map,None,self.PermissionToWrite)
+
+    def calculateFisherSkyArea(self,LISA=None,ConfLevel=0.9):
+        """
+            Explicit function to calculate and return sky area from Fisher matrix.
+
+            NB: Need a LISA object !
+        """
+        if LISA!=None:
+            # Get Fisher covariance matrix
+            fishercov = SYU.GetFisher_smbh(self, LISA, **{})
+
+            # Use lisatools in lisabeta for consistent sky area calculation
+            FisherSkyArea = lisatools.sky_area_cov(fishercov, sq_deg=False, n_sigma=None, prob=ConfLevel)
+        elif os.path.isfile(self.JsonFile):
+            # Open json to read in useful dictonaries
+            with open(self.JsonFile) as f: data = json.load(f)
+
+            # Read dicts out
+            param_dict = data["source_params"]
+            waveform_params = data["waveform_params"]
+
+            # Get fishercov from lisabeta functions
+            fishercov = lisa_fisher.fisher_covariance_smbh(param_dict, **waveform_params)
+
+            # Use lisatools in lisabeta for consistent sky area calculation
+            FisherSkyArea = lisatools.sky_area_cov(fishercov, sq_deg=False, n_sigma=None, prob=ConfLevel)
+        else:
+            FisherSkyArea = None
+
+        return FisherSkyArea
+
+    def calculatePostSkyArea(self,ConfLevel=0.9):
+        """
+            Explicit function to calculate and return sky area from self.map_struct.
+
+            NB: Need a viable map_struct (eg from full lisabeta inference run)!
+        """
+        if hasattr(self,"map_struct"):
+            # Find non-zero sky_map probabilities
+            # NoneZeros = np.nonzero(self.map_struct["prob"]>0)[0]
+            NonZeros = self.map_struct["ipix_keep"]
+
+            # Get out all non-zero prob tiles for sky area calculation
+            NonZero_Probs = self.map_struct["prob"][NonZeros]
+            # NonZero_ipix_keep = self.map_struct["ipix_keep"][NoneZeros]
+            NonZero_ipix_keep = NonZeros
+
+            # Sort all probabilities
+            index = np.argsort(NonZero_Probs)
+            allTiles_probs_sorted = NonZero_Probs[index]
+            allTiles_ipixs_sorted = NonZero_ipix_keep[index]
+
+            cumsum_sorted = np.cumsum(allTiles_probs_sorted)
+            CL_eq_len = np.argmax(cumsum_sorted>=ConfLevel)+1
+            CL_under_len = CL_eq_len-1
+
+            # Length of cumsum to equivalent area
+            DecP = 1.-(cumsum_sorted[CL_eq_len-1] - ConfLevel)/(cumsum_sorted[CL_eq_len-1] - cumsum_sorted[CL_under_len-1])
+            CL_len = CL_eq_len if cumsum_sorted[CL_eq_len-1]==ConfLevel else CL_under_len+DecP
+
+            # Sky area from posteriors
+            PostSkyArea = CL_len*self.map_struct["pixarea_deg2"]
+        else:
+            PostSkyArea = None
+
+        return PostSkyArea
 
     def GenerateEMFlux(self,fstart22=1e-4,TYPE="const",**EM_kwargs):
         """

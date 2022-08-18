@@ -126,7 +126,7 @@ class Athena:
     ExistentialFileName : Path or string
         Path and file name of file loadable by 'pickle'. Contents are a
         dictionary containing all the kwargs of a saved 'Athena' class object.
-        If ExistentialFileName is specified but the file oesn't exist, then it
+        If ExistentialFileName is specified but the file doesn't exist, then it
         will be automatically created so that the class can be loaded again later.
         Automatic save points through SYNEX routines will update this savefile
 

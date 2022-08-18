@@ -651,12 +651,18 @@ def GetPosteriorStats(FileName, ModeJumpLimit=None, LogLikeJumpLimit=None):
                          } # Note inj value is npfloat64,like all other variables except FWHMs which is not list. This is json serializable.
     return PosteriorStats
 
-def GetTotSkyAreaFromPostData(FileName,ConfLevel=0.9):
+def GetTotSkyAreaFromPostData_OLD(FileName,ConfLevel=0.9):
     """
     Counting function to give the total sky area for a confidence level given eiher
     a Json or h5 filename for lisabeta data.
 
+    A 2D histogram is created to bin the drawn lambda and beta values saved.
+    We do not use the log posterior probability here and we probably should.
+
     REQUIRES lisabeta full inference to have been run to completion.
+
+
+    ################# This function is now redundant #################
     """
     # Check what filename we were given
     JsonFileLocAndName,H5FileLocAndName=CompleteLisabetaDataAndJsonFileNames(FileName)
@@ -2178,6 +2184,8 @@ def TileWithGwemopt(source,detector,outDirExtension=None,verbose=True):
                 "source save file":source.ExistentialFileName,
                 "source gpstime":source.gpstime,
                 "source sky_map":source.sky_map,
+                "source fisher area":source.FisherSkyArea,
+                "source post area":source.PostSkyArea,
                 "source JsonFile":source.JsonFile,
                 "source H5File":source.H5File,
                 "source Is3D":source.do3D,
@@ -2438,9 +2446,9 @@ def WriteSkymapToFile(map_struct,SkyMapFileName,go_params=None,PermissionToWrite
 
 ##### Need to organize these better and rename #####
 
-def PlotSkyMapData(source,SaveFig=False,plotName=None,DO_CONTOURS=False):
+def PlotSkyMapData(source,SaveFig=False,plotName=None):
     """
-    Plotting tool to either take a filename or a source object and plot the skyap associated.
+    Plotting tool to plot a source object's skymap.
     Adapted from 'gwemopt.plotting.skymap.py'
     """
     unit='Gravitational-wave probability'
@@ -2465,7 +2473,7 @@ def PlotSkyMapData(source,SaveFig=False,plotName=None,DO_CONTOURS=False):
             plotName = plotName[:-5]+"_prob.pdf"
         # Check extension is there - move this to a general function please
         if plotName[-4:]!=".pdf":
-            plotName = plotName + ".pdf"
+            plotName = ".".join(plotName.split(".")[:-1]) + ".pdf"
         # Check if directory tree exists
         PlotPath="/".join(plotName.split("/")[:-1])
         pathlib.Path(PlotPath).mkdir(parents=True, exist_ok=True)
@@ -4027,6 +4035,11 @@ def CreateDataFrameFromDetectorList(detectors, SaveFile=None):
             Must have gwemopt output information (e.g. detector.detector_source_coverage!=None).
         - SaveFile :: string.
             Savefile and directory in which dataframe should be saved.
+
+    TO DO:
+    ------
+        - Include error bounds from lisabeta inferece? Might be interesting to
+          compare error bounds for a static parameter when randomizing others ?
     """
     ###
     # Variables of interest:
@@ -4079,6 +4092,10 @@ def CreateDataFrameFromDetectorList(detectors, SaveFile=None):
         else:
             AllTestParams["DaysToSourceExp"].append([[np.nan]])
 
+        # Add sky areas
+        AllTestParams["Fisher Area (sq deg)"]=d.detector_source_coverage["source fisher area"]
+        AllTestParams["Posterior Area (sq deg)"]=d.detector_source_coverage["source post area"]
+
     # Create DataFrame
     data = pd.DataFrame(data=AllTestParams)
 
@@ -4096,6 +4113,7 @@ def CreateDataFrameFromDetectorList(detectors, SaveFile=None):
     pathlib.Path("/".join(SaveFile.split("/")[:-1])).mkdir(parents=True, exist_ok=True)
 
     # Save dataframe
+    print("Saving dataframe to:",SaveFile)
     store = pd.HDFStore(SaveFile)
     store['data'] = data  # save it
 

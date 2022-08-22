@@ -1904,11 +1904,11 @@ def TileSkyArea(CloningTrackFile=None,sources=None,detectors=None,base_telescope
                 elif k=="Tcut":
                     if v<1:
                         vs=v*24 # Turn into hours... Never go below 1 hour anyway
-                        vs=str(int(round(vs)))+"hr"
+                        vs=str(int(round(vs,2)))+"hr"
                     else:
-                        vs=str(int(round(v)))+"d"
+                        vs=str(int(round(v,2)))+"d"
                 elif isinstance(v,(float,int)):
-                    vs=str(int(round(v)))
+                    vs=str(int(round(v,2)))
                 elif isinstance(v,bool):
                     # incase we start playing with flags later?
                     vs=str(int(v))
@@ -4091,7 +4091,7 @@ def CreateDataFrameFromDetectorList(detectors, SaveFile=None):
             AllTestParams["DaysToSourceExp"].append(d.detector_source_coverage["Source tile timeranges (days)"])
         else:
             AllTestParams["DaysToSourceExp"].append([[np.nan]])
-        
+
         # Add sky areas
         ##################################################### TMP CODE #####################################################
         if "source fisher area" in d.detector_source_coverage:

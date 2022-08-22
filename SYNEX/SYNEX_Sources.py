@@ -738,16 +738,19 @@ class SMBH_Merger:
             allTiles_probs_sorted = NonZero_Probs[index]
             allTiles_ipixs_sorted = NonZero_ipix_keep[index]
 
-            cumsum_sorted = np.cumsum(allTiles_probs_sorted)
-            CL_eq_len = np.argmax(cumsum_sorted>=ConfLevel)+1
-            CL_under_len = CL_eq_len-1
+            if len(allTiles_probs_sorted)>0:
+                cumsum_sorted = np.cumsum(allTiles_probs_sorted)
+                CL_eq_len = np.argmax(cumsum_sorted>=ConfLevel)+1
+                CL_under_len = CL_eq_len-1
 
-            # Length of cumsum to equivalent area
-            DecP = 1.-(cumsum_sorted[CL_eq_len-1] - ConfLevel)/(cumsum_sorted[CL_eq_len-1] - cumsum_sorted[CL_under_len-1])
-            CL_len = CL_eq_len if cumsum_sorted[CL_eq_len-1]==ConfLevel else CL_under_len+DecP
+                # Length of cumsum to equivalent area
+                DecP = 1.-(cumsum_sorted[CL_eq_len-1] - ConfLevel)/(cumsum_sorted[CL_eq_len-1] - cumsum_sorted[CL_under_len-1])
+                CL_len = CL_eq_len if cumsum_sorted[CL_eq_len-1]==ConfLevel else CL_under_len+DecP
 
-            # Sky area from posteriors
-            PostSkyArea = CL_len*self.map_struct["pixarea_deg2"]
+                # Sky area from posteriors
+                PostSkyArea = CL_len*self.map_struct["pixarea_deg2"]
+            else:
+                PostSkyArea = 0.
         else:
             PostSkyArea = None
 

@@ -1900,15 +1900,15 @@ def TileSkyArea(CloningTrackFile=None,sources=None,detectors=None,base_telescope
             KeyValStrings=[]
             for k,v in zip(CloningKeys,ParamComb):
                 if isinstance(v,np.ndarray):
-                    vs=str(int(round(v[-1],2))) ### What if we have gaps in Tobs???? should be count number of gaps and put that in too?
+                    vs=str(round(v[-1],2)) ### What if we have gaps in Tobs???? should be count number of gaps and put that in too?
                 elif k=="Tcut":
                     if v<1:
                         vs=v*24 # Turn into hours... Never go below 1 hour anyway
-                        vs=str(int(round(vs,2)))+"hr"
+                        vs=str(round(vs,2))+"hr"
                     else:
-                        vs=str(int(round(v,2)))+"d"
+                        vs=str(round(v,2))+"d"
                 elif isinstance(v,(float,int)):
-                    vs=str(int(round(v,2)))
+                    vs=str(round(v,2))
                 elif isinstance(v,bool):
                     # incase we start playing with flags later?
                     vs=str(int(v))

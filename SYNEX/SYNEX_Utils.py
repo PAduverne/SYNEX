@@ -4091,10 +4091,22 @@ def CreateDataFrameFromDetectorList(detectors, SaveFile=None):
             AllTestParams["DaysToSourceExp"].append(d.detector_source_coverage["Source tile timeranges (days)"])
         else:
             AllTestParams["DaysToSourceExp"].append([[np.nan]])
-
+        
         # Add sky areas
-        AllTestParams["Fisher Area (sq deg)"]=d.detector_source_coverage["source fisher area"]
-        AllTestParams["Posterior Area (sq deg)"]=d.detector_source_coverage["source post area"]
+        ##################################################### TMP CODE #####################################################
+        if "source fisher area" in d.detector_source_coverage:
+            AllTestParams["Fisher Area (sq deg)"]=d.detector_source_coverage["source fisher area"]
+            AllTestParams["Posterior Area (sq deg)"]=d.detector_source_coverage["source post area"]
+        else:
+            source_kwargs={"ExistentialFile":d.detector_source_coverage["source save file"],
+                           "verbose":False}
+            source=GetSourceFromLisabetaData(d.detector_source_coverage["source JsonFile"],**source_kwargs) # hopefully ust gotta do this once...
+            AllTestParams["Fisher Area (sq deg)"]=source.FisherSkyArea
+            AllTestParams["Posterior Area (sq deg)"]=source.PostSkyArea
+            # Re-write source and detector savefiles so everything is right
+            d.ExistentialCrisis()
+            source.ExistentialCrisis()
+        ##################################################### TMP CODE #####################################################
 
     # Create DataFrame
     data = pd.DataFrame(data=AllTestParams)

@@ -492,7 +492,7 @@ class SMBH_Merger:
                 self.sky_map=SkyMapPath+"/"+self.sky_map.split("/")[-1]
                 pathlib.Path(SkyMapPath).mkdir(parents=True, exist_ok=True)
 
-        # Extra useful params
+        # Extra useful params -- this needs converting from LISA frame...
         self.true_ra = np.rad2deg(self.lamda) if self.lamda<np.pi else np.rad2deg(self.lamda+2.*np.pi)   ## In deg
         self.true_dec = np.rad2deg(self.beta)         ## In deg
         self.true_distance = self.dist                ## in Mpc

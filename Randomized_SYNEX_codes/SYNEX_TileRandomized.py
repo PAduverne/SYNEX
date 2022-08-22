@@ -135,8 +135,8 @@ SourceExNames = sorted([File for c in CutsToTest for File in
     glob.glob(SearchString+c+".dat")]) ### Makes "10" go in front of "1"...
 
 # Detector params to clone
-T_obs_array = [np.array([0.,1.]),np.array([0.,2.]),
-                   np.array([0.,3.]),np.array([0.,4.])]
+T_obs_array = [np.array([0.,0.5]),np.array([0.,1.]),
+                   np.array([0.,1.5]),np.array([0.,2.])]
 
 # Dictionary of what we want cloned
 cloning_params={"Tobs":T_obs_array,

@@ -537,22 +537,39 @@ class SMBH_Merger:
         self.map_struct={}
         try:
             # 3D case
-            healpix_data, header = hp.read_map(self.sky_map,field=(0,1,2,3),h=True,verbose=self.verbose)
-            distmu_data = healpix_data[1]
-            distsigma_data = healpix_data[2]
+            healpix_data, header = hp.read_map(self.sky_map,field=(0,1,2,3,4,5,6,7),h=True,verbose=self.verbose)
             prob_data = healpix_data[0]
-            norm_data = healpix_data[3]
+            cumprob_data = healpix_data[1]
+            ipix_keep_data = healpix_data[2]
+            pixarea_data = healpix_data[3]
+            pixarea_deg2_data = healpix_data[4]
+            distmu_data = healpix_data[5]
+            distsigma_data = healpix_data[6]
+            norm_data = healpix_data[7]
 
+            self.map_struct["prob"] = prob_data
+            self.map_struct["cumprob"] = cumprob_data
+            self.map_struct["ipix_keep"] = ipix_keep_data
+            self.map_struct["pixarea"] = pixarea_data
+            self.map_struct["pixarea_deg2"] = pixarea_deg2_data
             self.map_struct["distmu"] = distmu_data # / params["DScale"]
             self.map_struct["distsigma"] = distsigma_data # / params["DScale"]
-            self.map_struct["prob"] = prob_data
             self.map_struct["distnorm"] = norm_data
             self.do3D = True
         except:
             # 1D case
-            prob_data, header = hp.read_map(self.sky_map,field=0,h=True,verbose=self.verbose)
+            healpix_data, header = hp.read_map(self.sky_map,field=(0,1,2,3,4),h=True,verbose=self.verbose)
+            prob_data = healpix_data[0]
+            cumprob_data = healpix_data[1]
+            ipix_keep_data = healpix_data[2]
+            pixarea_data = healpix_data[3]
+            pixarea_deg2_data = healpix_data[4]
             prob_data = prob_data/np.sum(prob_data)
             self.map_struct["prob"] = prob_data
+            self.map_struct["cumprob"] = cumprob_data
+            self.map_struct["ipix_keep"] = ipix_keep_data
+            self.map_struct["pixarea"] = pixarea_data
+            self.map_struct["pixarea_deg2"] = pixarea_deg2_data
             self.do3D = False
 
         nside = hp.pixelfunc.get_nside(self.map_struct["prob"])
@@ -583,7 +600,7 @@ class SMBH_Merger:
         else:
             nsamples = len(infer_params["lambda"])
 
-        # Convert post angles to theta,phi
+        # Convert post angles to theta,phi   ###################### CONVERT FROM LISA FRAME TO ATHENA FRAME ######################
         post_phis = [l if l<np.pi else np.pi-l for l in infer_params["lambda"]]
         post_thetas = np.pi/2.-infer_params["beta"]
 
@@ -698,7 +715,7 @@ class SMBH_Merger:
             fishercov = SYU.GetFisher_smbh(self, LISA, **{})
 
             # Use lisatools in lisabeta for consistent sky area calculation
-            FisherSkyArea = lisatools.sky_area_cov(fishercov, sq_deg=False, n_sigma=None, prob=ConfLevel)
+            FisherSkyArea = lisatools.sky_area_cov(fishercov, sq_deg=True, n_sigma=None, prob=ConfLevel)
         elif os.path.isfile(self.JsonFile):
             # Open json to read in useful dictonaries
             with open(self.JsonFile) as f: data = json.load(f)
@@ -711,7 +728,7 @@ class SMBH_Merger:
             fishercov = lisa_fisher.fisher_covariance_smbh(param_dict, **waveform_params)
 
             # Use lisatools in lisabeta for consistent sky area calculation
-            FisherSkyArea = lisatools.sky_area_cov(fishercov, sq_deg=False, n_sigma=None, prob=ConfLevel)
+            FisherSkyArea = lisatools.sky_area_cov(fishercov, sq_deg=True, n_sigma=None, prob=ConfLevel)
         else:
             FisherSkyArea = None
 
@@ -725,18 +742,19 @@ class SMBH_Merger:
         """
         if hasattr(self,"map_struct"):
             # Find non-zero sky_map probabilities
-            # NoneZeros = np.nonzero(self.map_struct["prob"]>0)[0]
-            NonZeros = self.map_struct["ipix_keep"]
+            # NonZeros = np.nonzero(self.map_struct["prob"]>0)[0]
+            NonZeros = np.unique(self.map_struct["ipix_keep"])
 
             # Get out all non-zero prob tiles for sky area calculation
             NonZero_Probs = self.map_struct["prob"][NonZeros]
             # NonZero_ipix_keep = self.map_struct["ipix_keep"][NoneZeros]
-            NonZero_ipix_keep = NonZeros
+            # NonZero_ipix_keep = NonZeros
 
             # Sort all probabilities
             index = np.argsort(NonZero_Probs)
+            index = [index[i] for i in range(len(index)-1,0,-1)] ## Need to be flipped and there will be a better way using np.argsort with a kwarg...
             allTiles_probs_sorted = NonZero_Probs[index]
-            allTiles_ipixs_sorted = NonZero_ipix_keep[index]
+            # allTiles_ipixs_sorted = NonZero_ipix_keep[index]
 
             if len(allTiles_probs_sorted)>0:
                 cumsum_sorted = np.cumsum(allTiles_probs_sorted)
@@ -744,8 +762,14 @@ class SMBH_Merger:
                 CL_under_len = CL_eq_len-1
 
                 # Length of cumsum to equivalent area
-                DecP = 1.-(cumsum_sorted[CL_eq_len-1] - ConfLevel)/(cumsum_sorted[CL_eq_len-1] - cumsum_sorted[CL_under_len-1])
-                CL_len = CL_eq_len if cumsum_sorted[CL_eq_len-1]==ConfLevel else CL_under_len+DecP
+                if CL_under_len != 0:
+                    DecP = 1.-(cumsum_sorted[CL_eq_len-1] - ConfLevel)/(cumsum_sorted[CL_eq_len-1] - cumsum_sorted[CL_under_len-1])
+                else:
+                    DecP = 1.
+                if cumsum_sorted[CL_eq_len-1]==ConfLevel:
+                    CL_len = CL_eq_len
+                else:
+                    CL_len = CL_under_len+DecP
 
                 # Sky area from posteriors
                 PostSkyArea = CL_len*self.map_struct["pixarea_deg2"]

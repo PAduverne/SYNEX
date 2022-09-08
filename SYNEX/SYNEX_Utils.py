@@ -1403,13 +1403,6 @@ def GetFisher_smbh(source, detector, **kwargs):
     Source : SYNEX source object.
 
     Detector : SYNEX detector object.
-
-    freqs=None
-    steps=default_steps
-    list_params=default_list_fisher_params
-    list_fixed_params=[]
-    Lframe=False
-    prior_invcov=None
     """
     # Get the parameters out of the classes and assign if given in kwargs dict
     [param_dict, waveform_params, extra_params] = ClassesToParams(source,detector,"Fisher",**kwargs)
@@ -2102,6 +2095,9 @@ def TileSkyArea(CloningTrackFile=None,sources=None,detectors=None,base_telescope
                 print("Post-tiling master node check:",PrintMsg)
                 print("Time for telescope",i+1,"/",len(DetectorNewExNames),"by master rank:",t_tile1-t_tile0,"s, with source coverage tileranges:",detector_out.detector_source_coverage["Source tile timeranges (isot)"],"\n")
 
+            # Add source IDs
+            detector_out.detector_source_coverage["source ID"] = SourceIndices[i]
+
             # Add to detectors output list if we not on cluster
             if MPI_size==1: detectors_out.append(detector_out)
 
@@ -2418,13 +2414,14 @@ def WriteSkymapToFile(map_struct,SkyMapFileName,go_params=None,PermissionToWrite
 
     # Write to fits file
     if "distmu" in map_struct:
-        data_to_save = np.vstack((map_struct["prob"],map_struct["distmu"],map_struct["distsigma"],map_struct["distnorm"]))
+        data_to_save = np.vstack((map_struct["prob"], map_struct["cumprob"], map_struct["ipix_keep"], map_struct["pixarea"], map_struct["pixarea_deg2"],map_struct["distmu"],map_struct["distsigma"],map_struct["distnorm"]))
         if PermissionToWrite:
             hp.write_map(SkyMapFileName, data_to_save, overwrite=True)
         if go_params!=None:
             go_params["do3D"]=True
     elif PermissionToWrite:
-        hp.write_map(SkyMapFileName, map_struct["prob"], overwrite=True)
+        data_to_save = np.vstack((map_struct["prob"], map_struct["cumprob"], map_struct["ipix_keep"], map_struct["pixarea"], map_struct["pixarea_deg2"]))
+        hp.write_map(SkyMapFileName, data_to_save, overwrite=True)
 
     if go_params!=None:
         # update the filename stored in go_params
@@ -4081,6 +4078,9 @@ def CreateDataFrameFromDetectorList(detectors, SaveFile=None):
                     AllTestParams[key].append(d.detector_go_params[key])
             elif key in d.detector_config_struct:
                 AllTestParams[key].append(d.detector_config_struct[key])
+
+        # Add system ID if asked for
+        # AllTestParams["source ID"] = d.detector_source_coverage["source ID"]
 
         # Add total source photons captured
         AllTestParams["n_photons_per_tile"].append(d.detector_source_coverage["Source photon counts"])

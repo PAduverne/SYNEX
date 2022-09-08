@@ -51,6 +51,7 @@ import ptemcee.mpi_pool as mpi_pool
 # import detector and source classes
 import SYNEX.SYNEX_Sources as SYSs
 import SYNEX.SYNEX_Detectors as SYDs
+import SYNEX.SYNEX_Telescopes as SYTs
 import SYNEX.segments_athena as segs_a
 
 # Plotting stuff
@@ -1689,7 +1690,7 @@ def GetSourceFromLisabetaData(FileName, **kwargs):
 #                 ##########################################
 
 
-def TileSkyArea(CloningTrackFile=None,sources=None,detectors=None,base_telescope_params=None,base_source_savefile=None,cloning_params=None,SaveInSubFile=None,SaveFileCommonStart=None,SourceIndexingByString=None,verbose=True):
+def TileSkyArea(CloningTrackFile=None,sources=None,telescopes=None,base_telescope_params=None,base_source_savefile=None,cloning_params=None,SaveInSubFile=None,SaveFileCommonStart=None,SourceIndexingByString=None,verbose=True):
     """
     Global function to tile skyarea. This will handle all extra tiling we might add,
     including handling series inputs over lists of sources and/or detectors.
@@ -2106,14 +2107,14 @@ def TileSkyArea(CloningTrackFile=None,sources=None,detectors=None,base_telescope
     else:
         print(MPI_rank,"/",MPI_size,"with 0 /",Nvals,"detectors to tile, and 0 /",Nvals,"sources to tile.")
 
-def TileWithGwemopt(source,detector,outDirExtension=None,verbose=True):
+def TileWithGwemopt(source,telescope,outDirExtension=None,verbose=True):
     """
     Function to handle tiling through gwemopt.
     """
 
     # Get the right dicts to use
     t_tile_0=time.time()
-    go_params,map_struct=PrepareGwemoptDicts(source,detector,outDirExtension)
+    go_params,map_struct=PrepareGwemoptDicts(source,telescope,outDirExtension)
 
     # Get segments -- need to understand what this is. Line 469 of binary file 'gwemopt_run'
     import SYNEX.segments_athena as segs_a
@@ -2173,7 +2174,7 @@ def TileWithGwemopt(source,detector,outDirExtension=None,verbose=True):
     tile_structs, coverage_struct = gwemopt.coverage.timeallocation(go_params, map_struct, tile_structs)
 
     # Get info for run
-    detector = GetCoverageInfo(go_params, map_struct, tile_structs, coverage_struct, detector, source=source, verbose=False)
+    telescope = GetCoverageInfo(go_params, map_struct, tile_structs, coverage_struct, telescope, source=source, verbose=False)
 
     # Add info about source to coverage summary
     SourceInfo={
@@ -2189,14 +2190,14 @@ def TileWithGwemopt(source,detector,outDirExtension=None,verbose=True):
                 }
     if source.do3D:
         SourceInfo["source true loc"]+=[source.true_distance]
-    detector.detector_source_coverage.update(SourceInfo)
+    telescope.telescope_source_coverage.update(SourceInfo)
 
     # Save detector
-    detector.ExistentialCrisis()
+    telescope.ExistentialCrisis()
 
-    return go_params, map_struct, tile_structs, coverage_struct, detector
+    return go_params, map_struct, tile_structs, coverage_struct, telescope
 
-def PrepareGwemoptDicts(source,detector,outDirExtension=None):
+def PrepareGwemoptDicts(source,telescope,outDirExtension=None):
     """
     Function to prepare GWELOPT dictionary from a source object and a detector objct.
 
@@ -2205,23 +2206,23 @@ def PrepareGwemoptDicts(source,detector,outDirExtension=None):
     Include variable Tobs- gwemopt uses the option of several available windows... Maybe for scheduling time wtih telescope(s) or map updates.
     """
     # Prepare go_params from detector first
-    go_params = copy.deepcopy(detector.detector_go_params)
-    telescopes = [detector.detector_config_struct["telescope"]] # They want this to be a list
-    go_params["telescopes"]=telescopes
-    go_params["exposuretimes"]=np.array([detector.detector_config_struct["exposuretime"]]) # This line is necessary and not really sure why...
-    go_params["config"]={detector.detector_config_struct["telescope"] : detector.detector_config_struct}
+    go_params = copy.deepcopy(telescope.telescope_go_params)
+    telescope_names = [telescope.telescope_config_struct["telescope"]] # They want this to be a list
+    go_params["telescopes"]=telescope_names
+    go_params["exposuretimes"]=np.array([telescope.telescope_config_struct["exposuretime"]]) # This line is necessary and not really sure why...
+    go_params["config"]={telescope.telescope_config_struct["telescope"] : telescope.telescope_config_struct}
 
     # Ideal pixelation for detector FoV has pixel area <= FOV/4 (idk this for sure, I just made it up...)
     nside_arr=np.array([2**i for i in range(11,3,-1)])
     area_arr=hp.nside2pixarea(nside_arr,degrees=True)
-    nside=nside_arr[np.searchsorted(area_arr, detector.detector_config_struct["FOV"]/4., side='left')-1]
+    nside=nside_arr[np.searchsorted(area_arr, telescope.telescope_config_struct["FOV"]/4., side='left')-1]
 
     # Update missing params in go_params contained in source
     go_params["nside"]=nside
     if source.gpstime!=None:
         go_params["gpstime"]=source.gpstime
     else:
-        go_params["gpstime"]=detector.detector_config_struct["gps_science_start"]-source.DeltatL_cut/86400.
+        go_params["gpstime"]=telescope.telescope_config_struct["gps_science_start"]-source.DeltatL_cut/86400.
         source.gpstime=go_params["gpstime"]
     go_params["do3D"]=source.do3D
     go_params["true_ra"]=source.true_ra
@@ -2253,7 +2254,7 @@ def PrepareGwemoptDicts(source,detector,outDirExtension=None):
 
     return go_params,map_struct
 
-def GetCoverageInfo(go_params, map_struct, tile_structs, coverage_struct, detector, source=None, verbose=True):
+def GetCoverageInfo(go_params, map_struct, tile_structs, coverage_struct, telescope, source=None, verbose=True):
     """
     Extract coverage information, including a count for tiles that cover source and
     tiles that cover source with exposure time at least the minimum for a threshold
@@ -2271,8 +2272,8 @@ def GetCoverageInfo(go_params, map_struct, tile_structs, coverage_struct, detect
     map_probs=map_struct["prob"]
 
     # Tiling info
-    telescope=detector.detector_config_struct["telescope"]
-    tile_struct=tile_structs[telescope]
+    telescope_name=telescope.telescope_config_struct["telescope"]
+    tile_struct=tile_structs[telescope_name]
     tile_keys_list=list(tile_struct.keys())
     pix_record=np.unique(np.concatenate([tile_struct[tile_id]["ipix"] for tile_id in tile_keys_list if len(tile_struct[tile_id]["ipix"])>0],axis=0))
     probs1=np.array([tile_struct[tile_id]["prob"] for tile_id in tile_keys_list])
@@ -2280,12 +2281,12 @@ def GetCoverageInfo(go_params, map_struct, tile_structs, coverage_struct, detect
     TotProb1=np.sum(probs1) # Tile struct probabilities
     TotProb2=np.sum(probs2) # Mp struct probs summed using ipix in tile struct
     TotProb3=np.sum(map_probs[pix_record]) # Unique probabilities
-    detector.detector_tile_struct=tile_struct
+    telescope.telescope_tile_struct=tile_struct
     if verbose:
         print("\n\n")
-        print("#"*20+"  "+telescope+"  "+"#"*20+"\n")
+        print("#"*20+"  "+telescope_name+"  "+"#"*20+"\n")
         print("Total prob (tile_struct, map_struct, map_struct drop dups):",TotProb1,TotProb2,TotProb3)
-        print("Params/Config checks:", telescope, go_params["config"][telescope]["tot_obs_time"], go_params["config"][telescope]["exposuretime"], go_params["config"][telescope]["tot_obs_time"]/go_params["config"][telescope]["exposuretime"], "Tot tiles avail:", len(tile_struct.keys()))
+        print("Params/Config checks:", telescope_name, go_params["config"][telescope]["tot_obs_time"], go_params["config"][telescope_name]["exposuretime"], go_params["config"][telescope_name]["tot_obs_time"]/go_params["config"][telescope_name]["exposuretime"], "Tot tiles avail:", len(tile_struct.keys()))
         print("\n")
 
     # Coverage info
@@ -2295,9 +2296,9 @@ def GetCoverageInfo(go_params, map_struct, tile_structs, coverage_struct, detect
     prob3=np.sum([map_probs[pix] for pix in cov_ipix_array_unique]) # Same as prob2 but only unique pixels
     ex_Times = cov_data[:,4]
     ex_Times_unique = np.unique(ex_Times)
-    detector.detector_coverage_struct=coverage_struct
-    detector.detector_coverage_struct.update({"tile exposure times":ex_Times,"unique tile exposure times":ex_Times_unique,
-                                              "normalised tile exposure times":[T_e/detector.detector_config_struct["exposuretime"] for T_e in ex_Times]})
+    telescope.telescope_coverage_struct=coverage_struct
+    telescope.telescope_coverage_struct.update({"tile exposure times":ex_Times,"unique tile exposure times":ex_Times_unique,
+                                              "normalised tile exposure times":[T_e/telescope.telescope_config_struct["exposuretime"] for T_e in ex_Times]})
 
     # Print summary if asked for
     if verbose:
@@ -2330,7 +2331,7 @@ def GetCoverageInfo(go_params, map_struct, tile_structs, coverage_struct, detect
     SourceTile_accum_prob1=np.sum(SourceTile_prob1)
     SourceTile_accum_prob2=np.sum(SourceTile_prob2)
 
-    detector.detector_source_coverage={"telescope":telescope,"Source Tile Prob (by cov tiles)":SourceTile_prob1,
+    telescope.telescope_source_coverage={"telescope":telescope_name,"Source Tile Prob (by cov tiles)":SourceTile_prob1,
                         "Source Tile Prob (by cov pixels)":SourceTile_prob2,"tile ID containing source pixel":cov_source_tile,
                         "tile pixels containing source pixel":cov_source_pix, "No. source coverages":len(SourceTile_prob1),
                         "No. unique source coverages":UniqueSourceCoverageCount,
@@ -2341,7 +2342,7 @@ def GetCoverageInfo(go_params, map_struct, tile_structs, coverage_struct, detect
     if verbose:
         print("--- Source Coverage ---")
         print("\n")
-        print("Source covered by",telescope, len(cov_source_tile),"times.\n")
+        print("Source covered by",telescope_name, len(cov_source_tile),"times.\n")
         print(" "*10+"cov_struct p data:")
         print(SourceTile_prob1,"\n")
         print(" "*10+"map_struct pixel p's:")
@@ -2356,7 +2357,7 @@ def GetCoverageInfo(go_params, map_struct, tile_structs, coverage_struct, detect
         # if not hasattr(source,"EM_Flux_Data"): source.GenerateEMFlux(fstart22=1e-4,TYPE="const",**{})
         # if not hasattr(source,"CTR_Data"): source.GenerateCTR(detector.ARF_file_loc_name,gamma=1.7) # Should be include gamma as a source param? Would we ever want to change this at run time?
         source.GenerateEMFlux(fstart22=1e-4,TYPE="const",**{})
-        source.GenerateCTR(detector.ARF_file_loc_name,gamma=1.7)
+        source.GenerateCTR(telescope.ARF_file_loc_name,gamma=1.7)
 
         # Calculate the exposuretimes for each tile that covers source
         SourceTileExpTimes=[cov_data[tile_ii,4] for tile_ii in cov_source_tile]
@@ -2372,18 +2373,18 @@ def GetCoverageInfo(go_params, map_struct, tile_structs, coverage_struct, detect
         TileListTimes=[[ts+i*dur/49 for i in range(50)] for ts,dur in zip(SourceTileStartTimes,SourceTileExpTimes)]
         SourceTilePhotonCounts=[np.trapz(np.interp(TileTs,CTR_times,CTRs),TileTs) for TileTs in TileListTimes]
 
-        detector.detector_source_coverage.update({"Source tile exposuretimes (s)":SourceTileExpTimes,
+        telescope.telescope_source_coverage.update({"Source tile exposuretimes (s)":SourceTileExpTimes,
                                                   "Source photon counts":SourceTilePhotonCounts,
                                                   "Source tile start times (s)":SourceTileStartTimes, ### Maybe change this and exp times to be a list of pairs like 'timeranges' but in gps days from start time? Then you can easily make the required histpgrams of interest.
                                                   "Start time (mjd)":Time(go_params["gpstime"], format='gps', scale='utc').mjd})
     else:
-        detector.detector_source_coverage.update({"Source tile exposuretimes (s)":[],
+        telescope.telescope_source_coverage.update({"Source tile exposuretimes (s)":[],
                                                   "Source photon counts":[0],
                                                   "Source tile start times (s)":[],
                                                   "Start time (mjd)":Time(go_params["gpstime"], format='gps', scale='utc').mjd})
 
     # Return values
-    return detector
+    return telescope
 
 def WriteSkymapToFile(map_struct,SkyMapFileName,go_params=None,PermissionToWrite=True):
     """
@@ -3765,50 +3766,50 @@ def PlotCTR(source, SaveFig=False):
 
     plt.show()
 
-def PlotPhotonAccumulation(detectors, SaveFig=False, SaveFileName=None):
+def PlotPhotonAccumulation(telescopes, SaveFig=False, SaveFileName=None):
     """
     Plot accumulated photons from source only after tiling is run for a list of a list, a list or a single detector.
     """
-    if not isinstance(detectors,list):
-        detectors=[detectors]
+    if not isinstance(telescopes,list):
+        telescopes=[telescopes]
 
     # Check if it's a list of lists
-    if any([isinstance(detector,list) for detector in detectors]):
-        detectors=[[detectors_el] if not isinstance(detectors[0],list) else detectors_el for detectors_el in detectors]
+    if any([isinstance(telescope,list) for telescope in telescopes]):
+        telescopes=[[telescopes_el] if not isinstance(telescopes[0],list) else telescopes_el for telescopes_el in telescopes] ### Should the else part be after the for blah in blahs part?
     else:
-        detectors=[detectors]
+        telescopes=[telescopes]
 
     # Create list of detectors if dicts given or mix of dicts and detector objects given
     # detectors=[detector if not isinstance(detector,dict) else SYDs.Athena(**detector) for detector in detectors]
-    print("Detectors shape check:",type(detectors),len(detectors),[len(detectors_el) for detectors_el in detectors])
+    print("Detectors shape check:",type(telescopes),len(telescopes),[len(telescopes_el) for telescope_el in telescopes])
 
     # Create list of sources in case we have a mix of stuff like DeltatL_cut
-    sources=[[GetSourceFromLisabetaData(detector.detector_source_coverage["source H5File"],**{"ExistentialFileName":detector.detector_source_coverage["source save file"],"verbose":detector.verbose}) for detector in detectors_el] for detectors_el in detectors]
+    sources=[[GetSourceFromLisabetaData(telescope.telescope_source_coverage["source H5File"],**{"ExistentialFileName":telescope.telescope_source_coverage["source save file"],"verbose":telescope.verbose}) for telescope in telescopes_el] for telescopes_el in telescopes]
     SourcePreMergerCuts=[[source.DeltatL_cut for source in source_el] for source_el in sources]
-    for ii in range(len(detectors)):
+    for ii in range(len(telescopes)):
         if len(np.unique(SourcePreMergerCuts[ii]))>1:
             for jj in range(len(detectors[ii])):
-                detectors[ii][jj].detector_config_struct.update({"cloning key":"DeltatL_cut","cloning value":-sources[ii][jj].DeltatL_cut/86400.})
+                telescopes[ii][jj].telescope_config_struct.update({"cloning key":"DeltatL_cut","cloning value":-sources[ii][jj].DeltatL_cut/86400.})
     t_mergers=[[-source.DeltatL_cut/86400. for source in source_el] for source_el in sources]
 
     # Find the max height so all bars are even
-    for ii in range(len(detectors)):
-        height=max([sum(detector.detector_source_coverage["Source photon counts"]) for detector in detectors[ii]])
+    for ii in range(len(telescopes)):
+        height=max([sum(telescope.telescope_source_coverage["Source photon counts"]) for telescope in telescopes[ii]])
 
-        for detector,t_merger in zip(detectors[ii],t_mergers[ii]):
-            T0_mjd=detector.detector_source_coverage["Start time (mjd)"]
-            Xs=[ExT0s/86400. for ExT0s in detector.detector_source_coverage["Source tile start times (s)"]]
-            Xs_Widths=[ExTs/86400. for ExTs in detector.detector_source_coverage["Source tile exposuretimes (s)"]]
-            Ys=list(np.cumsum(detector.detector_source_coverage["Source photon counts"]))
+        for telescope,t_merger in zip(telescopes[ii],t_mergers[ii]):
+            T0_mjd=telescope.telescope_source_coverage["Start time (mjd)"]
+            Xs=[ExT0s/86400. for ExT0s in telescope.telescope_source_coverage["Source tile start times (s)"]]
+            Xs_Widths=[ExTs/86400. for ExTs in telescope.telescope_source_coverage["Source tile exposuretimes (s)"]]
+            Ys=list(np.cumsum(telescope.telescope_source_coverage["Source photon counts"]))
 
-            # Plot accumulated photons is source was captured
-            if len(detector.detector_source_coverage["Source tile start times (s)"])>0:
-                if detector.detector_config_struct["cloning value"]!="DeltatL_cut" and detector.detector_config_struct["cloning value"]!=None:
-                    label=detector.detector_config_struct["cloning key"]+r"="+str(int(detector.detector_config_struct["cloning value"]//1)) if isinstance(detector.detector_config_struct["cloning value"],(float,int)) else detector.detector_config_struct["cloning value"]
-                elif detector.detector_config_struct["cloning value"]=="DeltatL_cut":
+            # Plot accumulated photons if source was captured
+            if len(telescope.telescope_source_coverage["Source tile start times (s)"])>0:
+                if telescope.telescope_config_struct["cloning value"]!="DeltatL_cut" and telescope.telescope_config_struct["cloning value"]!=None:
+                    label=telescope.telescope_config_struct["cloning key"]+r"="+str(int(telescope.telescope_config_struct["cloning value"]//1)) if isinstance(telescope.telescope_config_struct["cloning value"],(float,int)) else telescope.telescope_config_struct["cloning value"]
+                elif telescope.telescope_config_struct["cloning value"]=="DeltatL_cut":
                     label=r"System " + str(ii) + r", Source time to merger="+str(int(t_merger//1))+r"\,d"
                 else:
-                    label=detector.detector_config_struct["telescope"]
+                    label=telescope.telescope_config_struct["telescope"]
                 step_plot=plt.step([t-t_merger+t_exp for t,t_exp in zip(Xs,Xs_Widths)], Ys, where='post', label=label)
                 plt.bar([t-t_merger for t in Xs],height=height,width=Xs_Widths,align="edge",color=step_plot[-1].get_color(),alpha=0.3)
     ax = plt.gca()
@@ -3831,7 +3832,7 @@ def PlotPhotonAccumulation(detectors, SaveFig=False, SaveFileName=None):
 
     plt.show()
 
-def PlotSourcePhotons(detectors, labels=None, BoxPlot=True, SaveFig=False, SaveFileName=None):
+def PlotSourcePhotons(telescopes, labels=None, BoxPlot=True, SaveFig=False, SaveFileName=None):
     """
     Plot total accumulated photons for each list of detectors (in case we
     have several versions of the same cloned parameter but using eg different
@@ -3840,17 +3841,17 @@ def PlotSourcePhotons(detectors, labels=None, BoxPlot=True, SaveFig=False, SaveF
     What if detectors don't have "cloning keys"/"cloning values" in detector_config_struct?
     """
     # Check if it's a list
-    if not isinstance(detectors,list):
-        detectors=[detectors]
+    if not isinstance(telescopes,list):
+        telescopes=[telescope]
 
     # Check if it's a list of lists
-    if any([isinstance(detector,list) for detector in detectors]):
-        detectors=[[detectors_el] if not isinstance(detectors[0],list) else detectors_el for detectors_el in detectors]
+    if any([isinstance(telescope,list) for telescope in telescopes]):
+        telescopes=[[telescopes_el] if not isinstance(telescopes[0],list) else telescopes_el for telescopes_el in telescopes]
     else:
-        detectors=[detectors]
+        telescopes=[telescopes]
 
     # Create list of sources in case we have a mix of stuff like DeltatL_cut
-    sources=[[GetSourceFromLisabetaData(detector.detector_source_coverage["source H5File"],**{"ExistentialFileName":detector.detector_source_coverage["source save file"],"verbose":detector.verbose}) for detector in detectors_el] for detectors_el in detectors]
+    sources=[[GetSourceFromLisabetaData(telescope.telescope_source_coverage["source H5File"],**{"ExistentialFileName":telescope.telescope_source_coverage["source save file"],"verbose":detector.verbose}) for telescope in telescopes_el] for telescopes_el in telescopes]
 
 
 
@@ -3862,30 +3863,30 @@ def PlotSourcePhotons(detectors, labels=None, BoxPlot=True, SaveFig=False, SaveF
     for ii in range(len(detectors)):
         if len(np.unique(SourcePreMergerCuts[ii]))>1:
             for jj in range(len(detectors[ii])):
-                detectors[ii][jj].detector_config_struct.update({"cloning keys":"DeltatL_cut","cloning values":-sources[ii][jj].DeltatL_cut/86400.})
+                telescopes[ii][jj].telescope_config_struct.update({"cloning keys":"DeltatL_cut","cloning values":-sources[ii][jj].DeltatL_cut/86400.})
 
     # Did we change Tobs?
-    DetectorTobs=[[detector.detector_go_params["Tobs"] for detector in detector_el] for detector_el in detectors]
-    for ii in range(len(detectors)):
-        if not np.array_equal(np.unique(DetectorTobs[ii]),DetectorTobs[ii][0]):
-            for jj in range(len(detectors[ii])):
-                detectors[ii][jj].detector_config_struct.update({"cloning keys":"Tobs","cloning values":DetectorTobs[ii][jj][1]})
+    telescopeTobs=[[telescope.telescope_go_params["Tobs"] for telescope in telescopes_el] for telescopes_el in telescopes]
+    for ii in range(len(telescopes)):
+        if not np.array_equal(np.unique(telescopeTobs[ii]),telescopeTobs[ii][0]):
+            for jj in range(len(telescopes[ii])):
+                telescopes[ii][jj].telescope_config_struct.update({"cloning keys":"Tobs","cloning values":telescopeTobs[ii][jj][1]})
 
     ###################################################################################################################
 
 
 
     # Handle labels now if not given
-    if not isinstance(labels,(list,int,str,float)): labels=[None]*len(detectors)
+    if not isinstance(labels,(list,int,str,float)): labels=[None]*len(telescopes)
     # elif isinstance(labels,(int,str,float)): labels=[labels]*len(detectors)   ##### Not sure what the default behaviour should be here...
 
     # Get the figure and axes for each list within detectors list
     if BoxPlot:
-        Xs = [detector.detector_config_struct["cloning values"] for detector_el in detectors for detector in detector_el] # This will store values cloned for sources too...
-        Ys = [sum(detector.detector_source_coverage["Source photon counts"]) for detector_el in detectors for detector in detector_el]
+        Xs = [telescope.telescope_config_struct["cloning values"] for telescopes_el in telescopes for telescope in telescopes_el] # This will store values cloned for sources too...
+        Ys = [sum(telescope.telescope_source_coverage["Source photon counts"]) for telescopes_el in telescopes for telescope in telescopes_el]
         UniqueXs = pd.unique(Xs)
         UniqueXs.sort()
-        clone_key = detectors[0][0].detector_config_struct["cloning keys"]
+        clone_key = telescopes[0][0].telescope_config_struct["cloning keys"]
         data_points = pd.DataFrame(data={clone_key:Xs, "photon_count":Ys})
         xdata_stats = data_points.groupby(by=clone_key).describe() # Default is only include numeric data
         print(xdata_stats)
@@ -3900,10 +3901,10 @@ def PlotSourcePhotons(detectors, labels=None, BoxPlot=True, SaveFig=False, SaveF
         # Init global figure
         fig=plt.figure()
 
-        Lines2D=[(PlotSourcePhotons_SingleDetList(detectors_el,sources=sources,fig=fig,label=label,BoxPlot=BoxPlot)) for detectors_el,label in zip(detectors,labels)]
+        Lines2D=[(PlotSourcePhotons_SingleDetList(telescopes_el,sources=sources,fig=fig,label=label,BoxPlot=BoxPlot)) for telescopes_el,label in zip(telescopes,labels)]
 
         # Plot the mean
-        clone_key = detectors[0][0].detector_config_struct["cloning keys"]
+        clone_key = telescopes[0][0].detector_config_struct["cloning keys"]
         data_points = pd.DataFrame(data={clone_key:[x for Line2D in Lines2D for x in Line2D[2]],
                                    "photon_count":[y for Line2D in Lines2D for y in Line2D[3]]})
         xdata_stats = data_points.groupby(by=clone_key).describe() # Default is only include numeric data
@@ -3924,7 +3925,7 @@ def PlotSourcePhotons(detectors, labels=None, BoxPlot=True, SaveFig=False, SaveF
         if labels!=None: plt.legend(fontsize="x-small",ncol=data_points[clone_key].nunique()//10+1) # Wrap columns when we get more than 10 points
 
     # Sort special case of premerger time cut
-    if detectors[0][0].detector_config_struct["cloning keys"]=="DeltatL_cut":
+    if telescopes[0][0].telescope_config_struct["cloning keys"]=="DeltatL_cut":
         ax=plt.gca()
         ax.invert_xaxis()
         X_Datas_unique = pd.unique(data_points[clone_key])
@@ -3944,19 +3945,19 @@ def PlotSourcePhotons(detectors, labels=None, BoxPlot=True, SaveFig=False, SaveF
 
     plt.show()
 
-def PlotSourcePhotons_SingleDetList(detectors,sources=None,fig=None,label=None,BoxPlot=True):
+def PlotSourcePhotons_SingleDetList(telescopes,sources=None,fig=None,label=None,BoxPlot=True):
     """
     Plot total accumulated photons from source versus cloned parameter.
     """
-    if not isinstance(detectors,list):
-        detectors=[detectors]
+    if not isinstance(telescopes,list):
+        telescopes=[telescopes]
 
     # Create list of detectors if dicts given or mix of dicts and detector objects given
-    detectors=[detector if not isinstance(detector,dict) else SYDs.Athena(**detector) for detector in detectors]
+    telescopes=[telescope if not isinstance(telescope,dict) else SYDs.Athena(**telescope) for telescope in telescopes]
 
     # Get cloned values and photon counts
-    Xs = [detector.detector_config_struct["cloning value"] for detector in detectors] # This will store values cloned for sources too...
-    Ys = [sum(detector.detector_source_coverage["Source photon counts"]) for detector in detectors]
+    Xs = [telescope.telescope_config_struct["cloning value"] for telescope in telescopes] # This will store values cloned for sources too...
+    Ys = [sum(telescope.telescope_source_coverage["Source photon counts"]) for telescope in telescopes]
 
     # Init figure if it isn't already
     if fig==None: fig=plt.figure()
@@ -3970,7 +3971,7 @@ def PlotSourcePhotons_SingleDetList(detectors,sources=None,fig=None,label=None,B
         ax.set_yscale('log')
 
     # Label axes
-    plt.xlabel(detectors[0].detector_config_struct["cloning key"],fontsize="small")
+    plt.xlabel(telescopes[0].telescope_config_struct["cloning key"],fontsize="small")
     plt.ylabel(r"Accumulated Photons",fontsize="small")
 
     # Plot
@@ -3995,7 +3996,7 @@ def PlotSourcePhotons_SingleDetList(detectors,sources=None,fig=None,label=None,B
 #              #                                   #
 #              #####################################
 
-def GetDataFrame(detectors=None, SaveFile=None):
+def GetDataFrame(telescopes=None, SaveFile=None):
     """
     Function to get or create a dataframe from a list or array of
     telescopes with tiling information.
@@ -4011,15 +4012,15 @@ def GetDataFrame(detectors=None, SaveFile=None):
             created given input parameters.
     """
     # Work out what we want to do based on inputs.
-    if detectors==None and SaveFile==None:
+    if telescopes==None and SaveFile==None:
         raise ValueError("Need to give either a list of detectors, a savefile to load, or a list of detectors and savefile to save the dataframe to.")
-    elif detectors==None and SaveFile:
+    elif telescopes==None and SaveFile:
         store = pd.HDFStore(SaveFile)
         return store['data']
     else:
-        return CreateDataFrameFromDetectorList(detectors=detectors, SaveFile=SaveFile)
+        return CreateDataFrameFromDetectorList(telescopes=telescopes, SaveFile=SaveFile)
 
-def CreateDataFrameFromDetectorList(detectors, SaveFile=None):
+def CreateDataFrameFromDetectorList(telescopes, SaveFile=None):
     """
     Code to test how accumulated photon count varies with a subset of
     tested parameters. In essence, if we randomize over many parameters and find
@@ -4046,20 +4047,20 @@ def CreateDataFrameFromDetectorList(detectors, SaveFile=None):
     ###
 
     # Did we get a list?
-    if not isinstance(detectors,list): detectors=[detectors]
+    if not isinstance(telescopes,list): telescopes=[telescopes]
 
     # Did we get a set of savefiles?
-    if isinstance(detectors[0],str): detectors=[SYDs.Athena(**{"ExistentialFileName":ExName}) for ExName in detectors]
+    if isinstance(telescopes[0],str): telescopes=[SYDs.Athena(**{"ExistentialFileName":ExName}) for ExName in telescopes]
 
     # List of all params of interest... This should not be hardcoded moving forward as a priori we don't know what is interesting...
     SourceTestParamKeys = ["M","q","chi1","chi2","lambda","beta", "dist", "DeltatL_cut"]
-    DetectorTestParamKeys = ["Tobs", "exposuretime","n_photons_per_tile","n_photons","DaysToSourceExp"]
+    telescopeTestParamKeys = ["Tobs", "exposuretime","n_photons_per_tile","n_photons","DaysToSourceExp"]
     AllTestParamKeys = SourceTestParamKeys+DetectorTestParamKeys
     AllTestParams = {key:[] for key in AllTestParamKeys}
 
     # Load params
-    for d in detectors:
-        with open(d.detector_source_coverage["source JsonFile"]) as f:
+    for tel in telescopes:
+        with open(tel.telescope_source_coverage["source JsonFile"]) as f:
             input_params = json.load(f)
         for key in AllTestParamKeys:
             if key in input_params['source_params'] or key in ["M","q"]:
@@ -4071,36 +4072,36 @@ def CreateDataFrameFromDetectorList(detectors, SaveFile=None):
                     AllTestParams[key].append(input_params['source_params'][key])
             elif key in input_params['waveform_params']:
                 AllTestParams[key].append(input_params['waveform_params'][key])
-            elif key in d.detector_go_params:
+            elif key in tel.telescope_go_params:
                 if key=="Tobs":
-                    AllTestParams[key].append(d.detector_go_params[key][1]) ### But what if we have gaps... How do we treat array of pairs? Seperate out photons per obs period maybe? Effectively 'exploding' the dataframe? Need to include this calc then inside 'GetCoverageInfo'
+                    AllTestParams[key].append(tel.telescope_go_params[key][1]) ### But what if we have gaps... How do we treat array of pairs? Seperate out photons per obs period maybe? Effectively 'exploding' the dataframe? Need to include this calc then inside 'GetCoverageInfo'
                 else:
-                    AllTestParams[key].append(d.detector_go_params[key])
-            elif key in d.detector_config_struct:
-                AllTestParams[key].append(d.detector_config_struct[key])
+                    AllTestParams[key].append(tel.telescope_go_params[key])
+            elif key in tel.telescope_config_struct:
+                AllTestParams[key].append(tel.telescope_config_struct[key])
 
         # Add system ID if asked for
         # AllTestParams["source ID"] = d.detector_source_coverage["source ID"]
 
         # Add total source photons captured
-        AllTestParams["n_photons_per_tile"].append(d.detector_source_coverage["Source photon counts"])
-        AllTestParams["n_photons"].append(round(sum(d.detector_source_coverage["Source photon counts"])))
+        AllTestParams["n_photons_per_tile"].append(tel.telescope_source_coverage["Source photon counts"])
+        AllTestParams["n_photons"].append(round(sum(tel.telescope_source_coverage["Source photon counts"])))
 
         # Add first day after detector start of science at which source is exposed -- append 'NAN' if source never exposed
-        if len(d.detector_source_coverage["Source tile timeranges (days)"])>0:
-            AllTestParams["DaysToSourceExp"].append(d.detector_source_coverage["Source tile timeranges (days)"])
+        if len(tel.telescope_source_coverage["Source tile timeranges (days)"])>0:
+            AllTestParams["DaysToSourceExp"].append(tel.telescope_source_coverage["Source tile timeranges (days)"])
         else:
             AllTestParams["DaysToSourceExp"].append([[np.nan]])
 
         # Add sky areas
         ##################################################### TMP CODE #####################################################
-        if "source fisher area" in d.detector_source_coverage:
-            AllTestParams["Fisher Area (sq deg)"]=d.detector_source_coverage["source fisher area"]
-            AllTestParams["Posterior Area (sq deg)"]=d.detector_source_coverage["source post area"]
+        if "source fisher area" in tel.telescope_source_coverage:
+            AllTestParams["Fisher Area (sq deg)"]=tel.telescope_source_coverage["source fisher area"]
+            AllTestParams["Posterior Area (sq deg)"]=tel.telescope_source_coverage["source post area"]
         else:
-            source_kwargs={"ExistentialFile":d.detector_source_coverage["source save file"],
+            source_kwargs={"ExistentialFile":tel.telescope_source_coverage["source save file"],
                            "verbose":False}
-            source=GetSourceFromLisabetaData(d.detector_source_coverage["source JsonFile"],**source_kwargs) # hopefully ust gotta do this once...
+            source=GetSourceFromLisabetaData(tel.telescope_source_coverage["source JsonFile"],**source_kwargs) # hopefully ust gotta do this once...
             AllTestParams["Fisher Area (sq deg)"]=source.FisherSkyArea
             AllTestParams["Posterior Area (sq deg)"]=source.PostSkyArea
             # Re-write source and detector savefiles so everything is right

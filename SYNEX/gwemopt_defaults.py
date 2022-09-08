@@ -76,9 +76,9 @@ go_params_default["coverageFiles"] = SYNEX_PATH+"/gwemopt_cover_files/Athena_tes
 go_params_default["lightcurveFiles"] = SYNEX_PATH+"/gwemopt/lightcurves/Me2017_H4M050V20.dat" ### THIS NEEDS TO BE CHANGED LATER WHEN WE HAVE SOME LIGHTCURVES...
 go_params_default["tilesType"] = "moc" #  Tiling options are moc/greedy/hierarchical/ranked/galaxy.
 go_params_default["scheduleType"] = "greedy" # Scheduling options are greedy/sear/weighted/airmass_weighted, or with _slew.
-go_params_default["timeallocationType"] = "powerlaw" # "absmag" / "powerlaw" / "waw" / "manual" / "pem" 
+go_params_default["timeallocationType"] = "powerlaw" # "absmag" / "powerlaw" / "waw" / "manual" / "pem"
 go_params_default["configDirectory"] = None # SYNEX_PATH+"/gwemopt_conf_files" # Is this needed? I don't think so...
-go_params_default["gpstime"] = None # 1703721618.0 # 01/01/2034 00:00:00.000 UTC -- time of event -- set by source and if not by detectors
+go_params_default["gpstime"] = None # 1703721618.0 # 01/01/2034 00:00:00.000 UTC -- time of event -- set by source and if not by telescopes
 go_params_default["Ninj"] = 1000
 go_params_default["Ndet"] = 1
 go_params_default["Ntiles"] = None # 50 # Speific to tilesType=hierarchical and greedy. Needs to be set if "doCalcTiles"=False.
@@ -127,8 +127,8 @@ go_params_default["true_distance"] = None       # Source param to be defined whe
 
 
 ##### Parameters required in go_params but SYNEX handles differently. These are calculated in SYNEX_Utils functions
-##### when arrays of sources/detectors are configured into gwemopt compatible objects...
-# go_params_default["exposuretimes"] = np.array([30.0,30.0,30.0]) ### Time per tile? Latency time? -- Calculated when go_params for GWEMOPT is configured using each detector(s) config
+##### when arrays of sources/telescopes are configured into gwemopt compatible objects...
+# go_params_default["exposuretimes"] = np.array([30.0,30.0,30.0]) ### Time per tile? Latency time? -- Calculated when go_params for GWEMOPT is configured using each telescope(s) config
 # go_params_default["telescopes"] = np.array(["Athena_test_1","Athena_test_2","Athena_test_3"])
 # go_params_default["do3D"]=False
 
@@ -193,7 +193,7 @@ config_struct_default = {
 #######
 # Segments is a list of ligo time segments (like sets) for when the telescope is available to make a measurement.
 # exposurelist is a similar list of segments calculated from segments that slices them into times when there is an exposure to the source location and reduces times by overhead for each orientation, time per tile, etc.
-# These are first calculated for the detector based on location and time, and then it is calculated for each tile depending on time allocation and position of moon/sun.
+# These are first calculated for the telescope based on location and time, and then it is calculated for each tile depending on time allocation and position of moon/sun.
 #
 # I think we have to write our own versions of segments.py and adjust the usage of observer objects. the telescope part is easily done, even
 # if you modify the returned set of segments and then recalculate the exposures based on that... But doing this for tiles is going to be a pain.
@@ -203,7 +203,7 @@ config_struct_default = {
 
 
 # Coverage struct has "data" as numpy array with N*9 dimensions for N*[ra,dec,mjd,mag,exposureTime,field,prob,airmass,program_id]
-# If more than one detector, then numpy array of (n_det*N)*9 dimensions for (n_det*N)*[ra,dec,mjd,mag,exposureTime,field,prob,airmass,program_id]
+# If more than one telescope, then numpy array of (n_det*N)*9 dimensions for (n_det*N)*[ra,dec,mjd,mag,exposureTime,field,prob,airmass,program_id]
 
 # ha_constraint?
 # moon_constraint?

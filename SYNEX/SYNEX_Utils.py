@@ -35,6 +35,7 @@ import json, h5py
 # Import lisebeta stuff
 import lisabeta
 import lisabeta.lisa.lisa_fisher as lisa_fisher
+import lisabeta.lisa.snrtools as lisa_snr
 import lisabeta.lisa.lisa as lisa
 import lisabeta.lisa.lisatools as lisatools
 import lisabeta.lisa.pyLISAnoise as pyLISAnoise
@@ -1467,69 +1468,81 @@ def GetSMBHGWDetection_FreqSeries(source, detector, freqs=None, **kwargs):
     return eval('lisa.GenerateLISATDIFreqseries_SMBH(param_dict, freqs' + s + ')') #  + ', **waveform_params)') # ',extra_params=extra_params)')
 
 def ComputeSNR(source, detector, freqs=None, Lframe=False, ReturnAllVariable=False, **kwargs):
-    # Sort into dictionaries params, freqs
-    [params, waveform_params, extra_params] = ClassesToParams(source,detector,"Fisher",**kwargs)
+    # # Sort into dictionaries params, freqs
+    # [params, waveform_params, extra_params] = ClassesToParams(source,detector,"Fisher",**kwargs)
+    #
+    # if Lframe:
+    #     raise ValueError('Lframe not implemented yet, sorry.')
+    #
+    # # Parameters
+    # m1 = params['m1']
+    # m2 = params['m2']
+    # M = m1 + m2
+    # q = m1 / m2
+    # params['M'] = M
+    # params['q'] = q
+    #
+    # LISAnoise = waveform_params.pop('LISAnoise', pyLISAnoise.LISAnoiseSciRDv1)
+    # TDI = waveform_params.get('TDI', 'TDIAET')
+    # TDIrescaled = waveform_params.get('TDIrescaled', True)
+    # LISAconst = waveform_params.get('LISAconst', pyresponse.LISAconstProposal)
+    #
+    # # Default frequencies (safe and slow):
+    # # linear spacing, adjust deltaf=1/(2T) with T approximate duration
+    # if freqs is None:
+    #     freqs = ['linear', None]
+    # if not isinstance(freqs, np.ndarray):
+    #     freqs = GenerateFreqs(freqs, params, **waveform_params)
+    #
+    # # Generate tdi freqseries
+    # tdifreqseries_base = lisa.GenerateLISATDIFreqseries_SMBH(params, freqs, **waveform_params)
+    #
+    # # Compute noises
+    # noise_evaluator = pyLISAnoise.initialize_noise(LISAnoise,
+    #                                     TDI=TDI, TDIrescaled=TDIrescaled,
+    #                                     LISAconst=LISAconst)
+    # Sn1_vals, Sn2_vals, Sn3_vals = pyLISAnoise.evaluate_noise(
+    #                       LISAnoise, noise_evaluator, freqs,
+    #                       TDI=TDI, TDIrescaled=TDIrescaled, LISAconst=LISAconst)
+    #
+    # # Modes and channels
+    # modes = tdifreqseries_base['modes']
+    # channels = ['chan1', 'chan2', 'chan3']
+    # Snvals = {}
+    # Snvals['chan1'] = Sn1_vals
+    # Snvals['chan2'] = Sn2_vals
+    # Snvals['chan3'] = Sn3_vals
+    # h_full = {}
+    # loopCount=0
+    # for chan in channels:
+    #     h_full[chan] = np.zeros_like(freqs, dtype=complex)
+    #     for lm in modes:
+    #         h_full[chan] += tdifreqseries_base[lm][chan]
+    #         loopCount+=1
+    #
+    # # Compute SNR
+    # # We do not assume that deltaf is constant
+    # df = np.diff(freqs)
+    # SNR = 0.
+    # for chan in channels:
+    #     SNR += 4*np.sum(df * np.real(h_full[chan] * np.conj(h_full[chan]) / Snvals[chan])[:-1])
+    #
+    # if ReturnAllVariable:
+    #     return np.sqrt(SNR), freqs, h_full, Snvals
+    # else:
+    #     # wftdi = GetSMBHGWDetection(source, detector, **kwargs)
+    #     # return lisa.computeSNR(wftdi) # ,LISAconstellation=pyresponse.LISAconstProposal,LISAnoise=pyLISAnoise.LISAnoiseProposal,LDCnoise=None,TDIrescaled=False,Nf=None)
+    #     return np.sqrt(SNR)
 
-    if Lframe:
-        raise ValueError('Lframe not implemented yet, sorry.')
+    # Get the parameters out of the classes and assign if given in kwargs dict
+    [param_dict, waveform_params, _] = ClassesToParams(source,detector,"Fisher",**kwargs)
 
-    # Parameters
-    m1 = params['m1']
-    m2 = params['m2']
-    M = m1 + m2
-    q = m1 / m2
-    params['M'] = M
-    params['q'] = q
+    # Call new snr tools wrapper in lisabeta
+    SNR = lisa_snr.lisa_mbhb_snr(param_dict, time_to_merger_cut=None, **waveform_params)
 
-    LISAnoise = waveform_params.pop('LISAnoise', pyLISAnoise.LISAnoiseSciRDv1)
-    TDI = waveform_params.get('TDI', 'TDIAET')
-    TDIrescaled = waveform_params.get('TDIrescaled', True)
-    LISAconst = waveform_params.get('LISAconst', pyresponse.LISAconstProposal)
-
-    # Default frequencies (safe and slow):
-    # linear spacing, adjust deltaf=1/(2T) with T approximate duration
-    if freqs is None:
-        freqs = ['linear', None]
-    if not isinstance(freqs, np.ndarray):
-        freqs = GenerateFreqs(freqs, params, **waveform_params)
-
-    # Generate tdi freqseries
-    tdifreqseries_base = lisa.GenerateLISATDIFreqseries_SMBH(params, freqs, **waveform_params)
-
-    # Compute noises
-    noise_evaluator = pyLISAnoise.initialize_noise(LISAnoise,
-                                        TDI=TDI, TDIrescaled=TDIrescaled,
-                                        LISAconst=LISAconst)
-    Sn1_vals, Sn2_vals, Sn3_vals = pyLISAnoise.evaluate_noise(
-                          LISAnoise, noise_evaluator, freqs,
-                          TDI=TDI, TDIrescaled=TDIrescaled, LISAconst=LISAconst)
-
-    # Modes and channels
-    modes = tdifreqseries_base['modes']
-    channels = ['chan1', 'chan2', 'chan3']
-    Snvals = {}
-    Snvals['chan1'] = Sn1_vals
-    Snvals['chan2'] = Sn2_vals
-    Snvals['chan3'] = Sn3_vals
-    h_full = {}
-    for chan in channels:
-        h_full[chan] = np.zeros_like(freqs, dtype=complex)
-        for lm in modes:
-            h_full[chan] += tdifreqseries_base[lm][chan]
-
-    # Compute SNR
-    # We do not assume that deltaf is constant
-    df = np.diff(freqs)
-    SNR = 0.
-    for chan in channels:
-        SNR += 4*np.sum(df * np.real(h_full[chan] * np.conj(h_full[chan]) / Snvals[chan])[:-1])
-
-    if ReturnAllVariable:
-        return np.sqrt(SNR), freqs, h_full, Snvals
-    else:
-        # wftdi = GetSMBHGWDetection(source, detector, **kwargs)
-        # return lisa.computeSNR(wftdi) # ,LISAconstellation=pyresponse.LISAconstProposal,LISAnoise=pyLISAnoise.LISAnoiseProposal,LDCnoise=None,TDIrescaled=False,Nf=None)
-        return np.sqrt(SNR)
+    # Should we include option to return all variables as in old function here? then we have to pull out the inner workings of this function...
+    # In this state the input variable `ReturnAllVariable' is redundant.
+    return SNR
 
 def GenerateFreqs(freqs, params, **waveform_params):
     """
@@ -1638,6 +1651,7 @@ def ComputeDetectorNoise(source, detector, freqs=None, Lframe=False, ReturnAllVa
     Snvals['chan1'] = Sn1_vals
     Snvals['chan2'] = Sn2_vals
     Snvals['chan3'] = Sn3_vals
+    Snvals['freqs'] = freqs
 
     detector.Snvals = Snvals
 
@@ -1773,12 +1787,12 @@ def TileSkyArea(CloningTrackFile=None,sources=None,telescopes=None,base_telescop
         if base_telescope_params==None: base_telescope_params=SYDs.Athena(**{"ExistentialFileName":BaseTelescopeExFileName,"verbose":verbose}).__dict__
 
         # Configure data
-        DetectorNewExNames=[]
+        TelescopeNewExNames=[]
         SourceNewExNames=[]
         CloningCombs=[]
         for line in data:
             linelist=line.split(":")
-            DetectorNewExNames.append(linelist[0])
+            TelescopeNewExNames.append(linelist[0])
             SourceNewExNames.append(linelist[1])
             Comb=[float(el) if el!="None" else None for el in linelist[2].split(",")]
             if "Tobs" in CloningKeys:
@@ -1791,14 +1805,14 @@ def TileSkyArea(CloningTrackFile=None,sources=None,telescopes=None,base_telescop
     elif cloning_params!=None:
         # Create base_telescope_params from whatever was handed to us, otherwise obtain from default vals
         if base_telescope_params==None:
-            if detectors==None:
+            if telescopes==None:
                 base_telescope_params=SYDs.Athena().__dict__
-            elif isinstance(detectors,list):
-                if len(detectors)>1 and verbose:
-                    print("Cloning first detector in list only...")
-                base_telescope_params=detectors[0].__dict__
+            elif isinstance(telescopes,list):
+                if len(telescopes)>1 and verbose:
+                    print("Cloning first telescope in list only...")
+                base_telescope_params=telescopes[0].__dict__
             else:
-                base_telescope_params=detectors.__dict__
+                base_telescope_params=telescopes.__dict__
 
         # Base detector savefile and name
         BaseTelescopeExFileName=base_telescope_params["ExistentialFileName"] if "ExistentialFileName" in base_telescope_params else SYNEX_PATH+"/Saved_Telescope_Dicts/Athena_Base.dat"
@@ -1888,7 +1902,7 @@ def TileSkyArea(CloningTrackFile=None,sources=None,telescopes=None,base_telescop
         # Create list of detector dicts NB:: exfile names depend on what was changed... Make sure to treat long numbers so we dont get stupid savefile names.
         ### I am sure this can be optimized... ### -- Probably better to turn CloningCombs into a numpy array...
         # Seee if we changed the sources first...
-        DetectorNewExNames=[]
+        TelescopeNewExNames=[]
         for ii,ParamComb in enumerate(CloningCombs):
             # New Existential filename
             KeyValStrings=[]
@@ -1910,11 +1924,11 @@ def TileSkyArea(CloningTrackFile=None,sources=None,telescopes=None,base_telescop
 
             # Use pairings with source IDs if given
             if SourceIndexingByString:
-                DetectorNewExNames.append(SaveFileCommon+"_SourceInd_"+SourceIndices[ii]+"__"+"_".join(KeyValStrings)+"."+BaseTelescopeExFileName.split(".")[-1])
+                TelescopeNewExNames.append(SaveFileCommon+"_SourceInd_"+SourceIndices[ii]+"__"+"_".join(KeyValStrings)+"."+BaseTelescopeExFileName.split(".")[-1])
             elif SaveFileCommonStart:
-                DetectorNewExNames.append(SaveFileCommon+"_"+SourceIndices[ii]+"__"+"_".join(KeyValStrings)+"."+BaseTelescopeExFileName.split(".")[-1])
+                TelescopeNewExNames.append(SaveFileCommon+"_"+SourceIndices[ii]+"__"+"_".join(KeyValStrings)+"."+BaseTelescopeExFileName.split(".")[-1])
             else:
-                DetectorNewExNames.append(SaveFileCommon+"CombinationNo_"+SourceIndices[ii]+"__"+"_".join(KeyValStrings)+"."+BaseTelescopeExFileName.split(".")[-1])
+                TelescopeNewExNames.append(SaveFileCommon+"CombinationNo_"+SourceIndices[ii]+"__"+"_".join(KeyValStrings)+"."+BaseTelescopeExFileName.split(".")[-1])
 
         # Gether all information from each node
         pathlib.Path(SYNEX_PATH+"/TileTrackFiles/").mkdir(parents=True, exist_ok=True)
@@ -1922,15 +1936,15 @@ def TileSkyArea(CloningTrackFile=None,sources=None,telescopes=None,base_telescop
         SourceExNames=[s.ExistentialFileName for s in sources]
         if MPI_rank>0:
             comm.send(SourceExNames, dest=0)
-            comm.send(DetectorNewExNames, dest=0)
+            comm.send(TelescopeNewExNames, dest=0)
             comm.send(CloningCombs, dest=0)
         else:
             SourceExNamesAll=copy.deepcopy(SourceExNames)
-            DetectorNewExNamesAll=copy.deepcopy(DetectorNewExNames)
+            TelescopeNewExNamesAll=copy.deepcopy(TelescopeNewExNames)
             CloningCombsAll=copy.deepcopy(CloningCombs)
             for core_ii in range(1,MPI_size):
                 SourceExNamesAll+=comm.recv(source=core_ii)
-                DetectorNewExNamesAll+=comm.recv(source=core_ii)
+                TelescopeNewExNamesAll+=comm.recv(source=core_ii)
                 CloningCombsAll+=comm.recv(source=core_ii)
 
             # Save everything to txt file for tracking long lists of stuff on cluster -- Maybe this would be better as a dataframe save ? Easier to load again and handle using indexing to combinations ?
@@ -1939,8 +1953,8 @@ def TileSkyArea(CloningTrackFile=None,sources=None,telescopes=None,base_telescop
                 f.write(','.join(CloningKeys)+'\n')
                 f.write(BaseTelescopeName+'\n')
                 f.write(BaseTelescopeExFileName+'\n')
-                for DetEx,SouEx,Comb in zip(DetectorNewExNamesAll,SourceExNamesAll,CloningCombsAll):
-                    f.write(DetEx+":"+SouEx+":"+",".join([str(el) if not isinstance(el,(np.ndarray,list)) else str(el[-1]) for el in Comb])+'\n') ### Need a way to save arrays better for when we switch to gaps etc. Maybe then we will switch to a '.dat' savefile instead and just pickle everything.
+                for TelEx,SouEx,Comb in zip(TelescopeNewExNamesAll,SourceExNamesAll,CloningCombsAll):
+                    f.write(TelEx+":"+SouEx+":"+",".join([str(el) if not isinstance(el,(np.ndarray,list)) else str(el[-1]) for el in Comb])+'\n') ### Need a way to save arrays better for when we switch to gaps etc. Maybe then we will switch to a '.dat' savefile instead and just pickle everything.
     else:
         ###
         #
@@ -1955,20 +1969,20 @@ def TileSkyArea(CloningTrackFile=None,sources=None,telescopes=None,base_telescop
 
         # Set base Ex name for tiling call later -- maybe we can do better with the way things are structured here. Seems like there are two calls here...
         # Maybe set the cloning stuff in a seperate function to clean things up here.
-        DetectorNewExNames=None
+        TelescopeNewExNames=None
 
         # No cloning params - create detectors list from inputs
-        if base_telescope_params==None and detectors==None:
-            detectors=[SYDs.Athena(**{"verbose":verbose})]
-        elif base_telescope_params!=None and detectors==None:
-            detectors=[SYDs.Athena(**dict(base_telescope_params,**{"verbose":verbose}))]
-        elif detectors!=None:
-            if base_telescope_params!=None and verbose: print("WARNING :: Case of input detector list and base params ambiguous. Setting base params to None.")
+        if base_telescope_params==None and telescopes==None:
+            telescopes=[SYDs.Athena(**{"verbose":verbose})]
+        elif base_telescope_params!=None and telescopes==None:
+            telescopes=[SYDs.Athena(**dict(base_telescope_params,**{"verbose":verbose}))]
+        elif telescopes!=None:
+            if base_telescope_params!=None and verbose: print("WARNING :: Case of input telescope list and base params ambiguous. Setting base params to None.")
             base_telescope_params=None
-            if isinstance(detectors,list):
-                detectors=[SYDs.Athena(**dict(d,**{"verbose":verbose})) if isinstance(d,dict) else setattr(d,"verbose",verbose) for d in detectors]
+            if isinstance(telescopes,list):
+                telescopes=[SYDs.Athena(**dict(tel,**{"verbose":verbose})) if isinstance(tel,dict) else setattr(tel,"verbose",verbose) for tel in telescopes]
             else:
-                detectors=[SYDs.Athena(**detectors)] if isinstance(detectors,dict) else [detectors]
+                telescopes=[SYDs.Athena(**telescopes)] if isinstance(telescopes,dict) else [telescopes]
 
         # No cloning params - create sources list from inputs
         if sources==None:
@@ -1982,15 +1996,15 @@ def TileSkyArea(CloningTrackFile=None,sources=None,telescopes=None,base_telescop
             sources=[sources] # if MPI_rank==0 else None # if only one detector given
 
         # Check lengths of lists of objects and decide how many total tilings to do -- NB: both detectors and sources should now be lists but we never specified if they are the same length or not... Need to work on this ambiguous case...
-        Nsources,Ndetects = len(sources),len(detectors)
-        if Nsources>1 and Ndetects>1:
+        Nsources,Nteles = len(sources),len(telescopes)
+        if Nsources>1 and Nteles>1:
             # List of sources and list of detectors given... Ensure lengths are the same.
-            if Nsources!=Ndetects: raise ValueError("inputting a list of sources with a list of detectors with lengths not equal is ambiguous... Try implementing cloning function instead to ensure all combinations of sources and detectors are accounted for.")
+            if Nsources!=Nteles: raise ValueError("inputting a list of sources with a list of telescopes with lengths not equal is ambiguous... Try implementing cloning function instead to ensure all combinations of sources and telescopes are accounted for.")
             Nvals=Nsources
-        elif Nsources==1 and Ndetects>1:
+        elif Nsources==1 and Nteles>1:
             # List of detectors given
-            Nvals=Ndetects
-        elif Nsources>1 and Ndetects==1:
+            Nvals=Nteles
+        elif Nsources>1 and Nteles==1:
             # List of sources given
             Nvals=Nsources
         else:
@@ -2003,7 +2017,7 @@ def TileSkyArea(CloningTrackFile=None,sources=None,telescopes=None,base_telescop
             CoreLenVals=[NValsPerCore+1 if ii<Nvals%MPI_size else NValsPerCore for ii in range(MPI_size)]
             CPU_ENDs=list(np.cumsum(CoreLenVals))
             CPU_STARTs=[0]+CPU_ENDs[:-1]
-            detectors = [detectors[ii] for ii in range(CPU_STARTs[MPI_rank],CPU_ENDs[MPI_rank])]
+            telescopes = [telescopes[ii] for ii in range(CPU_STARTs[MPI_rank],CPU_ENDs[MPI_rank])]
             sources = [sources[ii] for ii in range(CPU_STARTs[MPI_rank],CPU_ENDs[MPI_rank])]
 
         # Sort some additional stuff
@@ -2011,14 +2025,14 @@ def TileSkyArea(CloningTrackFile=None,sources=None,telescopes=None,base_telescop
             ### Special case of single detector and single source ###
             # Not sure how to treat special case of many cores but one det and one source... Does gwemopt handle cores instrinsically? Need to verify this...
             # For now just have the master do stuff.
-            detectors=None
+            telescopes=None
             sources=None
         else:
             # Fill missing EM data
-            for s,d in zip(sources,detectors):
+            for s,tel in zip(sources,telescopes):
                 if not hasattr(s,"EM_Flux_Data"): s.GenerateEMFlux(fstart22=1e-4,TYPE="const",**{})
                 # Calculate source CTR data (detector dependent)
-                s.GenerateCTR(d.ARF_file_loc_name,gamma=1.7)
+                s.GenerateCTR(tel.ARF_file_loc_name,gamma=1.7)
 
     #####
     #
@@ -2033,42 +2047,42 @@ def TileSkyArea(CloningTrackFile=None,sources=None,telescopes=None,base_telescop
     #####
 
     # Tile stuff
-    if detectors!=None and sources!=None:
+    if telescopes!=None and sources!=None:
         # Output a check
-        print("Beginning tiling for",len(detectors),"detectors, and", len(sources),"sources...")
+        print("Beginning tiling for",len(telescopes),"telescopes, and", len(sources),"sources...")
 
         # Output location -- I think gwemopt_output folder is redundant now. Keep in case of relics.
         OutPutArch=SaveInSubFile.strip("/") if SaveInSubFile else None
 
         # Tile one by one using matching objects in each list
         T_tiling_start=time.time()
-        for ii,(s,d) in enumerate(zip(sources,detectors)):
+        for ii,(s,tel) in enumerate(zip(sources,telescopes)):
             print("-"*100)
             T_tiling_start_ii=time.time()
-            if d.detector_source_coverage==None: go_params, map_struct, tile_structs, coverage_struct, d = TileWithGwemopt(s,d,OutPutArch,verbose)
+            if tel.telescope_source_coverage==None: go_params, map_struct, tile_structs, coverage_struct, tel = TileWithGwemopt(s,tel,OutPutArch,verbose)
             T_tiling_end_ii=time.time()
-            print("Time to tile object no.",ii+1,"out of",len(detectors),":",T_tiling_end_ii-T_tiling_start_ii,"s")
+            print("Time to tile object no.",ii+1,"out of",len(telescopes),":",T_tiling_end_ii-T_tiling_start_ii,"s")
         T_tiling_end=time.time()
         TotTime=T_tiling_end-T_tiling_start
         TotTime=str(TotTime)+" s" if TotTime<3600. else str(TotTime/3600.)+" hr"
         print("-"*100)
-        print("Total time for",len(detectors),"objects:",TotTime)
+        print("Total time for",len(telescopes),"objects:",TotTime)
         print("-"*100)
 
         # Return detectors output list if we are not on cluster
-        if MPI_size==1: return detectors
-    elif DetectorNewExNames!=None and sources!=None: # Skip special case where sources==None for one input object each on cluster...
+        if MPI_size==1: return telescopes
+    elif TelescopeNewExNames!=None and sources!=None: # Skip special case where sources==None for one input object each on cluster...
         # Output check that cluster is provisioning correctly
-        print(MPI_rank+1,"/",MPI_size,"with",len(DetectorNewExNames),"/",Nvals,"detectors to tile, and ",len(sources),"/",Nvals,"sources to tile.")
+        print(MPI_rank+1,"/",MPI_size,"with",len(TelescopeNewExNames),"/",Nvals,"telescopes to tile, and ",len(sources),"/",Nvals,"sources to tile.")
 
         # Output location -- I think gwemopt_output folder is redundant now. Keep in case of relics.
         OutPutArch=SaveInSubFile.strip("/") if SaveInSubFile else None
 
         # Initiate empty detectors output list if we are not on cluster
-        if MPI_size==1: detectors_out=[]
+        if MPI_size==1: telescopes_out=[]
 
         # Loop over lists of sources and telescope save files
-        for i,ExName in enumerate(DetectorNewExNames):
+        for i,ExName in enumerate(TelescopeNewExNames):
             # Detector object vals -- load if file exists but include clone vals in case we changed something
             # (then we recalculate everything)
             Dictii=dict(base_telescope_params,
@@ -2081,31 +2095,31 @@ def TileSkyArea(CloningTrackFile=None,sources=None,telescopes=None,base_telescop
                       **{CloningKeys[jj]:CloningCombs[i][jj] for jj in range(len(CloningKeys)) if CloningKeys[jj] not in ["Tcut"]})
 
             # Detector object
-            detector=SYDs.Athena(**Dictii) ## IF a param changed from existing detect file, Athena innit function forces detector_source_coverage = None.
+            telescope=SYTs.Athena(**Dictii) ## IF a param changed from existing detect file, Athena innit function forces detector_source_coverage = None.
 
             # Tile
             if MPI_rank==0:
                 t_tile0=time.time()
-                DetectorCovered=True if detector.detector_source_coverage==None else False
-                PrintMsg=detector.detector_source_coverage["source save file"] if detector.detector_source_coverage!=None else "No source coverage..."
+                TelescopeCovered=True if telescope.telescope_source_coverage==None else False
+                PrintMsg=telescope.telescope_source_coverage["source save file"] if telescope.telescope_source_coverage!=None else "No source coverage..."
                 print("Pre-tiling master node check:",PrintMsg)
-            if detector.detector_source_coverage==None: go_params, map_struct, tile_structs, coverage_struct, detector_out = TileWithGwemopt(sources[i],detector,OutPutArch,verbose)
+            if telescope.telescope_source_coverage==None: go_params, map_struct, tile_structs, coverage_struct, telescope_out = TileWithGwemopt(sources[i],telescope,OutPutArch,verbose)
             if MPI_rank==0:
                 t_tile1=time.time()
-                PrintMsg=detector_out.detector_source_coverage["source save file"] if detector_out.detector_source_coverage!=None else "No source coverage..."
+                PrintMsg=telescope_out.telescope_source_coverage["source save file"] if telescope_out.telescope_source_coverage!=None else "No source coverage..."
                 print("Post-tiling master node check:",PrintMsg)
-                print("Time for telescope",i+1,"/",len(DetectorNewExNames),"by master rank:",t_tile1-t_tile0,"s, with source coverage tileranges:",detector_out.detector_source_coverage["Source tile timeranges (isot)"],"\n")
+                print("Time for telescope",i+1,"/",len(TelescopeNewExNames),"by master rank:",t_tile1-t_tile0,"s, with source coverage tileranges:",telescope_out.telescope_source_coverage["Source tile timeranges (isot)"],"\n")
 
             # Add source IDs
-            detector_out.detector_source_coverage["source ID"] = SourceIndices[i]
+            telescope_out.telescope_source_coverage["source ID"] = SourceIndices[i]
 
             # Add to detectors output list if we not on cluster
-            if MPI_size==1: detectors_out.append(detector_out)
+            if MPI_size==1: telescopes_out.append(telescope_out)
 
         # Return detectors output list if we are not on cluster
-        if MPI_size==1: return detectors_out
+        if MPI_size==1: return telescopes_out
     else:
-        print(MPI_rank,"/",MPI_size,"with 0 /",Nvals,"detectors to tile, and 0 /",Nvals,"sources to tile.")
+        print(MPI_rank,"/",MPI_size,"with 0 /",Nvals,"telescopes to tile, and 0 /",Nvals,"sources to tile.")
 
 def TileWithGwemopt(source,telescope,outDirExtension=None,verbose=True):
     """
@@ -2128,47 +2142,47 @@ def TileWithGwemopt(source,telescope,outDirExtension=None,verbose=True):
     elif go_params["tilesType"]=="moc":
         moc_structs = gwemopt.moc.create_moc(go_params, map_struct=map_struct)
         tile_structs = gwemopt.tiles.moc(go_params,map_struct,moc_structs,doSegments=False) # doSegments=False ?? Only for 'moc'... Otherwise it calls gwemopt.segments.get_segments_tiles
-        for telescope in tile_structs.keys():
-            tile_structs[telescope] = segs_a.get_segments_tiles(go_params, go_params["config"][telescope], tile_structs[telescope], verbose)
+        for tel in tile_structs.keys():
+            tile_structs[tel] = segs_a.get_segments_tiles(go_params, go_params["config"][tel], tile_structs[tel], verbose)
     elif go_params["tilesType"]=="greedy":
         tile_structs = gwemopt.tiles.greedy(go_params,map_struct)
         go_params["Ntiles"] = []
-        for telescope in go_params["telescopes"]:
-            tile_structs[telescope] = segs_a.get_segments_tiles(go_params, go_params["config"][telescope], tile_structs[telescope], verbose) # replace segs with our own
-            go_params["config"][telescope]["tesselation"] = np.empty((0,3))
-            tiles_struct = tile_structs[telescope]
+        for tel in go_params["telescopes"]:
+            tile_structs[tel] = segs_a.get_segments_tiles(go_params, go_params["config"][tel], tile_structs[tel], verbose) # replace segs with our own
+            go_params["config"][tel]["tesselation"] = np.empty((0,3))
+            tiles_struct = tile_structs[tel]
             for index in tiles_struct.keys():
                 ra, dec = tiles_struct[index]["ra"], tiles_struct[index]["dec"]
-                go_params["config"][telescope]["tesselation"] = np.append(go_params["config"][telescope]["tesselation"],[[index,ra,dec]],axis=0)
+                go_params["config"][tel]["tesselation"] = np.append(go_params["config"][tel]["tesselation"],[[index,ra,dec]],axis=0)
             go_params["Ntiles"].append(len(tiles_struct.keys()))
     elif go_params["tilesType"]=="hierarchical":
         tile_structs = gwemopt.tiles.hierarchical(go_params,map_struct) # ,doSegments=False)
         go_params["Ntiles"] = []
-        for telescope in go_params["telescopes"]:
-            tile_structs[telescope] = segs_a.get_segments_tiles(go_params, go_params["config"][telescope], tile_structs[telescope], verbose) # replace segs with our own
-            go_params["config"][telescope]["tesselation"] = np.empty((0,3))
-            tiles_struct = tile_structs[telescope]
+        for tel in go_params["telescopes"]:
+            tile_structs[tel] = segs_a.get_segments_tiles(go_params, go_params["config"][tel], tile_structs[tel], verbose) # replace segs with our own
+            go_params["config"][tel]["tesselation"] = np.empty((0,3))
+            tiles_struct = tile_structs[tel]
             for index in tiles_struct.keys():
                 ra, dec = tiles_struct[index]["ra"], tiles_struct[index]["dec"]
-                go_params["config"][telescope]["tesselation"] = np.append(go_params["config"][telescope]["tesselation"],[[index,ra,dec]],axis=0)
+                go_params["config"][tel]["tesselation"] = np.append(go_params["config"][tel]["tesselation"],[[index,ra,dec]],axis=0)
             go_params["Ntiles"].append(len(tiles_struct.keys()))
     elif go_params["tilesType"]=="ranked":
         # Get tiling structs
         moc_structs = gwemopt.rankedTilesGenerator.create_ranked(go_params,map_struct)
         tile_structs = gwemopt.tiles.moc(go_params,map_struct,moc_structs,doSegments=False)
-        for telescope in tile_structs.keys():
-            tile_structs[telescope] = segs_a.get_segments_tiles(go_params, go_params["config"][telescope], tile_structs[telescope], verbose)
+        for tel in tile_structs.keys():
+            tile_structs[tel] = segs_a.get_segments_tiles(go_params, go_params["config"][tel], tile_structs[tel], verbose)
     elif go_params["tilesType"]=="galaxy":
         # Really not sure how this works and where segments are calculated... Use this method with care.
         map_struct, catalog_struct = gwemopt.catalog.get_catalog(go_params, map_struct)
         tile_structs = gwemopt.tiles.galaxy(go_params,map_struct,catalog_struct)
-        for telescope in go_params["telescopes"]:
+        for tel in go_params["telescopes"]:
             # tile_structs[telescope] = segs_a.get_segments_tiles(go_params, go_params["config"][telescope], tile_structs[telescope], verbose)
-            go_params["config"][telescope]["tesselation"] = np.empty((0,3))
-            tiles_struct = tile_structs[telescope]
+            go_params["config"][tel]["tesselation"] = np.empty((0,3))
+            tiles_struct = tile_structs[tel]
             for index in tiles_struct.keys():
                 ra, dec = tiles_struct[index]["ra"], tiles_struct[index]["dec"]
-                go_params["config"][telescope]["tesselation"] = np.append(go_params["config"][telescope]["tesselation"],[[index,ra,dec]],axis=0)
+                go_params["config"][tel]["tesselation"] = np.append(go_params["config"][tel]["tesselation"],[[index,ra,dec]],axis=0)
 
     # Allocate times to tiles
     tile_structs, coverage_struct = gwemopt.coverage.timeallocation(go_params, map_struct, tile_structs)
@@ -2415,14 +2429,14 @@ def WriteSkymapToFile(map_struct,SkyMapFileName,go_params=None,PermissionToWrite
 
     # Write to fits file
     if "distmu" in map_struct:
-        data_to_save = np.vstack((map_struct["prob"], map_struct["cumprob"], map_struct["ipix_keep"], map_struct["pixarea"], map_struct["pixarea_deg2"],map_struct["distmu"],map_struct["distsigma"],map_struct["distnorm"]))
+        data_to_save = np.vstack((map_struct["prob"], map_struct["distmu"], map_struct["distsigma"], map_struct["distnorm"])) # np.vstack((map_struct["prob"], map_struct["cumprob"], map_struct["ipix_keep"], map_struct["pixarea"], map_struct["pixarea_deg2"],map_struct["distmu"],map_struct["distsigma"],map_struct["distnorm"]))
         if PermissionToWrite:
-            hp.write_map(SkyMapFileName, data_to_save, overwrite=True)
+            hp.write_map(SkyMapFileName, data_to_save, overwrite=True, column_names=["prob", "distmu", "distsigma", "distnorm"])
         if go_params!=None:
             go_params["do3D"]=True
     elif PermissionToWrite:
-        data_to_save = np.vstack((map_struct["prob"], map_struct["cumprob"], map_struct["ipix_keep"], map_struct["pixarea"], map_struct["pixarea_deg2"]))
-        hp.write_map(SkyMapFileName, data_to_save, overwrite=True)
+        data_to_save = map_struct["prob"] # np.vstack((map_struct["prob"], map_struct["cumprob"], map_struct["ipix_keep"], map_struct["pixarea"], map_struct["pixarea_deg2"]))
+        hp.write_map(SkyMapFileName, data_to_save, overwrite=True, column_names=["prob"])
 
     if go_params!=None:
         # update the filename stored in go_params
@@ -4055,7 +4069,7 @@ def CreateDataFrameFromDetectorList(telescopes, SaveFile=None):
     # List of all params of interest... This should not be hardcoded moving forward as a priori we don't know what is interesting...
     SourceTestParamKeys = ["M","q","chi1","chi2","lambda","beta", "dist", "DeltatL_cut"]
     telescopeTestParamKeys = ["Tobs", "exposuretime","n_photons_per_tile","n_photons","DaysToSourceExp"]
-    AllTestParamKeys = SourceTestParamKeys+DetectorTestParamKeys
+    AllTestParamKeys = SourceTestParamKeys+telescopeTestParamKeys
     AllTestParams = {key:[] for key in AllTestParamKeys}
 
     # Load params
@@ -4105,7 +4119,7 @@ def CreateDataFrameFromDetectorList(telescopes, SaveFile=None):
             AllTestParams["Fisher Area (sq deg)"]=source.FisherSkyArea
             AllTestParams["Posterior Area (sq deg)"]=source.PostSkyArea
             # Re-write source and detector savefiles so everything is right
-            d.ExistentialCrisis()
+            tel.ExistentialCrisis()
             source.ExistentialCrisis()
         ##################################################### TMP CODE #####################################################
 

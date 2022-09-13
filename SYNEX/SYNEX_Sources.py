@@ -537,49 +537,61 @@ class SMBH_Merger:
         self.map_struct={}
         try:
             # 3D case
-            healpix_data, header = hp.read_map(self.sky_map,field=(0,1,2,3,4,5,6,7),h=True,verbose=self.verbose)
+            healpix_data, header = hp.read_map(self.sky_map,field=(0,1,2,3,4,5,6,7),h=True,verbose=self.verbose) # field=(0,1,2,3,4,5,6,7),h=True,verbose=self.verbose)
             prob_data = healpix_data[0]
-            cumprob_data = healpix_data[1]
-            ipix_keep_data = healpix_data[2]
-            pixarea_data = healpix_data[3]
-            pixarea_deg2_data = healpix_data[4]
-            distmu_data = healpix_data[5]
-            distsigma_data = healpix_data[6]
-            norm_data = healpix_data[7]
+            # cumprob_data = healpix_data[1]
+            # ipix_keep_data = healpix_data[2]
+            # pixarea_data = healpix_data[3]
+            # pixarea_deg2_data = healpix_data[4]
+            distmu_data = healpix_data[1] # [5]
+            distsigma_data = healpix_data[2] # [6]
+            norm_data = healpix_data[3] # [7]
 
             self.map_struct["prob"] = prob_data
-            self.map_struct["cumprob"] = cumprob_data
-            self.map_struct["ipix_keep"] = ipix_keep_data
-            self.map_struct["pixarea"] = pixarea_data
-            self.map_struct["pixarea_deg2"] = pixarea_deg2_data
+            # self.map_struct["cumprob"] = cumprob_data
+            # self.map_struct["ipix_keep"] = ipix_keep_data
+            # self.map_struct["pixarea"] = pixarea_data
+            # self.map_struct["pixarea_deg2"] = pixarea_deg2_data
             self.map_struct["distmu"] = distmu_data # / params["DScale"]
             self.map_struct["distsigma"] = distsigma_data # / params["DScale"]
             self.map_struct["distnorm"] = norm_data
             self.do3D = True
         except:
             # 1D case
-            healpix_data, header = hp.read_map(self.sky_map,field=(0,1,2,3,4),h=True,verbose=self.verbose)
+            healpix_data, header = hp.read_map(self.sky_map,field=(0),h=True,verbose=self.verbose) # field=(0,1,2,3,4),h=True,verbose=self.verbose)
             prob_data = healpix_data[0]
-            cumprob_data = healpix_data[1]
-            ipix_keep_data = healpix_data[2]
-            pixarea_data = healpix_data[3]
-            pixarea_deg2_data = healpix_data[4]
+            # cumprob_data = healpix_data[1]
+            # ipix_keep_data = healpix_data[2]
+            # pixarea_data = healpix_data[3]
+            # pixarea_deg2_data = healpix_data[4]
             prob_data = prob_data/np.sum(prob_data)
             self.map_struct["prob"] = prob_data
-            self.map_struct["cumprob"] = cumprob_data
-            self.map_struct["ipix_keep"] = ipix_keep_data
-            self.map_struct["pixarea"] = pixarea_data
-            self.map_struct["pixarea_deg2"] = pixarea_deg2_data
+            # self.map_struct["cumprob"] = cumprob_data
+            # self.map_struct["ipix_keep"] = ipix_keep_data
+            # self.map_struct["pixarea"] = pixarea_data
+            # self.map_struct["pixarea_deg2"] = pixarea_deg2_data
             self.do3D = False
 
+        # Pixel locations
+        print("loaded map struct probability properties",type(self.map_struct["prob"]), np.shape(self.map_struct["prob"]))
         nside = hp.pixelfunc.get_nside(self.map_struct["prob"])
-        npix = hp.nside2npix(nside) # len(self.map_struct["prob"])
+        npix = hp.nside2npix(nside)
         theta, phi = hp.pix2ang(nside, np.arange(npix))
         ra = np.rad2deg(phi)
         dec = np.rad2deg(0.5*np.pi - theta)
-
         self.map_struct["ra"] = ra
         self.map_struct["dec"] = dec
+
+        # Get additional data required by GWEMOPT
+        sort_idx = np.argsort(self.map_struct["prob"])[::-1]
+        csm = np.empty(len(self.map_struct["prob"]))
+        csm[sort_idx] = np.cumsum(self.map_struct["prob"][sort_idx])
+        self.map_struct["cumprob"] = csm
+        self.map_struct["ipix_keep"] = np.where(csm <= 1.)[0] # params["iterativeOverlap"])[0]
+        pixarea = hp.nside2pixarea(nside)
+        pixarea_deg2 = hp.nside2pixarea(nside, degrees=True)
+        self.map_struct["pixarea"] = pixarea
+        self.map_struct["pixarea_deg2"] = pixarea_deg2
 
         # Posterior data sky area :: in sq. deg
         self.PostSkyArea = self.calculatePostSkyArea()
@@ -692,6 +704,8 @@ class SMBH_Merger:
         map_struct["pixarea"] = pixarea
         map_struct["pixarea_deg2"] = pixarea_deg2
 
+        print("calculated map struct probability properties",type(map_struct["prob"]), np.shape(map_struct["prob"]))
+
         # create class attribute
         self.map_struct=map_struct
 
@@ -724,11 +738,18 @@ class SMBH_Merger:
             param_dict = data["source_params"]
             waveform_params = data["waveform_params"]
 
-            # Get fishercov from lisabeta functions
-            fishercov = lisa_fisher.fisher_covariance_smbh(param_dict, **waveform_params)
+            try:
+                # Get fishercov from lisabeta functions
+                fishercov = lisa_fisher.fisher_covariance_smbh(param_dict, **waveform_params)
 
-            # Use lisatools in lisabeta for consistent sky area calculation
-            FisherSkyArea = lisatools.sky_area_cov(fishercov, sq_deg=True, n_sigma=None, prob=ConfLevel)
+                # Use lisatools in lisabeta for consistent sky area calculation
+                FisherSkyArea = lisatools.sky_area_cov(fishercov, sq_deg=True, n_sigma=None, prob=ConfLevel)
+            except:
+                print("Lisabeta Fisher calls failed. If you asked for multimodal and DeltatL_cut, it might be because the cut is too close to the start freqs for each mode and one or more mode cannot initiate. Lisabeta does not contain a check for a non-zero mode signal, so we try again here with (2,2) only... Possibly will get errors when saving skymap. Think about lowering Mtot, for example, as this tends to be the only solution.")
+                waveform_params["approximant"]="IMRPhenomD"
+                fishercov = lisa_fisher.fisher_covariance_smbh(param_dict, **waveform_params)
+                FisherSkyArea = lisatools.sky_area_cov(fishercov, sq_deg=True, n_sigma=None, prob=ConfLevel)
+                print("Found area:",FisherSkyArea)
         else:
             FisherSkyArea = None
 

@@ -492,9 +492,15 @@ class SMBH_Merger:
                 self.sky_map=SkyMapPath+"/"+self.sky_map.split("/")[-1]
                 pathlib.Path(SkyMapPath).mkdir(parents=True, exist_ok=True)
 
-        # Extra useful params -- this needs converting from LISA frame...
-        self.true_ra = np.rad2deg(self.lamda) if self.lamda<np.pi else np.rad2deg(self.lamda+2.*np.pi)   ## In deg
-        self.true_dec = np.rad2deg(self.beta)         ## In deg
+        # True location for gwemopt -- make sure to convert from L frame to SSB
+        if self.Lframe:
+            params_Lframe = {"Lframe":self.Lframe, "Deltat":self.Deltat, "lambda":self.lamda, "beta":self.beta, "psi":self.psi}
+            params_SSBframe=lisatools.convert_Lframe_to_SSBframe(params_Lframe, t0=self.t0, self.frozenLISA)
+            self.true_ra = np.rad2deg(self.lamda) if self.lamda<np.pi else np.rad2deg(self.lamda+2.*np.pi)   ## In deg
+            self.true_dec = np.rad2deg(self.beta)         ## In deg
+        else:
+            self.true_ra = np.rad2deg(self.lamda) if self.lamda<np.pi else np.rad2deg(self.lamda+2.*np.pi)   ## In deg
+            self.true_dec = np.rad2deg(self.beta)         ## In deg
         self.true_distance = self.dist                ## in Mpc
 
         # Now check if sky_map needs creating or reading -- adaptation for 3D case needed here...
@@ -602,19 +608,35 @@ class SMBH_Merger:
     def CreateSkyMapStruct(self,SkyMapFileName=None):
         # if SkyMapFileName given then preferentially save to this filename.
         # This is checked in SYU.WriteSkymapToFile just before writing to file.
-        if SkyMapFileName!=None:
-            self.sky_map = SkyMapFileName
+        if SkyMapFileName!=None: self.sky_map = SkyMapFileName
 
         # Read in data from file
-        [infer_params, _, _, _] = SYU.read_h5py_file(self.H5File)
+        [infer_params, inj_param_vals, _, _] = SYU.read_h5py_file(self.H5File)
         if np.size(infer_params["lambda"][0])>1:
             nsamples = len(infer_params["lambda"][0])
         else:
             nsamples = len(infer_params["lambda"])
 
-        # Convert post angles to theta,phi   ###################### CONVERT FROM LISA FRAME TO ATHENA FRAME ######################
-        post_phis = [l if l<np.pi else np.pi-l for l in infer_params["lambda"]]
-        post_thetas = np.pi/2.-infer_params["beta"]
+        # # Convert posterior chains to SSB frame if in L frame
+        with open(self.JsonFile) as f: data = json.load(f)
+        if data["run_params"]["sample_Lframe"]:
+            params_Lframe = {}
+            params_Lframe["Deltat"]=infer_params["Deltat"] if "Deltat" in infer_params else inj_param_vals["source_params_Lframe"]["Deltat"]
+            params_Lframe["lambda"]=infer_params["lambda"] if "lambda" in infer_params else inj_param_vals["source_params_Lframe"]["lambda"]
+            params_Lframe["beta"]=infer_params["beta"] if "beta" in infer_params else inj_param_vals["source_params_Lframe"]["beta"]
+            params_Lframe["psi"]=infer_params["psi"] if "psi" in infer_params else inj_param_vals["source_params_Lframe"]["psi"]
+            params_Lframe["Lframe"]=data["run_params"]["sample_Lframe"]
+            params_SSBframe=lisatools.convert_Lframe_to_SSBframe(params_Lframe, t0=data["waveform_params"]["t0"], frozenLISA=data["waveform_params"]["frozenLISA"])
+        else:
+            params_SSBframe = {}
+            params_SSBframe["Deltat"]=infer_params["Deltat"] if "Deltat" in infer_params else inj_param_vals["source_params_SSBframe"]["Deltat"]
+            params_SSBframe["lambda"]=infer_params["lambda"] if "lambda" in infer_params else inj_param_vals["source_params_SSBframe"]["lambda"]
+            params_SSBframe["beta"]=infer_params["beta"] if "beta" in infer_params else inj_param_vals["source_params_SSBframe"]["beta"]
+            params_SSBframe["psi"]=infer_params["psi"] if "psi" in infer_params else inj_param_vals["source_params_SSBframe"]["psi"]
+
+        # Convert post angles to theta,phi   ###################### CONVERT FROM lam/bet TO ATHENA FRAME ? CHECK THIS IS RIGHT!!! ######################
+        post_phis = [l if l<np.pi else np.pi-l for l in params_SSBframe["lambda"]]
+        post_thetas = np.pi/2.-params_SSBframe["beta"]
 
         # Start with basic pixel resolution
         nside=32

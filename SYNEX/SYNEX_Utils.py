@@ -2435,8 +2435,9 @@ def WriteSkymapToFile(map_struct,SkyMapFileName,go_params=None,PermissionToWrite
         if go_params!=None:
             go_params["do3D"]=True
     elif PermissionToWrite:
+        print("skymap properties pre-save:",type(map_struct["prob"]), np.shape(map_struct["prob"]))
         data_to_save = map_struct["prob"] # np.vstack((map_struct["prob"], map_struct["cumprob"], map_struct["ipix_keep"], map_struct["pixarea"], map_struct["pixarea_deg2"]))
-        hp.write_map(SkyMapFileName, data_to_save, overwrite=True, column_names=["prob"])
+        hp.write_map(SkyMapFileName, data_to_save, overwrite=True) # , column_names=["prob"])
 
     if go_params!=None:
         # update the filename stored in go_params
@@ -2466,15 +2467,15 @@ def PlotSkyMapData(source,SaveFig=False,plotName=None):
     unit='Gravitational-wave probability'
     cbar=False
 
-    lons = np.arange(-150.0,180,30.0) #
-    lats = np.zeros(lons.shape)
-
     if np.percentile(source.map_struct["prob"],99) > 0:
         hp.mollview(source.map_struct["prob"],title='',unit=unit,cbar=cbar,min=np.percentile(source.map_struct["prob"],1),max=np.percentile(source.map_struct["prob"],99),cmap=cmap)
     else:
         hp.mollview(source.map_struct["prob"],title='',unit=unit,cbar=cbar,min=np.percentile(source.map_struct["prob"],1),cmap=cmap)
 
-    hp.projplot(source.true_ra, source.true_dec, lonlat=True, coord='G', marker='D', markersize=1.7, c='blue', linestyle='None', label='true location')
+    # Projplot has funky conventions... This was discovered playing around with coordinates and seeing how they moved. They inverted phi and this needs to be in radians...
+    phi = -source.true_lamdaSSB
+    theta = np.pi/2-source.true_betaSSB
+    hp.projplot(theta, phi, lonlat=False, coord=None, marker='D', markersize=1.7, c='blue', linestyle='None', label='true location')
     plt.legend()
 
     add_edges()
@@ -3302,6 +3303,7 @@ def PlotInferenceLambdaBeta(FileName, bins=50, SkyProjection=False, SaveFig=Fals
 
     # Unpack the data
     [infer_params, inj_param_vals, static_params, meta_data] = read_h5py_file(H5FileLocAndName)
+    with open(JsonFileLocAndName) as f: Jsondata = json.load(f)
     ndim = len(infer_params.keys())
     labels = list(infer_params.keys())
     if np.size(infer_params[labels[0]][0])>1:
@@ -3328,7 +3330,10 @@ def PlotInferenceLambdaBeta(FileName, bins=50, SkyProjection=False, SaveFig=Fals
     # Get injected values
     InjParam_InjVals = []
     for key in infer_params.keys():
-        InjParam_InjVals.append(inj_param_vals["source_params_Lframe"][key][0]) # Lframe is right.
+        if Jsondata["run_params"]["sample_Lframe"]:
+            InjParam_InjVals.append(inj_param_vals["source_params_Lframe"][key][0])
+        else:
+            InjParam_InjVals.append(inj_param_vals["source_params_SSBframe"][key][0])
 
     # Scatter plot of labmda and beta posterior chains, marginalized over all other params
     # fig,ax = plt.figure()
@@ -3408,10 +3413,17 @@ def PlotInferenceLambdaBeta(FileName, bins=50, SkyProjection=False, SaveFig=Fals
     plt.plot(InjParam_InjVals[5], InjParam_InjVals[0], "sr")
     plt.plot(SampleModes[5], SampleModes[0], "sb")
 
+    # legend informing if we are Lframe or not
+    plt.legend("Lframe:",str(Jsondata["run_params"]["sample_Lframe"]))
+
     # Labels
     if not SkyProjection:
-        plt.xlabel(labels[5]) # Lambda
-        plt.ylabel(labels[0]) # beta
+        if Jsondata["run_params"]["sample_Lframe"]:
+            plt.xlabel(labels[5]+r"$_{L}$") # Lambda
+            plt.ylabel(labels[0]+r"$_{L}$") # beta
+        else:
+            plt.xlabel(labels[5]+r"$_{SSB}$") # Lambda
+            plt.ylabel(labels[0]+r"$_{SSB}$") # beta
 
     # show now or return?
     if not return_data:

@@ -492,17 +492,6 @@ class SMBH_Merger:
                 self.sky_map=SkyMapPath+"/"+self.sky_map.split("/")[-1]
                 pathlib.Path(SkyMapPath).mkdir(parents=True, exist_ok=True)
 
-        # True location for gwemopt -- make sure to convert from L frame to SSB
-        if self.Lframe:
-            params_Lframe = {"Lframe":self.Lframe, "Deltat":self.Deltat, "lambda":self.lamda, "beta":self.beta, "psi":self.psi}
-            params_SSBframe=lisatools.convert_Lframe_to_SSBframe(params_Lframe, t0=self.t0, self.frozenLISA)
-            self.true_ra = np.rad2deg(self.lamda) if self.lamda<np.pi else np.rad2deg(self.lamda+2.*np.pi)   ## In deg
-            self.true_dec = np.rad2deg(self.beta)         ## In deg
-        else:
-            self.true_ra = np.rad2deg(self.lamda) if self.lamda<np.pi else np.rad2deg(self.lamda+2.*np.pi)   ## In deg
-            self.true_dec = np.rad2deg(self.beta)         ## In deg
-        self.true_distance = self.dist                ## in Mpc
-
         # Now check if sky_map needs creating or reading -- adaptation for 3D case needed here...
         if MUTATED and self.H5File!=None and os.path.isfile(self.H5File):
             if self.sky_map==None:
@@ -543,7 +532,7 @@ class SMBH_Merger:
         self.map_struct={}
         try:
             # 3D case
-            healpix_data, header = hp.read_map(self.sky_map,field=(0,1,2,3,4,5,6,7),h=True,verbose=self.verbose) # field=(0,1,2,3,4,5,6,7),h=True,verbose=self.verbose)
+            healpix_data, header = hp.read_map(self.sky_map,field=(0,1,2,3),h=True,verbose=self.verbose) # field=(0,1,2,3,4,5,6,7),h=True,verbose=self.verbose)
             prob_data = healpix_data[0]
             # cumprob_data = healpix_data[1]
             # ipix_keep_data = healpix_data[2]
@@ -565,7 +554,7 @@ class SMBH_Merger:
         except:
             # 1D case
             healpix_data, header = hp.read_map(self.sky_map,field=(0),h=True,verbose=self.verbose) # field=(0,1,2,3,4),h=True,verbose=self.verbose)
-            prob_data = healpix_data[0]
+            prob_data = healpix_data # [0]
             # cumprob_data = healpix_data[1]
             # ipix_keep_data = healpix_data[2]
             # pixarea_data = healpix_data[3]
@@ -617,26 +606,53 @@ class SMBH_Merger:
         else:
             nsamples = len(infer_params["lambda"])
 
-        # # Convert posterior chains to SSB frame if in L frame
+        # True locations for gwewmopt in SSB frame
         with open(self.JsonFile) as f: data = json.load(f)
+        if data["source_params"]["Lframe"]:
+            # Can't take from "source_params_SSBframe" because this hsn't saved for some reason...
+            # So we include explicit conversion here just in case.
+            params_SSBframe=lisatools.convert_Lframe_to_SSBframe(data["source_params"], t0=data["waveform_params"]["t0"], frozenLISA=data["waveform_params"]["frozenLISA"])
+            l=params_SSBframe["lambda"]
+            b=params_SSBframe["beta"]
+            d=params_SSBframe["dist"]
+        else:
+            l=inj_param_vals["source_params_SSBframe"]["lambda"][0]
+            b=inj_param_vals["source_params_SSBframe"]["beta"][0]
+            d=inj_param_vals["source_params_SSBframe"]["dist"][0]
+        self.true_ra = np.rad2deg(l) if l>0. else np.rad2deg(2.*np.pi+l) ## In deg
+        self.true_dec = np.rad2deg(b)                                 ## In deg
+        self.true_lamdaSSB = l                                        ## In rad
+        self.true_betaSSB = b                                         ## In rad
+        self.true_distance = d                                        ## in Mpc
+
+        # Convert posterior chains to SSB frame if in L frame (NB: inj_param_vals is an h5 dataset, not a dictionary)
         if data["run_params"]["sample_Lframe"]:
             params_Lframe = {}
-            params_Lframe["Deltat"]=infer_params["Deltat"] if "Deltat" in infer_params else inj_param_vals["source_params_Lframe"]["Deltat"]
-            params_Lframe["lambda"]=infer_params["lambda"] if "lambda" in infer_params else inj_param_vals["source_params_Lframe"]["lambda"]
-            params_Lframe["beta"]=infer_params["beta"] if "beta" in infer_params else inj_param_vals["source_params_Lframe"]["beta"]
-            params_Lframe["psi"]=infer_params["psi"] if "psi" in infer_params else inj_param_vals["source_params_Lframe"]["psi"]
+            params_Lframe["Deltat"]=infer_params["Deltat"] if "Deltat" in infer_params else inj_param_vals["source_params_Lframe"]["Deltat"][0]
+            params_Lframe["lambda"]=infer_params["lambda"] if "lambda" in infer_params else inj_param_vals["source_params_Lframe"]["lambda"][0]
+            params_Lframe["beta"]=infer_params["beta"] if "beta" in infer_params else inj_param_vals["source_params_Lframe"]["beta"][0]
+            params_Lframe["psi"]=infer_params["psi"] if "psi" in infer_params else inj_param_vals["source_params_Lframe"]["psi"][0]
             params_Lframe["Lframe"]=data["run_params"]["sample_Lframe"]
             params_SSBframe=lisatools.convert_Lframe_to_SSBframe(params_Lframe, t0=data["waveform_params"]["t0"], frozenLISA=data["waveform_params"]["frozenLISA"])
         else:
             params_SSBframe = {}
-            params_SSBframe["Deltat"]=infer_params["Deltat"] if "Deltat" in infer_params else inj_param_vals["source_params_SSBframe"]["Deltat"]
-            params_SSBframe["lambda"]=infer_params["lambda"] if "lambda" in infer_params else inj_param_vals["source_params_SSBframe"]["lambda"]
-            params_SSBframe["beta"]=infer_params["beta"] if "beta" in infer_params else inj_param_vals["source_params_SSBframe"]["beta"]
-            params_SSBframe["psi"]=infer_params["psi"] if "psi" in infer_params else inj_param_vals["source_params_SSBframe"]["psi"]
+            params_SSBframe["Deltat"]=infer_params["Deltat"] if "Deltat" in infer_params else inj_param_vals["source_params_SSBframe"]["Deltat"][0]
+            params_SSBframe["lambda"]=infer_params["lambda"] if "lambda" in infer_params else inj_param_vals["source_params_SSBframe"]["lambda"][0]
+            params_SSBframe["beta"]=infer_params["beta"] if "beta" in infer_params else inj_param_vals["source_params_SSBframe"]["beta"][0]
+            params_SSBframe["psi"]=infer_params["psi"] if "psi" in infer_params else inj_param_vals["source_params_SSBframe"]["psi"][0]
 
-        # Convert post angles to theta,phi   ###################### CONVERT FROM lam/bet TO ATHENA FRAME ? CHECK THIS IS RIGHT!!! ######################
-        post_phis = [l if l<np.pi else np.pi-l for l in params_SSBframe["lambda"]]
-        post_thetas = np.pi/2.-params_SSBframe["beta"]
+        # Convert post angles to theta,phi according to conventions used in hp.projplot... (foudn by trial and error)
+        # import matplotlib.pyplot as plt
+        # plt.scatter(params_SSBframe["lambda"],params_SSBframe["beta"],label='SSB')
+        # plt.scatter(infer_params["lambda"],infer_params["beta"],label='L')
+        # plt.scatter(self.true_lamdaSSB, self.true_betaSSB, label='True SSB')
+        # plt.scatter(self.lamda, self.beta, label='True L')
+        # plt.xlim([-np.pi, np.pi])
+        # plt.ylim([-np.pi/2., np.pi/2.])
+        # plt.legend()
+        # plt.show()
+        post_phis = -params_SSBframe["lambda"]
+        post_thetas = np.pi/2-params_SSBframe["beta"]
 
         # Start with basic pixel resolution
         nside=32
@@ -645,8 +661,6 @@ class SMBH_Merger:
 
         # Pixel probability according to location -- np.bincount is faster than np.histogram.
         probs = np.bincount(post_pix,weights=np.array([1./nsamples]*nsamples), minlength=npix)
-        # bins=np.arange(npix+1)
-        # probs2,_ = np.histogram(post_pix, bins=bins, density=True) # returns the right normalization because bin widths=1.
 
         # Check what average non-zero bin population is
         non_zero_counts = nsamples*probs[np.where(probs>0)[0]]

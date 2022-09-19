@@ -92,8 +92,22 @@ try:
 except ModuleNotFoundError:
     MPI = None
 
-# global variable for histogram plots and mode calculations
+# global bins variable for histogram plots and mode calculations.
 hist_n_bins=1000
+
+# List of main source parameters according to lisabeta input dictionaries.
+list_params = [
+    "M",
+    "q",
+    "chi1",
+    "chi2",
+    "Deltat",
+    "dist",
+    "inc",
+    "phi",
+    "lambda",
+    "beta",
+    "psi"]
 
 
 
@@ -107,17 +121,19 @@ hist_n_bins=1000
 #                     #################################
 
 def ClassesToParams(source, detector=None, CollectionMethod="Inference",**kwargs):
-    """ Function to change parameters embedded in the classes and handed to functions
+    """
+    Function to change parameters embedded in the classes and handed to functions
     in dictionaries, to dictionaries and parameter lists for function calls in lisabeta.
 
-    Parameters
-    ---------
-    Source : SYNEX source object.
+    This function is clunky and could probably use some cleaning up...
 
-    Detector : SYNEX GW detector object
+    PARAMS
+    ------
+        - Source : SYNEX source object.
+        - Detector : SYNEX GW detector object
 
     NOTE:
-    -------
+    -----
     If source has JsonFile attribute then the "waveform_params" handed back
     will be loaded preferentially from this instead of from GW detector object
     """
@@ -134,7 +150,7 @@ def ClassesToParams(source, detector=None, CollectionMethod="Inference",**kwargs
               "lambda": source.lamda,         # Source longitude in SSB-frame (rad)
               "beta": source.beta,            # Source latitude in SSB-frame (rad)
               "psi": source.psi,              # Polarization angle (rad)
-              "Lframe": source.Lframe,                 # Params always in Lframe - this is easier for the sampler.
+              "Lframe": source.Lframe,        # Params always in Lframe - this is easier for the sampler.
               }
 
     # Take out any modification, to these parameters in tge kwargs dict
@@ -258,21 +274,22 @@ def ClassesToParams(source, detector=None, CollectionMethod="Inference",**kwargs
     return param_dict, waveform_params, extra_params
 
 def ParamsToClasses(input_params,CollectionMethod="Inference",**kwargs):
-    """ Function to return SYNEX classes from dictionary of parameters.
+    """
+    Function to return SYNEX classes from dictionary of parameters.
 
-    Parameters
-    ----------
-    input_params : Dictionary
+    PARAMS
+    ------
+        - input_params : Dictionary
             Params to give to lisabeta inference methods. Usually saved by SYNEX
             in Json format in file SYNEX/inference_param_files/...
 
-    CollectionMethod : String
+        - CollectionMethod : String
             Method of formatting dictionaries depending on what 'input_params' was
             used for. Options are 'Inference' or 'Fisher' depending on if the
             output from the lisabeta launch was a Fisher localization estimate
             or a full MCMC inference (with ptemcee inside lisabeta).
 
-    kwargs : Dictionary
+        - kwargs : Dictionary
             Optional dictionary of values to adjust the input params. This can be
             useful if we want many copies of the same objects with a subset of
             parameters changed. In this case we would call this function many times
@@ -280,15 +297,14 @@ def ParamsToClasses(input_params,CollectionMethod="Inference",**kwargs):
             param value at each call iteration.
 
 
-    Return
-    ----------
-    Source : SYNEX source class
+    OUTPUT
+    ------
+        - Source : SYNEX source class
             Source class object created wth attributed given in input_params and
             modified by anything in kwargs, using formatting according to 'CollectionMethod'.
 
-
-    TO DO
-    ----------
+    TO DO:
+    ------
         -Include detector class in return
         -Include EM classes like Athena by adding options to 'CollectionMethod'
         -Include EM variables in kwargs and input_params
@@ -336,15 +352,18 @@ def ParamsToClasses(input_params,CollectionMethod="Inference",**kwargs):
 
 def CompleteLisabetaDataAndJsonFileNames(FileName):
     """
-    Function to give back the json and h5 filenames complete with paths
-    based on a single input Filename that could be to either json or h5
-    file, with or without full path to file.
+    Function to give back congruent json and h5 filenames, complete with paths and
+    proper file extensions. This is particularly useful when transfering files
+    from cluster to local workspaces where locations of files may be different
+    (e.g. SYNEX_PATH is different, AND we wish to group cluster runs into sub directories
+    according to test generation etc).
 
-    This could be done just by reading in the json file and returning it
-    and the saved datafile path inside... Something feels faster about
-    avoiding reading in jsons and just manipulating strings though, and
-    since we want to apply this code to an optimization routine I am
-    starting to avoid too much overhead per loop...
+    PARAMS
+    ------
+        - FileName :: String
+            Filename, with or without '.json' or '.h5' extensions, including any
+            desired architecture existing below the locations './SYNEX/inference_data'
+            or './SYNEX/inference_param_files'.
     """
 
     # Create paths to data and json folders
@@ -400,12 +419,30 @@ def GWEMOPTPathChecks(go_params, config_struct):
     """
     Function to check formatting of file paths specified at initiation of gwemopt
     params dictionary. This will check the locations as well as file names are
-    coherent with telescope type... But haven't coded that yet...
+    coherent for all file names.
 
-    TO DO: Need to add check for when we specify a file or folder outside SYNEx architecture that
-    e.g. has been transfered from cluster and so no longer exists on new system. In this case should we just
-    output an error so we ask the user to input a FileName/NewFileName? I.e. we can instead
-    input "MUTATED=True" at run time and then specify, for example, NeworbitFile...
+    NOTE: We assume that all files will be within the allocated SYNEX filespaces
+    to remove possabilities of problems at run time after transfering classes over
+    from cluster.
+
+    PARAMS
+    ------
+        - go_params :: Dict
+            GWEMOpt 'params' dict, based on the telescope.telescope_go_params base dictionary,
+            but passed through the 'PrepareGwemoptDicts()' function with a source
+            to prepare for running through GWEMOPT.
+        - config_struct :: Dict
+            GWEMOPT 'config_struct' dictionary containing relevant information
+            describing a telescope object. Based on the telescope.telescope_config_struct
+            base dictionary, but passed through the 'PrepareGwemoptDicts()' function with
+            a source to prepare dictionaries for running through GWEOPT.
+
+    OUTPUT
+    ------
+        - go_params
+            Same as input but with filename fields congruent.
+        - config_struct
+            Same as input but with filename fields congruent.
     """
 
     PATH_VARS = ["outputDir", "tilingDir", "catalogDir"] # , "configDirectory"]
@@ -486,6 +523,11 @@ def GetPosteriorStats(FileName, ModeJumpLimit=None, LogLikeJumpLimit=None):
     """
     Function to extract a posterior estimate, with errors, for a list of parameters infered
     using ptemcee.
+
+    ################# This function is now redundant #################
+    This function was used before 'post tiling analysis' scripts were made to
+    extract information from classes into dataframes that are much faster and
+    reliable for calculating statistics.
     """
 
     if not ModeJumpLimit and not LogLikeJumpLimit:
@@ -750,6 +792,35 @@ def GetTotSkyAreaFromPostData_OLD(FileName,ConfLevel=0.9):
     return TotArea
 
 def hist_lam_bet(data,lambda_bins,beta_bins):
+    """
+    Helper function used in `GetTotSkyAreaFromPostData_OLD()' because I didn't
+    trust the 2D histogram functions I found online.
+
+    It moves through lambsa bins, taking out all rows in data where the lambdas values
+    are within the current lambda bin, and then 1D histograms the beta data to get the
+    entries for that caolumn.
+
+    Note that the function runs with uneven bins also and returns both the bin population
+    and the area of the [ii,jj] bin. This might be helpful if ever a skymap is required
+    outside of healpy or of unequal binnings (?).
+
+    PARAMS
+    ------
+        - data :: np.array [nsamples by n_inferred_params]
+            This can be extracted from lisabeta output h5 files and handed to this function.
+            Note though that we assume here only that lambda is at index 0 and
+            beta is at index 1, e.g. posterior_lambdas = data[:,0].
+        - lambda_bins :: np array or list of bins for lambda to be counted over
+        - beta_bins :: np array or list of bins for beta to be counted over
+
+    OUTPUT
+    ------
+        - hist2D_pops == np.array [nbins_lambda by nbins_beta]
+            Bin populations according only to the lambda and beta bins input at
+            start of function.
+        - areas == np.array [nbins_lambda by nbins_beta]
+            Bin areas in case we have a list of arrat of uneven bins.
+    """
     # data is n*2 numpy array :: 0 element is lambda and 1 element is beta
     nbins_lambda = len(lambda_bins)-1
     nbins_beta = len(beta_bins)-1
@@ -769,7 +840,39 @@ def hist_lam_bet(data,lambda_bins,beta_bins):
             areas[xii,yii] = lambda_BinW[xii]*beta_BinW[yii]
     return hist2D_pops, areas
 
-def GetOctantLikeRatioAndPostProb(FileName,source=None,detector=None):
+def GetOctantLikeRatioAndPostProb(FileName):
+    """
+    ################# This function is no longer frequently used #################
+
+    Function used in skymode project where the likelihood function only was used
+    to estimate how many modes would be present in a posterior. This project was
+    explored briefly, but we decided the correlations between number of posterior
+    modes and estimated number of modes from likelihood function was not
+    strong enough to warrent further exploration.
+
+    This function is left here as it demonstrates how to access the h5 files and
+    extract the likelihoods and information on skymodes.
+
+    PARAMS
+    ------
+        - FileName :: string
+            File name for either Json OR h5 file where the two have congruent names and
+            subarchitecture in the relevant folders for Json and H5 files
+            ('inference_param_files' and 'inference_data' respectively).
+    OUTPUT
+    ------
+        - lnLikeRatios :: dictionary with tuple keys corresponding to skymodes
+            Log likelihood of each skymode. Can use this to subtract other skymodes
+            as in commented out line in order to estimate the ratios between relevant
+            skymodes. See manual section on preliminary studies for skymodes for
+            details of which likelihood ratios were tested.
+        - OctantPostProbs
+            Posterior probability for each octant labeled by the skymodes. This is
+            what each log likelihood ratio is compared to in order to test
+            validity and strength of correlations.
+
+    ################# This function is no longer frequently used #################
+    """
     # To do
     # Change the betas to lisa frame
     # Add errors to the numbers (root(n) for probs etc)
@@ -836,15 +939,33 @@ def GetOctantLikeRatioAndPostProb(FileName,source=None,detector=None):
     return lnLikeRatios,OctantPostProbs
 
 def read_h5py_file(FileName):
+    """
+    Function to read a lisabeta output H5file.
+
+    PARAMS
+    ------
+        - FileName :: String
+            Name and sub-architecture of either JsonFile or H5File located in `inference_param_files'
+            or `inference_data' respectively.
+    OUTPUT
+    ------
+        - infer_params :: Dict
+            Dictionary of posteriors with key for each parameter inferred by lisabeta
+        - inj_param_vals :: Dict
+            Dictionary of ALL source parameters injected into run. Should have keys
+            corresponding to injected values for LISA frame and SSB frame.
+        - static_params :: Dict
+            Dictionary of values of all parameters NOT included in inference run.
+        - meta_data :: Dict
+            Dictionary of extra information for the run, including acceptance ratios
+            etc. that can be used for e.g. convergence tests.
+    """
 
     # Check filenames
     JsonFileLocAndName,H5FileLocAndName = CompleteLisabetaDataAndJsonFileNames(FileName)
 
     # Load data from h5 file
     f = h5py.File(H5FileLocAndName,'r')
-
-    # Get basic source params to differentiate meta-data later
-    from SYNEX.SYNEX_PTMC import list_params as full_list_params
 
     # Take out the dictionary
     infer_params = {}
@@ -861,16 +982,49 @@ def read_h5py_file(FileName):
             param_vals = f[key][:]
             if np.array([np.diff(param_vals)==0]).all():
                 static_params[key] = param_vals
-            elif key in full_list_params:
+            elif key in list_params:
                 infer_params[key] = param_vals
             else:
                 meta_data[key] = param_vals
     # f.close()
     return [infer_params, inj_param_vals, static_params, meta_data]
 
-def RunInference(source_or_kwargs, detector, inference_params, PlotInference=False,PlotSkyMap=False,**RunTimekwargs):
+def RunInference(source_or_kwargs, detector, inference_params, PlotInference=False,**RunTimekwargs):
     """
-    Function to handle lisabeta inference.
+    Function to handle lisabeta inference, automatically detecting and handling
+    parallel processing capabilities (e.g. installation and availability of mpi4py).
+
+    The required Json fiel to run the lisabeta binary file is created automatically
+    here using helper functions to convert classes to the lisabeta-compatible
+    dictionaries and then write those dictionaries to Json file. The lisabeta binary is
+    then called.
+
+    PARAMS
+    ------
+        - source_or_kwargs :: SYNEX source class *OR* kwargs Dictionary
+            We can initiate with either a SYNEX source class, or a dictionary to
+            initiate SYNEX source class with.
+        - detector         :: SYNEX detector class
+        - inference_params :: Dict
+            Lisabeta ready dictionary of inference parameters along with their
+            prior ranges, prior distribution types (e.g. uniform), the range to sample
+            from, and an extra legacy parameter no longer used. See './test_functions/installation_tests'
+            notebook for an example of this dictionary.
+        - PlotInference    :: Bool [Default False]
+            Flag to request a corner plot of the inference results upon completion.
+            Note this should not be used on the cluster unless user is sure to not
+            exceed cluster space limits.
+        - RunTimekwargs    :: Dict
+            Extra parameters to replace within the source dictionary or inference
+            params dictionary. This option is no longer used but retained in case
+            futher developements need this option.
+
+    NOTE: This function used to live in a seperate file ./SYNEX/SYNEX_PTMC.py, but
+          was removed to here as something much more simple in order to remove
+          problems keeping up with lisabeta development. Now we simply call the (new)
+          binary `/lisabeta/lisabeta/inference/ptemcee_smbh.py' since this is maintained
+          better and we will no longer require updating a second script in order to
+          maintain congruence with lisabeta updates.
     """
     # Using MPI or not
     use_mpi=False
@@ -920,6 +1074,8 @@ def RunInference(source_or_kwargs, detector, inference_params, PlotInference=Fal
     if is_master: print("Time to execute ptemcee: ", round((t2-t1)*10.)/10., "s")
     if is_master: print(" --------------------------------------------- ")
 
+    # Create Skymap struct here. Commented out so that we don't automatically do this
+    # on the cluster, for example, where space is limited.
     # if not use_mpi and is_master:
     #     # Create sky_map struct in source object
     #     source.sky_map = source.H5File.split("inference_data")[0] + 'Skymap_files' + source.H5File.split("inference_data")[-1]
@@ -932,9 +1088,6 @@ def RunInference(source_or_kwargs, detector, inference_params, PlotInference=Fal
     if is_master and PlotInference:
         # Automatically save the fig if called within inference.
         PlotInferenceData(source.H5File,SaveFig=True)
-    if is_master and PlotSkyMap:
-        # Automatically save the fig if called within inference.
-        PlotSkyMapData(source.sky_map,SaveFig=True)
 
 def WriteParamsToJson(source, detector, inference_params, IsMaster=True, **RunTimekwargs):
     """
@@ -1031,6 +1184,8 @@ def WriteParamsToJson(source, detector, inference_params, IsMaster=True, **RunTi
 
 def RunFoMOverRange(source,detector,ParamDict,FigureOfMerit='SNR',RunGrid=False,inference_params=None,**InferenceTechkwargs):
     """
+    ################# This function is no longer frequently used #################
+
     Function to run a Figure of Merit (FoM) over a range of parameter values.
 
     An example use would be sky localization error, using a full mcmc inference,
@@ -1100,11 +1255,7 @@ def RunFoMOverRange(source,detector,ParamDict,FigureOfMerit='SNR',RunGrid=False,
         InferenceTechkwargs : dict
             A dictionary of extra parameters used for inference. This includes parameters like number of walkers, flag to include thinning, etc.
 
-        TO DO:
-        ------
-        - mpi.scatter for RunFoMOverRange implementation with mpi. this could handle automatically sending each job to different nodes instead of
-        depending on mpi.map in the inference part. This is important since the parallel side of things seems to be more efficient when scattering
-        jobs rather than parallelizing the inference...
+    ################# This function is no longer frequently used #################
     """
 
     if FigureOfMerit=="SkyLocInfer" and not inference_params:
@@ -1367,6 +1518,31 @@ def RunFoMOverRange(source,detector,ParamDict,FigureOfMerit='SNR',RunGrid=False,
     return FoMOverRange
 
 def GetSkyMultiModeProbFromClasses(source, detector, **kwargs):
+    """
+    Helper function used pricipally in `RunFoMOverRange()' (which is no longer
+    frequenctly used).
+
+    Given a source and GW detector, log likelihood and parameters for each each
+    skymode is returned.
+
+    PARAMS
+    ------
+        - source           :: SYNEX source class
+        - detector         :: SYNEX detector class
+    OUTPUT
+    ------
+        - lnL_skymodes    :: Dict
+            Dictionary with key for each skymode, giving the loglikelihood value
+            for each skymode octant.
+        - params_skymode  :: Dict
+            Dictionary with key for each skymode, giving the parameters describing
+            the skymode (e.g. the central lambda and beta values).
+
+    NOTE: Although the main function `RunFoMOverRange()' is no longer frequently used,
+          this function could be useful in the future depending on project ideas.
+          Hence it is left here. It is also useful for information on contents of
+          lisabeta files.
+    """
     # Get the parameters out of the classes and assign if given in kwargs dict
     [param_dict, waveform_params, extra_params] = ClassesToParams(source,detector,"Inference",**kwargs)
 
@@ -1374,14 +1550,36 @@ def GetSkyMultiModeProbFromClasses(source, detector, **kwargs):
     likelihoodClass = lisa.LikelihoodLISASMBH(param_dict, **waveform_params)
     return lisatools.func_loglikelihood_skymodes(likelihoodClass)
 
-def GetSkyMultiModeProbFromJson(FileName, **kwargs):
+def GetSkyMultiModeProbFromJson(FileName):
+    """
+    Same purpose as `GetSkyMultiModeProbFromClasses()', but starting from either
+    Json or H5 file (including sub-architecture under main folder `inference_param_files'
+    or `inference_data' respectively).
+
+    PARAMS
+    ------
+        - FileName :: String
+            Name and sub-architecture of either JsonFile or H5File located in `inference_param_files'
+            or `inference_data' respectively.
+    OUTPUT
+    ------
+        - lnL_skymodes    :: Dict
+            Dictionary with key for each skymode, giving the loglikelihood value
+            for each skymode octant.
+        - params_skymode  :: Dict
+            Dictionary with key for each skymode, giving the parameters describing
+            the skymode (e.g. the central lambda and beta values).
+
+    NOTE: Although not (currently) used in any other SYNEX function, this function
+          could be useful in the future depending on project ideas. Hence it is left
+          here. It is also useful for information on contents of lisabeta files.
+    """
 
     # Check filenames
     JsonFileLocAndName,H5FileLocAndName = CompleteLisabetaDataAndJsonFileNames(FileName)
 
     # Read contents of file
-    with open(JsonFileAndPath, 'r') as input_file:
-        input_params = json.load(input_file)
+    with open(JsonFileAndPath, 'r') as input_file: input_params = json.load(input_file)
 
     # Extract params and complete
     source_params = input_params['source_params']
@@ -1398,13 +1596,20 @@ def GetSkyMultiModeProbFromJson(FileName, **kwargs):
     return lisatools.func_loglikelihood_skymodes(likelihoodClass)
 
 def GetFisher_smbh(source, detector, **kwargs):
-    """ Function to grab the fisher cov matrix from lisabeta
+    """
+    Function to grab the fisher cov matrix from lisabeta.
 
-    Parameters
-    ---------
-    Source : SYNEX source object.
-
-    Detector : SYNEX detector object.
+    PARAMS
+    ------
+        - Source : SYNEX source object
+        - Detector : SYNEX detector object
+        - kwargs : Dict
+            Dictionary of values to replace source or detector values quickly in
+            calculations of fisher matrix. Note that if a parameter is given here,
+            the function will load the source and detector params to lisabeta dictionaries,
+            and then replace the corresponding value within those dictionaries. It will
+            *NOT* replace the values within the source and or detector classes that will remain
+            unchanged.
     """
     # Get the parameters out of the classes and assign if given in kwargs dict
     [param_dict, waveform_params, extra_params] = ClassesToParams(source,detector,"Fisher",**kwargs)
@@ -1412,14 +1617,21 @@ def GetFisher_smbh(source, detector, **kwargs):
     # Call the fisher function
     return lisa_fisher.fisher_covariance_smbh(param_dict, **waveform_params)
 
-def GetSMBHGWDetection(source, detector, **kwargs):
-    """ Function to grab the measured (TDI) waveform from a SYNEX binary object and SYNEX GW detector object
+def GetSMBHGWDetection(source, detector):
+    """
+    Wrapper function to get the measured (TDI) waveform from a SYNEX binary object
+    and SYNEX GW detector object
 
-    Parameters
-    ---------
-    Source : SYNEX source object.
-
-    Detector : SYNEX detector object.
+    PARAMS
+    ------
+        - Source : SYNEX source object
+        - Detector : SYNEX detector object
+    OUTPUT
+    ------
+        - wftdi : Dict
+          Dictionary with a key for each GW harmonic with a sub-dictionary
+          containing 'freq' (frequencies of the waveform), 'amp' (amplitude), and
+          'phase'.  'modes' (a list of all the modes) is also contained in 'wftdi'
     """
     # Get the parameters out of the classes and assign if given in kwargs dict
     [param_dict, waveform_params, extra_params] = ClassesToParams(source, detector, "Fisher", **kwargs) # this might need to be changed to 'Base' or something...
@@ -1433,41 +1645,26 @@ def GetSMBHGWDetection(source, detector, **kwargs):
             s = s + ', ' +  key + '=' + str(value)
     return eval('lisa.GenerateLISATDI_SMBH(param_dict' + s + ',extra_params=extra_params)')
 
-def GetSMBHGWDetection_FreqSeries(source, detector, freqs=None, **kwargs):
-    """ Function to grab the measured (TDI) waveform from a SYNEX binary object and SYNEX GW detector object
-
-    Parameters
-    ---------
-    Source : SYNEX source object.
-
-    Detector : SYNEX detector object.
+def ComputeSNR(source, detector, ReturnAllVariable=False, **kwargs):
     """
+    Wrapper function to get the SNR of a source as detected by a GW detector.
 
-    # Get the parameters out of the classes and assign if given in kwargs dict
-    [param_dict, waveform_params, extra_params] = ClassesToParams(source, detector, "Fisher", **kwargs) # this might need to be changed to 'Base' or something...
+    Old version of this function is kept for the time being but will be removed
+    soon. Older version had extra parameters 'freqs'=None, 'Lframe'=False, and
+    'ReturnAllVariable'=False.
 
-    # Generate frequencies if not already specified or if specified as a list of requirements, e.g. ['linear', fmin, fmax] (or something)
-    if freqs is None:
-        freqs = ['linear', None]
-    if not isinstance(freqs, np.ndarray):
-        freqs = GenerateFreqs(freqs, param_dict, **waveform_params)
-
-    # This is a workaround for flexibility with the input dicts. Not sure how fast it is- to be improved later!
-    s = ' '
-    for key,value in waveform_params.items():
-        if isinstance(value, str):
-            s = s + ', ' +  key + '="' + str(value) + '"'
-        else:
-            s = s + ', ' +  key + '=' + str(value)
-    # return lisa.GenerateLISATDIFreqseries_SMBH(param_dict, freqs,
-    # timetomerger_max=1.0, minf=1e-05, t0=0.0, tref=0.0, phiref=0.0, fref_for_phiref=0.0, fref_for_tref=0.0,
-    # force_phiref_fref=True, toffset=0.0, acc=0.0001, approximant="IMRPhenomHM", DeltatL_cut=14400.0, TDI="TDIAET",
-    # order_fresnel_stencil=0, LISAconst="Proposal", responseapprox="full", frozenLISA=False, TDIrescaled=True,
-    # LISAnoise={'InstrumentalNoise': 'SciRDv1', 'WDbackground': True, 'WDduration': 3.0, 'lowf_add_pm_noise_f0': 0.0,
-    # 'lowf_add_pm_noise_alpha': 2.0)
-    return eval('lisa.GenerateLISATDIFreqseries_SMBH(param_dict, freqs' + s + ')') #  + ', **waveform_params)') # ',extra_params=extra_params)')
-
-def ComputeSNR(source, detector, freqs=None, Lframe=False, ReturnAllVariable=False, **kwargs):
+    PARAMS
+    ------
+        - Source :: SYNEX source object
+        - Detector :: SYNEX detector object
+        - kwargs :: Dict
+          Extra dictionary to alter any parameters inside either source or detector
+          class. This makes it easier to quickly get the SNR of a large set of
+          objects without having to manually create all the versions of each object.
+    OUTPUT
+    ------
+        - SNR :: float
+    """
     # # Sort into dictionaries params, freqs
     # [params, waveform_params, extra_params] = ClassesToParams(source,detector,"Fisher",**kwargs)
     #
@@ -1546,22 +1743,24 @@ def ComputeSNR(source, detector, freqs=None, Lframe=False, ReturnAllVariable=Fal
 
 def GenerateFreqs(freqs, params, **waveform_params):
     """
-    Function to automatiucally generate the frequencies needed for caluclations like SNR.
+    Helper function to automatically generate the frequencies needed for caluclations
+    like SNR and detector noise (see for example ComputeDetectorNoise()).
 
     Params
     ------
-        freqs : list
-        Object to specify what kind of frequencies is required. For example:
-            freqs = ['linear', None]
-        requests linear spacing, with no pre-required bounds. The generator will find the total
-        time of the signal from the params and waveform_params dictionaries, and then generate a
-        frequeny range that covers the full waveform.
+        - freqs : list
+          Object to specify what kind of frequencies is required. For example:
+          freqs = ['linear', None] requests linear spacing, with no pre-required
+          bounds. The generator will find the total time of the signal from the
+          params and waveform_params dictionaries, and then generate a frequeny
+          range that covers the full waveform.
 
-        params : dict
-        Dictionary of parameters describving the source (mass, spin etc).
+        - params : dict
+          Dictionary of parameters describving the source (mass, spin etc).
 
-        waveform_params : dict
-        Dictionary of parameters needed for waveform generation (approximant, modes, etc.)
+        - waveform_params : dict
+          Dictionary of parameters needed for waveform generation (approximant,
+          modes, etc.)
     """
 
     # Determine (2,2) frequency bounds based on frequency and time limits
@@ -1605,7 +1804,40 @@ def GenerateFreqs(freqs, params, **waveform_params):
 
     return freqs
 
-def ComputeDetectorNoise(source, detector, freqs=None, Lframe=False, ReturnAllVariable=False, **kwargs):
+def ComputeDetectorNoise(source, detector, freqs=None, Lframe=False, **kwargs):
+    """
+    Function adapted from lisabeta lisa.py (I think) to compute the sensitivity
+    curve of a GW detector object. A source object must be given so that the
+    noise generator knows which frequencies to calculate the noise curves over.
+    NOTE: LISA noise has THREE channels corresponding to the three time delay
+    interferometry (TDI) responses to a signal, labelled 'chanx' for x={1,2,3}.
+
+    PARAMS
+    ------
+        - Source :: SYNEX source object
+        - Detector :: SYNEX detector object
+        - freqs :: list, ndarray or None [default None]
+            Frequencies over which to calculate noise. Can be one of following:
+            1. ['log', npt]
+                Log-spaced bins with npt bins. Set npt=None to autospace with T and
+                source params.
+            2. ['linear', deltaf]
+                Linear-spaced bins with binwidth deltaf. deltaf=None for autospacing
+                with T and source params.
+            3. ndarray
+                Skip generation of freqs and use array of frequencies given instead.
+                Note that this option is not well testing in SYNEX.
+            4. None
+                The default option. Then a linear binning is generated with default
+                deltaf generated based on T and source params.
+        - Lframe :: Bool [default False]
+            Option to change source params to or from Lframe.
+        - kwargs :: Dict
+          Extra dictionary to alter any parameters inside either source or detector
+          class. This makes it easier to quickly get detector noise over a large
+          set of similar objects without having to manually create all the versions
+          of each object.
+    """
     # Grab the variables from classes
     [params, waveform_params, extra_params] = ClassesToParams(source,detector,"Fisher",**kwargs)
 
@@ -1615,12 +1847,12 @@ def ComputeDetectorNoise(source, detector, freqs=None, Lframe=False, ReturnAllVa
     LISAconst = waveform_params.get('LISAconst', pyresponse.LISAconstProposal)
 
     # Convert input parameters to either Lframe or SSBframe
-    if not params.get('Lframe', False) and Lframe:
+    if not waveform_params.get('Lframe', False) and Lframe:
         params_base = lisatools.convert_SSBframe_to_Lframe(
                             params,
                             t0=waveform_params['t0'],
                             frozenLISA=waveform_params['frozenLISA'])
-    elif params.get('Lframe', False) and not Lframe:
+    elif waveform_params.get('Lframe', False) and not Lframe:
         params_base = lisatools.convert_Lframe_to_SSBframe(
                             params,
                             t0=waveform_params['t0'],
@@ -1656,6 +1888,15 @@ def ComputeDetectorNoise(source, detector, freqs=None, Lframe=False, ReturnAllVa
     detector.Snvals = Snvals
 
 def fmaxFromTimeToMerger(source, detector, T_obs_end_to_merger=4.*60.*60., ReturnVal=False, **kwargs):
+    """
+    ################# This function is no longer frequently used #################
+
+    Legacy function from previous versions of GW sensitivity calculations. This
+    is left though to show how to calculate the maximum frequency of a GW waveform
+    and a detector noise curve based on source masses.
+
+    ################# This function is no longer frequently used #################
+    """
     # Get the relevant waveform data from classes, needed to ensure any other changes variables are propagated
     [param_dict, waveform_params, _ ] = ClassesToParams(source,detector,"Inference",**kwargs)
 
@@ -1670,14 +1911,30 @@ def fmaxFromTimeToMerger(source, detector, T_obs_end_to_merger=4.*60.*60., Retur
         source.maxf = F
 
 def GetSourceFromLisabetaData(FileName, **kwargs):
+    """
+    Function to turn lisabeta file into a source class. Lisabeta inference
+    does * NOT * need to have been run for this function to work. All that needs
+    to exist is a Json file containing all of the source parameters. If the H5File
+    exists, then the class init function will generate the skymap file etc.
+
+    PARAMS
+    ------
+        - FileName
+            Either Json filename or H5 filename, with or without file extensions,
+            to load data from. Only substructure below either 'inference_param_files'
+            or 'inference_data' main folders is needed and the function will assume
+            local SYNEX architecture.
+        - kwargs : Dict
+            Dictionary of values to replace source or detector values once classes
+            have been confiured from base data files. Not sure that this is really
+            useful if we don't then change the data itself too...
+    """
 
     # Check filenames
     JsonFileLocAndName,H5FileLocAndName=CompleteLisabetaDataAndJsonFileNames(FileName)
 
     # Extract data
-    with open(JsonFileLocAndName, 'r') as f:
-        input_params = json.load(f)
-    f.close()
+    with open(JsonFileLocAndName, 'r') as f: input_params = json.load(f)
 
     # check if it was run on a different system, e.g. the cluster, so paths are wrong
     check_path = input_params["run_params"]["out_dir"].split("/SYNEX/")[-1]
@@ -1704,13 +1961,142 @@ def GetSourceFromLisabetaData(FileName, **kwargs):
 #                 ##########################################
 
 
-def TileSkyArea(CloningTrackFile=None,sources=None,telescopes=None,base_telescope_params=None,base_source_savefile=None,cloning_params=None,SaveInSubFile=None,SaveFileCommonStart=None,SourceIndexingByString=None,verbose=True):
+def TileSkyArea(CloningTrackFile=None,sources=None,telescopes=None,base_telescope_params=None,cloning_params=None,SaveInSubFile=None,SaveFileCommonStart=None,SourceIndexingByString=None,verbose=True):
     """
-    Global function to tile skyarea. This will handle all extra tiling we might add,
-    including handling series inputs over lists of sources and/or detectors.
+    MASTER function to tile skyarea. This will handle all extra tiling techniques
+    we might add in the future outside of GWEMOpt. This function is stupid large
+    and needs to be broken into helper functions to help legibility and debugging
+    in future developments.
 
-    TO DO:
+    A list of sources or a single source is given, along either EITHER a list of
+    telescopes (or single telescope) OR a dictionary of base_telescope_params and a
+    dictionary of cloning_params to spawn many identical telescopes with a single
+    parameter changed at a time.
+
+    GWEMOpt is then run on all possible combinations of source and telescope, either
+    returning a list of all output telescopes if no parallel processing is used
+    (sensed via presence of mpi4py), or returning nothing but saving all output
+    telescopes to their specified savefiles.
+
+    Note that if we have specified a CloningTrackFile then this is preferred over
+    all other possible initiation methods (i.e. if cloning_params is also specified,
+    it will be ignored in favour of loading contents of CloningTrackFile).
+
+    PARAMS
     ------
+        - CloningTrackFile :: string [default None]
+            Complete file path to file (with extension) that keeps track of all
+            source and telescope combinations. This is useful if you are running
+            a very large list of combinations that cannot all be run at the same
+            time on the cluster (because space is restricted). All of the combinations
+            are saved to a file that includes a line for each combination (comb)
+            that includes the source save file, the telescope save file, and the
+            values of each parameter that was changed between each combination.
+
+            NOTE: When cloning_params is used to clone a base telescope, the
+            combinations are stored in the file "./SYNEX/TileTrackFiles/ProgressTrackFile.txt".
+
+            *** FUTURE DEV: CHANGE this argument from a string to a bool that tells the
+            *** function to prefer the savefile or not, and force the savefile to
+            *** be "./SYNEX/TileTrackFiles/ProgressTrackFile.txt" every time.
+
+        - sources :: list, SYNEX source class, or None [default None]
+            A list of source classes, a list of source save files, a single source
+            class, or a single source save file. File names should be complete with
+            extension, and saved in the proper location: './SYNEX/Saved_Source_Dicts/'.
+
+            NOTE: if a single source save file is given, this can take the form of
+            a wild card search string too:
+            './SYNEX/Saved_Source_Dicts/Test_System_*' will run GWEMOpt over a
+            list of sources that are located within the saved source files that
+            satisfy the search string.
+        - telescopes :: list, SYNEX telescope class, or None [default None]
+            A list of telescope classes, a list of telescope save files, a single telescope
+            class, or a single telescope save file. File names should be complete with
+            extension, and saved in the proper location: './SYNEX/Saved_Telescope_Dicts/'.
+
+            NOTE: if a single telescope save file is given, this can take the form of
+            a wild card search string too:
+            './SYNEX/Saved_Telescope_Dicts/Test_System_*' will run GWEMOpt over a
+            list of telescopes that are located within the saved telescope files that
+            satisfy the search string.
+        - base_telescope_params :: dict [default None]
+            TO BE USED WITH 'cloning_params'
+
+            When initiating tiling using the cloning params options, we start with
+            a base telescope and clone it, changing only one
+            parameter at a time.
+            NOTE: the base telescope class or savefile could also be handed to
+            this function via the 'telescopes' argument while setting
+            base_telescope_params=None.
+        - cloning_params :: dict [default None]
+            TO BE USED WITH 'base_telescope_params'
+
+            A dictionary with a list of values to implement on each key, where
+            each key corresponds to an attribute in the telescope class object.
+            A list of input telescopes is then created from the cloned telescopes
+            classes, after which the function runs as usual by calculating all
+            possible combinations of input sources with cloned telescopes and passing
+            the combinations, one by one, to GWEMOpt.
+            NOTE: the base telescope class or savefile could also be handed to
+            this function via the 'telescopes' argument while setting
+            base_telescope_params=None.
+        - SaveInSubFile :: string [default None]
+            Sub-structure under './SYNEX/Saved_Telescope_Dicts/' to save all telescope
+            files. This is useful if we clone a large number of telescopes and want
+            to group them into a file structure together.
+        - SaveFileCommonStart :: string [default None]
+            The starting string for all telescope savefiles (e.g. the name of the
+            current experiment).
+        - SourceIndexingByString :: string [default None]
+            String to use when labelling sources in telescope save files. For example
+            if we have a list of randomized sources with savefiles
+            './SYNEX/Saved_Source_Dicts/System_XX.dat', where 'XX' is a number
+            unique to each source, then we will wish to include the labelling in
+            the telescope savefile names to keep track of which source was used
+            where. To do this, we set 'SourceIndexingByString:"System_"', and the
+            telescope savefiles will then include 'XX' in each savefile name.
+
+            If this is set to None (as is the default) then the systems are labelled
+            by a numbering from one to the number of input sources.
+
+            NOTE: when GWEMOpt tiling is run, the resulting telescope class has a
+            record of which source was used, e.g. :
+
+            telescopes[0].telescope_source_coverage["source save file"]=source.ExistentialFileName
+            telescopes[0].telescope_source_coverage["source JsonFile"]=source.JsonFile
+            telescopes[0].telescope_source_coverage["source H5File"]=source.H5File
+
+            However, this options means the labeling is in the telescope savefile name
+            so that specific sources can be located easily without having to load
+            load all telescopes at once and then remove those that aren't associated
+            with the required source.
+        - verbose :: bool [default True]
+            Option to include updates through the tiling procedure.
+
+    OUTPUT
+    ------
+        - telescopes_out :: list ----- ONLY IF WE HAVE ONE PROCESSOR E.G. NO MPI
+            If there is one processor active, e.g. running locally without mpi4py
+            (we are not running in parallel) then we return a list of telescope
+            classes with the completed tiling output stored as class attributes for
+            each telescope in the list of output telescopes. The number of output
+            telescopes corresponds to the total number of combinations between input
+            telescopes and sources. E.g. if we input 5 telescopes as a list, and
+            2 sources in a list, with all other inputs set to None, we will have
+            an output list of 10 telescopes (each input source run once with each
+            input telescope).
+            If there is parallel processing, then no output is provided. Instead,
+            each completed telescope is saved to it's savefile and NO OTHER INFORMATION
+            (e.g. tesselation file) IS SAVED. This is to save workspace and memory
+            when running on cluster. Everything else is the same as a single processor
+            output case: if we begin with 5 telescopes and 2 sources at input, we
+            expect 10 total savefiles in './SYNEX/Saved_Telescope_Dicts/' corresponding
+            to the total number of combinations between input sources and input
+            telescopes.
+
+    TO DO / OPEN QUESTIONS :
+    ------------------------
     1. Should we allow case where 'DeltatL_cut' can be in cloning_params? Then we gotta check
        filenames exist etc... this would allow us to move source creations to loop one by one too... PRIORITIZE THIS!
     2. Reduce memory usage by loading base telecope by master only and transfering?
@@ -1848,7 +2234,7 @@ def TileSkyArea(CloningTrackFile=None,sources=None,telescopes=None,base_telescop
             cloning_params["SourceExName"]=[source.ExistentialFileName for source in sources] if isinstance(sources,list) else [sources.ExistentialFileName] ## should we delete the list here or find a way to check later if it doesn't already exist?
 
         # Remove source related params from cloning dict since we replaced with source ExNames instead
-        SourceCloneParams = ["Tcut","DeltatL_cut"] ## In case we ad more later
+        SourceCloneParams = ["Tcut","DeltatL_cut"] ## In case we add more later
         DO_TCUT=True if any([key in cloning_params for key in SourceCloneParams]) else False
         sourceTcut = cloning_params.pop("Tcut",None) ### Keep these seperate in case we need to access dictionary values in future developements
         sourceDeltatL_cut = cloning_params.pop("DeltatL_cut",None)
@@ -2118,12 +2504,39 @@ def TileSkyArea(CloningTrackFile=None,sources=None,telescopes=None,base_telescop
 
         # Return detectors output list if we are not on cluster
         if MPI_size==1: return telescopes_out
-    else:
-        print(MPI_rank,"/",MPI_size,"with 0 /",Nvals,"telescopes to tile, and 0 /",Nvals,"sources to tile.")
 
 def TileWithGwemopt(source,telescope,outDirExtension=None,verbose=True):
     """
-    Function to handle tiling through gwemopt.
+    Helper function specifically to handle tiling through gwemopt.
+
+    PARAMS
+    ------
+        - source :: SYNEX source object
+            Unlike 'TileSkyArea()' master function, this must be a SINGLE class
+            object at a time, since the GWEMOpt dictionaries are a mix of source and
+            telescope parameters.
+        - telescope :: SYNEX telescope object
+            Unlike 'TileSkyArea()' master function, this must be a SINGLE class
+            object at a time, since the GWEMOpt dictionaries are a mix of source and
+            telescope parameters.
+        - outDirExtension :: string [default None]
+            Sub-architecture to save output telesope savefiles to.
+        - verbose :: bool
+            Option to output progress.
+
+    OUTPUT
+    ------
+        - go_params :: dict
+            GWEMOpt campatible dictionary
+        - map_struct :: dict
+            GWEMOpt campatible dictionary
+        - tile_structs :: dict
+            GWEMOpt campatible dictionary
+        - coverage_struct :: dict
+            GWEMOpt campatible dictionary
+        - telescope :: SYNEX telescope class
+            Output telescope class with extra attributes containing coverage information
+            from GWEMOpt tiling and schedulers.
     """
 
     # Get the right dicts to use
@@ -2213,11 +2626,29 @@ def TileWithGwemopt(source,telescope,outDirExtension=None,verbose=True):
 
 def PrepareGwemoptDicts(source,telescope,outDirExtension=None):
     """
-    Function to prepare GWELOPT dictionary from a source object and a detector objct.
+    Helper function to prepare GWEMOPT dictionary from a source object and a
+    detector objct.
 
-    Need to adjust for case of updating skymaps.
-
-    Include variable Tobs- gwemopt uses the option of several available windows... Maybe for scheduling time wtih telescope(s) or map updates.
+    PARAMS
+    ------
+        - Source :: SYNEX source object
+            Unlike 'TileSkyArea()' master function, this must be a SINGLE class
+            object at a time, since the GWEMOpt dictionaries are a mix of source and
+            telescope parameters.
+        - Detector :: SYNEX detector object
+            Unlike 'TileSkyArea()' master function, this must be a SINGLE class
+            object at a time, since the GWEMOpt dictionaries are a mix of source and
+            telescope parameters.
+        - outDirExtension :: string [default None]
+            Sub-architecture to save output telesope savefiles to.
+    OUTPUT
+    ------
+        - go_params :: dict
+            A GWEMOpt - compatible dictionary containing global parameters for the
+            tiling simulation (that is a mix of source and telescope specific parameters...)
+        - map_struct :: dict
+            A GWEMOpt - compatible dictionary containing parameters describing a
+            single telescope.
     """
     # Prepare go_params from detector first
     go_params = copy.deepcopy(telescope.telescope_go_params)
@@ -2268,19 +2699,57 @@ def PrepareGwemoptDicts(source,telescope,outDirExtension=None):
 
     return go_params,map_struct
 
-def GetCoverageInfo(go_params, map_struct, tile_structs, coverage_struct, telescope, source=None, verbose=True):
+def GetCoverageInfo(go_params, map_struct, tile_structs, coverage_struct, telescope, source, verbose=True):
     """
-    Extract coverage information, including a count for tiles that cover source and
-    tiles that cover source with exposure time at least the minimum for a threshold
-    photon count.
+    Helper function to extract coverage information, including a count for tiles
+    that cover source and photons captured origintaing at the source.
+
+    PARAMS
+    ------
+        - go_params :: dict
+            A GWEMOpt - compatible dictionary containing global parameters for the
+            tiling simulation (that is a mix of source and telescope specific parameters...)
+        - map_struct :: dict
+            A GWEMOpt - compatible dictionary containing parameters describing a
+            single telescope.
+        - tile_structs
+            A GWEMOpt - compatible dictionary containing parameters describing a
+            single telescope's tiling of a single source's skymap.
+        - coverage_struct
+            A GWEMOpt - compatible dictionary containing information of a single
+            telescope's coerage of a single source's skymap (obtained after GWEMOpt is run).
+            this function effectively adds information to this in a new attribute
+            in an output telescope class.
+        - telescope :: SYNEX telescope class
+            Telescope class output from a GWEMOpt run.
+        - source :: SYNEX source class [default None]
+            Source class needed for CTR data to caluclate captured photons and tiles
+            that contained the source pixel location.
+        - verbose :: bool [default True]
+            Option to output progress.
+
+    OUTPUT
+    ------
+        - telescope :: SYNEX telescope class
+            SYNEX telescope class with updated information on source coverage. This
+            is where we add information on e.g. number of times the telescope
+            catches the source, how many photons are collected per exposure and in
+            total, as well as tile information like time ranges (isot AND mjd) and
+            days till first exposure from start of tiling procedure.
+
+    TO DO:
+    ------
+        Include check that source exists here - if not: create it, or read it's
+        position from json, or can we just use the detector_go_params ? Is it updated?
+        Or can the position and dist be included in the detector_source_coverage dictionary?
     """
 
-    ### Include check that source exists here - if not: create it, or read it's position from json,
-    ### or can we just use the detector_go_params ? Is it updated? Or can the position and dist be included in
-    ### the detector_source_coverage dictionary?
+    # Get source location
+    phiSSB = -source.true_lamdaSSB
+    thetaSSB = np.pi/2-source.true_betaSSB
+    source_pix = hp.ang2pix(go_params["nside"],thetaSSB,phiSSB,lonlat=False) # Can we set lonlat to True and input labmda beta directly? Have not checked this...
 
     # Extract some data structures
-    source_pix = hp.ang2pix(go_params["nside"],np.rad2deg(source.lamda),np.rad2deg(source.beta),lonlat=True)
     cov_data=coverage_struct["data"] # Data is N*9 with columns ra,dec,mjd (exposure start),mag,exposureTime,field,tile_probs,airmass,program_id
     cov_ipix=coverage_struct["ipix"] # list because each sub-list is of variable length
     map_probs=map_struct["prob"]
@@ -2402,8 +2871,40 @@ def GetCoverageInfo(go_params, map_struct, tile_structs, coverage_struct, telesc
 
 def WriteSkymapToFile(map_struct,SkyMapFileName,go_params=None,PermissionToWrite=True):
     """
-    So far have not included case where this is 3D. This will be updated soon - we have
-    distance posteriors... Just need to understand how GWEMOPT expects this to be tabulated.
+    Helper funciton to save a skymap to fits file.
+
+    PARAMS
+    ------
+        - map_struct
+            A GWEMOpt - compatible dictionary containing parameters describing a
+            single source's sky map attribute (source.map_struct).
+        - SkyMapFileName
+            file name including full path and extension to save the skymap to. This
+            can be easily source.sky_map, which is the checked filename constructed
+            at source creation usually based on the source.JsonFile file name.
+        - go_params :: dict [default None]
+            A GWEMOpt - compatible dictionary containing parameters describing
+            global run parameters of a GWEMOpt run. This the GWEMOpt ready dictionary,
+            output from the function 'PrepareGwemoptDicts()'.
+        - PermissionToWrite :: bool [default True]
+            Flag to allow the function to write to file all the relevant information.
+            This is automatically set to False when multiprocessing is sensed (via
+            a successful import of mpi4py) to avoid overly using processor memory
+            when on the cluster for example.
+
+    OUTPUT
+    ------
+        1. IF 'go_params' is specified, then:
+            - go_params
+                Updated version of the input, GWEMOpt-compatible dictionary describing
+                global function for the GWEMOpt run.
+            - map_struct
+                The input, GWEMOpt-compatible dictionary describing sky map.
+        2. IF 'go_params' is NOT specified, then:
+            - SkyMapFileName
+                Complete filename of where the sky map was saved.
+            - map_struct
+                The input, GWEMOpt-compatible dictionary describing sky map.
 
     Note: filename is JUST the name without the path- the path is calculated in situ.
     """
@@ -2680,7 +3181,6 @@ def PlotLikeRatioFoMFromJsonWithInferenceInlays(FoMJsonFileAndPath, BF_lim=20., 
 
             # Make the inference plots from scratch since we don't pass back axes handles in the utils functions
             DataFileLocAndName = DataFile
-            hist_n_bins=1000
             [infer_params, inj_param_vals, static_params, meta_data] = read_h5py_file(DataFileLocAndName)
             # print(inj_param_vals["source_params_Lframe"]["beta"][0], inj_param_vals["source_params_SSBframe"]["beta"][0])
             if not inj_param_vals: # Raw files at first didn't record this, so make sure it's there...
@@ -2861,7 +3361,6 @@ def PlotLikeRatioFoMFromJsonWithInferenceInlays(FoMJsonFileAndPath, BF_lim=20., 
 
             # Make the inference plots from scratch since we don't pass back axes handles in the utils functions
             DataFileLocAndName = DataFile
-            hist_n_bins=1000
             [infer_params, inj_param_vals, static_params, meta_data] = read_h5py_file(DataFileLocAndName)
             # print(inj_param_vals["source_params_Lframe"]["beta"][0], inj_param_vals["source_params_SSBframe"]["beta"][0])
             # print(z_at_value(Planck13.distmod, inj_param_vals["source_params_Lframe"]["dist"][0]))
@@ -4009,6 +4508,26 @@ def PlotSourcePhotons_SingleDetList(telescopes,sources=None,fig=None,label=None,
         # Return
         return ErrBarCont, ax, Xs, Ys
 
+def PlotCoverage(source,telescope):
+    """
+    Plot all coverage information for a single telescope and source. This uses
+    GWEMOpt built-in functions, and therefore requires conversion from SYNEX classes
+    to GWEMOpt compatible dictionaries. We also hard set the options 'catalog_struct'
+    and 'plot_sun_moon' to None and Fale respectively since these are not useful
+    in SYNEX applications. The former is for catalogue information pertaining to
+    lower mass binaries outside the SMBH applications of SYNEX, and the latter
+    plots the sun and moon location under the assumption that the telescope is
+    Earth bound. In order to get an equivalent plot for SYNEX purposes, we must
+    access, for example, the orbit dictionary in the telescope class caluclated
+    from orbit parameters stored in the telescope.telescope_config_struct attribute.
+    """
+    # Get necessary gwemopt-compatible dictionaries
+    go_params,map_struct=PrepareGwemoptDicts(source,telescope)
+    coverage_struct=telescope.telescope_coverage_struct
+
+    # Plot using gwemopt built-in stuff
+    gwemopt.plotting.coverage(go_params, map_struct, coverage_struct, catalog_struct=None,plot_sun_moon=False)
+
 
 
 
@@ -4164,11 +4683,11 @@ def CreateDataFrameFromDetectorList(telescopes, SaveFile=None):
 
 
 
-#############
-#           #
-#    PSO    #
-#           #
-#############
+####################################################################
+#                                                                  #
+#    PSO -- NO LONGER USED IN SYNEX BUT MIGHT BE USEFUL LATER ?    #
+#                                                                  #
+####################################################################
 
 ### This can be used if we have a saved skymap and Athena tiling strategy, then optimize the given schedule using latency time / jump time / other params...
 def RunPSO(source, detector, fitness_function=None, N=50, w=0.8, c_1=1, c_2=1, auto_coef=True, max_iter=100, NumSwarms=1, priors=None, **kwargs):

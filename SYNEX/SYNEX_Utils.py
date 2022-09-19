@@ -3023,7 +3023,15 @@ def PlotSkyMapData(source,SaveFig=False,plotName=None):
 
 def PlotTilesArea_old(TileFileName,n_tiles=10):
     """
-    Function to plot a sample of tiles from a saved dictionary of tiles
+    ################# This function is no longer frequently used #################
+
+    Function to plot a sample of tiles from a saved dictionary of tiles.
+
+    It is no longer used because it was created to plot tile dictionary after tiling
+    with the most basic possible tiling algorithm, which has since been replaced with
+    GWEMOpt.
+
+    ################# This function is no longer frequently used #################
     """
     # Load Tile dictionary
     with open(TileFileName, 'rb') as f:
@@ -3063,7 +3071,15 @@ def PlotTilesArea_old(TileFileName,n_tiles=10):
 
 def PlotLikeRatioFoMFromJsonWithInferenceInlays(FoMJsonFileAndPath, BF_lim=20., SaveFig=False, InlayType="histogram"):
     """
+    ################# This function is no longer frequently used #################
+
+    Just as with all util functions relating to FoM analyses (e.g. "RunFoMOverRange()")
+    this is no longer used since we want to focus on randomized drawings rather than
+    focussed lines of systems drawn from parameter space.
+
     NB: This function has hard coded paths in it and will likely be removed wince we have moved on from needing it
+
+    ################# This function is no longer frequently used #################
     """
 
     with open(FoMJsonFileAndPath) as f:
@@ -3453,7 +3469,15 @@ def PlotLikeRatioFoMFromJsonWithInferenceInlays(FoMJsonFileAndPath, BF_lim=20., 
 
 def PlotLikeRatioFoMFromJsonWithAllInferencePoints(FoMJsonFileAndPath, BF_lim=20., ModeJumpLimit=0.1, SaveFig=False):
     """
+    ################# This function is no longer frequently used #################
+
+    Just as with all util functions relating to FoM analyses (e.g. "RunFoMOverRange()")
+    this is no longer used since we want to focus on randomized drawings rather than
+    focussed lines of systems drawn from parameter space.
+
     NB: This function has hard coded paths in it and will likely be removed wince we have moved on from needing it
+
+    ################# This function is no longer frequently used #################
     """
     # Load data
     with open(FoMJsonFileAndPath) as f:
@@ -3642,8 +3666,15 @@ def PlotLikeRatioFoMFromJsonWithAllInferencePoints(FoMJsonFileAndPath, BF_lim=20
 
 def PlotHistsLambdaBeta(FileName, SaveFig=False, ParamToPlot="beta"): # "lambda" # ["beta", "lambda"]
     """
-    Plotting function to output corner plots of inference data.
-    Need to add the post-processing stuff from Sylvain's example online?
+    ################# This function is no longer frequently used #################
+
+    Plotting function to output histogram plots of lambda and beta from a lisabeta
+    inference run.
+
+    This funciton is not well maintained, since we focus now on healpy oriented
+    plotting to standardize conventions with GWEMOpt and observationalists.
+
+    ################# This function is no longer frequently used #################
     """
     # Convert the requested params to a list if it's not already one
     if not type(ParamToPlot) == list:
@@ -3712,8 +3743,21 @@ def PlotHistsLambdaBeta(FileName, SaveFig=False, ParamToPlot="beta"): # "lambda"
 
 def PlotInferenceData(FileName, SaveFig=False):
     """
-    Plotting function to output corner plots of inference data.
-    Need to add the post-processing stuff from Sylvain's example online?
+    Plotting function to output corner plot of inference data after a lisabeta
+    inference run.
+
+    PARAMS
+    ------
+        - FileName :: string
+            File name of lisabeta data. This only have to include sub-architecture
+            of JsonFile or H5File location, and does not nedd to include file extensions.
+        - SaveFig :: bool
+            Flag for the function to save the plot. The plot is saved as png to
+            "./SYNEX/Plots/lisabeta/" with a name corresponding to the H5File filename.
+
+    NOTE:
+    The savefile does NOT include sub-architecture in the savefile location. This makes
+    it NOT congruent with JsonFile and H5File.
     """
     import corner
 
@@ -3791,8 +3835,56 @@ def PlotInferenceData(FileName, SaveFig=False):
 
 def PlotInferenceLambdaBeta(FileName, bins=50, SkyProjection=False, SaveFig=False, return_data=False):
     """
-    Plotting function to output corner plots of inference data.
-    Need to add the post-processing stuff from Sylvain's example online?
+    Plotting function to show just the localization parameters lambda and beta
+    after a lisabeta inference run. This is effectively a two-dimensional grid
+    binning of the sky parameter posteriors (because I have trust issues with
+    2D histograms I found online...).
+
+    PARAMS
+    ------
+        - FileName :: string
+            filename of either JsonFile for H5File with any sub-architecture under
+            'inference_param_files' or 'inference_data' respectively and with or without
+            file extensions.
+        - bins :: int [default 50]
+            Number of bins in one direction. The total number of bins plotted is bins^2.
+            Note that the histogram bins is refined according to the range of values in
+            both lambda and beta posteriors to ensure that we get the right amount
+            of resolution depending on the spread of posterior points across the sky.
+        - SkyProjection :: bool [default False]
+            Flag to plot in the "mollweide" projection. Default is cartesian.
+        - SaveFig :: bool [default False]
+            Flag to save the plot. The plot is saved as png to
+            "./SYNEX/Plots/lisabeta/" with a name corresponding to the H5File filename.
+
+            NOTE:
+            The savefile does NOT include sub-architecture in the savefile location. This makes
+            it NOT congruent with JsonFile and H5File.
+
+        - return_data :: bool [default False]
+            Flag to return the histogramed data and figure object.
+
+    OUTPUT
+    ------
+        1. If we specify 'return_data=True', then:
+            - fig
+                Figure handle.
+            - InjParam_InjVals
+                Values of injected parameters.
+            - SampleModes
+                Modes of posterior samples.
+            - X :: np.meshgrid
+                Meshgrid of lambda and beta bins.
+            - lambda_bins
+                Bins used for lambda posteriors.
+            - Y :: np.meshgrid
+                Meshgrid of lambda and beta bins.
+            - beta_bins
+                Bins used for beta posteriors.
+            - Z :: np.meshgrid
+                Bin populations normalized by bin area and total population.
+                NOTE: bin normalization needs to be checked before trusted...
+        2. Otherwise nothing is returned and the plot is rendered.
     """
     # Update some general properties
     # GeneralPlotFormatting()
@@ -3931,17 +4023,27 @@ def PlotInferenceLambdaBeta(FileName, bins=50, SkyProjection=False, SaveFig=Fals
 
         # save the figure if asked
         if SaveFig:
-            plt.savefig(FileNameAndPath[:-3]+'.png')
+            # Put in folder for all lisabeta-related plots
+            SaveFile = H5FileLocAndName[:-3]+'.png'
+            pathlib.Path(SYNEX_PATH + "/Plots/lisabeta/").mkdir(parents=True, exist_ok=True)
+            SaveFile = SYNEX_PATH + "/Plots/lisabeta/" + SaveFile.split("/")[-1]
+            plt.savefig(SaveFile)
     else:
         return fig, InjParam_InjVals, SampleModes, X, lambda_bins, Y, beta_bins, Z
 
 def PlotLikeRatioFoMFromJson(FoMJsonFileAndPath, BF_lim=20., SaveFig=False):
     """
+    ################# This function is no longer frequently used #################
+
     Function to eventually replace the base plot functions in other plot util.
     Return an axis and figure handle that has the base colour plot for the
     lambda and beta sky mode replection using log(bayes factor) calculations only.
 
     NB: This function has hard coded paths in it and will likely be removed wince we have moved on from needing it
+
+    This function is left over from sky mode studies that are no longer being pursued.
+
+    ################# This function is no longer frequently used #################
     """
 
     with open(FoMJsonFileAndPath) as f:
@@ -4032,13 +4134,34 @@ def PlotLikeRatioFoMFromJson(FoMJsonFileAndPath, BF_lim=20., SaveFig=False):
 
 def PlotOrbit(config_struct,MollProj=False,SaveFig=False):
     """
-    Plot orbit. Mostly to check we have done things right for orbital
-    calculations in segments_athena.py.
+    Function to plot the Earth, Sun and Moon as seen by a telescope in orbit
+    given a set of parameters describing the telescope trajectory, mostly to
+    check we have done things right for orbital calculations in segments_athena.py.
 
-    MollProj=True will use "mollweide" projection but this takes radians as input
-    and will give give some glitchy things for patch radii due to their small
-    angular extents. If you set to cartesian (mollweide=False) patches will have
-    radii in degrees and not have the same problem.
+    Note: the plot contains circular patches representing the Earth, Sun and Moon
+    whose size on the plot are accurate to the angular extent as viewed by the
+    telescope along it's orbit.
+
+    PARAMS
+    ------
+        - config_struct :: dict
+            GWEMOPT 'config_struct' dictionary containing relevant information
+            describing a telescope object. Based on the telescope.telescope_config_struct
+            base dictionary, but passed through the 'PrepareGwemoptDicts()' function with
+            a source, and then run through GWEOPT via the SYNEX master tiling functions.
+            This ensures that the extra SYNEX module segments_athena.py has processed
+            the dictionaries and produced orbit information.
+        - MollProj bool [default False]
+            Option to plot in a "MollProj" projection instead of cartesian projection.
+
+            NOTE:
+            MollProj=True will use "mollweide" projection but this takes radians as input
+            and will give some glitchy things for patch radii due to their small
+            angular extents. If you set to cartesian (mollweide=False) patches will have
+            radii in degrees and not have the same problem.
+        - SaveFig :: bool [default False]
+            Option to save the plot as pdf in "./SYNEX/Plots/orbits/" under a long name
+            corresponding to the orbit parameters.
     """
 
     orbit_dict=config_struct["orbit_dict"]
@@ -4104,10 +4227,38 @@ def PlotOrbit(config_struct,MollProj=False,SaveFig=False):
 
 def AnimateOrbit(config_struct,include_sun=False,SaveAnim=False):
     """
-    Animation of orbit. Mostly just to be cool.
+    Animation of the Earth, Sun and Moon in 3D cartesian space as seen by a
+    telescope in orbit.
+    Mostly just to be cool.
 
     To change from 'mp4' to 'swf' format (eg for inclusion in latex slides), use command line:
     "ffmpeg -i in.mp4 out.swf"
+
+    Note: the animation contains circular patches representing the Earth, Sun and
+    Moon whose time varying size on the plot are accurate to the time varying angular
+    extent as viewed by the telescope along it's orbit.
+
+    PARAMS
+    ------
+        - config_struct :: dict
+            GWEMOPT 'config_struct' dictionary containing relevant information
+            describing a telescope object. Based on the telescope.telescope_config_struct
+            base dictionary, but passed through the 'PrepareGwemoptDicts()' function with
+            a source, and then run through GWEOPT via the SYNEX master tiling functions.
+            This ensures that the extra SYNEX module segments_athena.py has processed
+            the dictionaries and produced orbit information.
+        - include_sun :: bool [default False]
+            Option to include the Sun in the animation. If True, then the animation
+            of the Earth and Moon are virtually undetectible given their distance
+            from the telescope relative to the distance between the Suna nd the telescope.
+
+            NOTE:
+            If we include the Sun then we normalize distance to 1=1AU. If we do not
+            include Sun, then distances are normalized to 1=1 mean radius of telescope
+            orbit.
+        - SaveAnim :: bool [default False]
+            Option to save the animation as mp4 in "./SYNEX/Plots/OrbitAnimations/"
+            under a long name corresponding to the orbit parameters.
     """
     from mpl_toolkits.mplot3d import Axes3D
     from matplotlib import animation
@@ -4170,7 +4321,8 @@ def AnimateOrbit(config_struct,include_sun=False,SaveAnim=False):
 
 def AnimateSkyProjOrbit(config_struct,MollProj=False,SaveAnim=False):
     """
-    Animation of orbit using skymap projection. Mostly just to be cool.
+    Animation of the Earth, Sun and Moon in 2D space as seen by a telescope in orbit.
+    Mostly just to be cool.
 
     SkyProj=True will use "mollweide" projection but this takes radians as input
     and will give give some glitchy things for patch radii due to their small
@@ -4179,6 +4331,27 @@ def AnimateSkyProjOrbit(config_struct,MollProj=False,SaveAnim=False):
 
     To change from 'mp4' to 'swf' format (eg for inclusion in latex slides), use command line:
     "ffmpeg -i in.mp4 out.swf"
+
+    PARAMS
+    ------
+        - config_struct :: dict
+            GWEMOPT 'config_struct' dictionary containing relevant information
+            describing a telescope object. Based on the telescope.telescope_config_struct
+            base dictionary, but passed through the 'PrepareGwemoptDicts()' function with
+            a source, and then run through GWEOPT via the SYNEX master tiling functions.
+            This ensures that the extra SYNEX module segments_athena.py has processed
+            the dictionaries and produced orbit information.
+        - MollProj bool [default False]
+            Option to plot in a "MollProj" projection instead of cartesian projection.
+
+            NOTE:
+            MollProj=True will use "mollweide" projection but this takes radians as input
+            and will give some glitchy things for patch radii due to their small
+            angular extents. If you set to cartesian (mollweide=False) patches will have
+            radii in degrees and not have the same problem.
+        - SaveAnim :: bool [default False]
+            Option to save the animation as mp4 in "./SYNEX/Plots/OrbitAnimations/"
+            under a long name corresponding to the orbit parameters.
     """
 
     from mpl_toolkits.mplot3d import Axes3D
@@ -4252,6 +4425,18 @@ def AnimateSkyProjOrbit(config_struct,MollProj=False,SaveAnim=False):
     plt.show()
 
 def PlotEMFlux(source, SaveFig=False):
+    """
+    Simple loglog plot of EM flux as a function of time.
+
+    PARAMS
+    ------
+        - source :: SYNEX source class
+            Must have had 'source.GenerateEMFlux()' run so that it contains EM data
+            attributes to plot.
+        - SaveFig :: bool [default False]
+            Option to save the plot as a pdf at "./SYNEX/Plots/" with filename
+            constructed from "source.ExistentialFileName".
+    """
     xray_time=source.EM_Flux_Data["xray_time"]
     xray_flux=source.EM_Flux_Data["xray_flux"]
 
@@ -4272,6 +4457,18 @@ def PlotEMFlux(source, SaveFig=False):
     plt.show()
 
 def PlotCTR(source, SaveFig=False):
+    """
+    Simple loglog plot of CTR as a function of time.
+
+    PARAMS
+    ------
+        - source :: SYNEX source class
+            Must have had 'source.GenerateCTR()' run with a specific telescope ARF
+            file so that it contains CRT data attributes to plot.
+        - SaveFig :: bool [default False]
+            Option to save the plot as a pdf at "./SYNEX/Plots/" with filename
+            constructed from "source.ExistentialFileName".
+    """
     xray_time=source.EM_Flux_Data["xray_time"]
     CTRs=source.CTR_Data["CTR"]
 
@@ -4293,7 +4490,16 @@ def PlotCTR(source, SaveFig=False):
 
 def PlotPhotonAccumulation(telescopes, SaveFig=False, SaveFileName=None):
     """
-    Plot accumulated photons from source only after tiling is run for a list of a list, a list or a single detector.
+    ################# This function is no longer frequently used #################
+
+    Plot accumulated photons from source only after tiling is run through GWEMOPT.
+
+    Function is less well maintained after implementing dataframe options instead.
+    this function avoids this and grabs information directly from the telescope objects
+    which can be cumbersome if we revisit a stuy later and want to plot something
+    but we have to load a long list of telescopes instead of just a CSV-saved dataframe.
+
+    ################# This function is no longer frequently used #################
     """
     if not isinstance(telescopes,list):
         telescopes=[telescopes]
@@ -4359,11 +4565,18 @@ def PlotPhotonAccumulation(telescopes, SaveFig=False, SaveFileName=None):
 
 def PlotSourcePhotons(telescopes, labels=None, BoxPlot=True, SaveFig=False, SaveFileName=None):
     """
+    ################# This function is no longer frequently used #################
+
     Plot total accumulated photons for each list of detectors (in case we
     have several versions of the same cloned parameter but using eg different
     gwemopt flags...)
 
-    What if detectors don't have "cloning keys"/"cloning values" in detector_config_struct?
+    Function is less well maintained after implementing dataframe options instead.
+    this function avoids this and grabs information directly from the telescope objects
+    which can be cumbersome if we revisit a stuy later and want to plot something
+    but we have to load a long list of telescopes instead of just a CSV-saved dataframe.
+
+    ################# This function is no longer frequently used #################
     """
     # Check if it's a list
     if not isinstance(telescopes,list):
@@ -4472,7 +4685,18 @@ def PlotSourcePhotons(telescopes, labels=None, BoxPlot=True, SaveFig=False, Save
 
 def PlotSourcePhotons_SingleDetList(telescopes,sources=None,fig=None,label=None,BoxPlot=True):
     """
-    Plot total accumulated photons from source versus cloned parameter.
+    ################# This function is no longer frequently used #################
+
+    Helper function for "PlotSourcePhotons()" function that takes a list of telescopes
+    instead of the structured list (a list of lists of telescopes depending on what we tiled)
+    that PlotSourcePhotons() takes.
+
+    Function is less well maintained after implementing dataframe options instead.
+    this function avoids this and grabs information directly from the telescope objects
+    which can be cumbersome if we revisit a stuy later and want to plot something
+    but we have to load a long list of telescopes instead of just a CSV-saved dataframe.
+
+    ################# This function is no longer frequently used #################
     """
     if not isinstance(telescopes,list):
         telescopes=[telescopes]
@@ -4520,6 +4744,11 @@ def PlotCoverage(source,telescope):
     Earth bound. In order to get an equivalent plot for SYNEX purposes, we must
     access, for example, the orbit dictionary in the telescope class caluclated
     from orbit parameters stored in the telescope.telescope_config_struct attribute.
+
+    PARAMS
+    ------
+        - source :: SYNEX source class
+        - telescope :: SYNEX telescope class
     """
     # Get necessary gwemopt-compatible dictionaries
     go_params,map_struct=PrepareGwemoptDicts(source,telescope)
@@ -4546,7 +4775,11 @@ def GetDataFrame(telescopes=None, SaveFile=None):
     Function to get or create a dataframe from a list or array of
     telescopes with tiling information.
 
-    INPUT:
+    Dataframes are preferred for post-tiling analyses since loading a h5-saved
+    table is much more memory and time efficient rather than loading the
+    list of telescoped each time we wish to start a new study.
+
+    PARAMS
     ------
         - telescopes :: list/array of SYNEX telescope classes or savefile names.
             Must have gwemopt output information (e.g. detector.detector_source_coverage!=None).
@@ -4558,6 +4791,12 @@ def GetDataFrame(telescopes=None, SaveFile=None):
 
     NOTE: The save location for a new dataframe is always "/./SYNEX/DataFrames/"
     to save any problems with architecture etc.
+
+    TO DO:
+    ------
+    Need to add check that the location of DataFrames exists before we try to save,
+    otherwise new users will get errors that the file location does not exist.
+
     """
     # Work out what we want to do based on inputs.
     if telescopes==None and SaveFile==None:
@@ -4570,12 +4809,15 @@ def GetDataFrame(telescopes=None, SaveFile=None):
 
 def CreateDataFrameFromDetectorList(telescopes, SaveFile=None):
     """
-    Code to test how accumulated photon count varies with a subset of
-    tested parameters. In essence, if we randomize over many parameters and find
-    very little variation when marginalising over all but one parameter,
-    then we need to find a fast-ish way to hypothesis test subsets of parameters.
+    Create a pandas dataframe from a list of telescopes after running through the
+    SYNEX master tiling function. It takes out all useful information from the
+    telescope classes as well as the useful information from corresponding sources
+    whose skymap was tiled over, and puts it all into a table. This is much more
+    efficient when tiling is finished and analysis of results begins, since instead
+    of loading all classes again from scratch, we can load instead a simple
+    h5-saved table. This drastically reduces computation time and memory.
 
-    INPUT:
+    PARAMS
     ------
         - Detectors :: list/array of SYNEX detectors or telescope savefile names.
             Must have gwemopt output information (e.g. detector.detector_source_coverage!=None).

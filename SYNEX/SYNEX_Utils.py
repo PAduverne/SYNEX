@@ -4548,13 +4548,16 @@ def GetDataFrame(telescopes=None, SaveFile=None):
 
     INPUT:
     ------
-        - Detectors :: list/array of SYNEX detectors or telescope savefile names.
+        - telescopes :: list/array of SYNEX telescope classes or savefile names.
             Must have gwemopt output information (e.g. detector.detector_source_coverage!=None).
         - SaveFile :: string.
-            Savefile and directory in which dataframe should be saved or loaded from.
+            Filename with sub-architecture in which dataframe should be saved or loaded from.
             If the file already exists and a list of detectors given also, then the
             savefile will be overwritten. Otherwise the file will be loaded or
             created given input parameters.
+
+    NOTE: The save location for a new dataframe is always "/./SYNEX/DataFrames/"
+    to save any problems with architecture etc.
     """
     # Work out what we want to do based on inputs.
     if telescopes==None and SaveFile==None:
@@ -4577,7 +4580,26 @@ def CreateDataFrameFromDetectorList(telescopes, SaveFile=None):
         - Detectors :: list/array of SYNEX detectors or telescope savefile names.
             Must have gwemopt output information (e.g. detector.detector_source_coverage!=None).
         - SaveFile :: string.
-            Savefile and directory in which dataframe should be saved.
+            Savefile and directory sub-architecture in which dataframe should be saved.
+            The base folder is forced to be "/./SYNEX/DataFrames/" in order to be
+            congruent with other save locations like JsonFile. The default when this is None
+            is to save at "./SYNEX/DataFrames/data.h5". Extension to file is not needed
+            since ".h5" is manually added when dataframe is saved.
+
+    OUTPUT
+    ------
+        - data :: pandas dataframe
+            Information from all detectors on coverage formatted into a dataframe.
+            this maked visualization and statistical manipulation much faster and compact
+            to study correlations between coverage information and input parameters.
+
+            For example, we can tile the same source many times with a number of
+            "exposureTime", and then we can use the dataframe to see a positive
+            correlation between all the telescope.exposureTime and
+            telescope.telescope_source_coverage["Source photon counts"] without having
+            to manually load all the telescopes each time we initiate the study notebook.
+            Instead, dataframes are much faster to load, and can be saved easily
+            as csv files for much smaller disk space.
 
     TO DO:
     ------

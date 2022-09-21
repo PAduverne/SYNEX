@@ -240,8 +240,10 @@ def ClassesToParams(source, detector=None, CollectionMethod="Inference",**kwargs
             waveform_params["LISAnoise"] = detector.LISAnoise                        # Included
 
     # update waveform param given in kwarks dict
+    LNKs=waveform_params["LISAnoise"].keys()
     for key,val in kwargs.items():
         if key in waveform_params: waveform_params[key]=val
+        if key in LNKs: waveform_params["LISAnoise"][key]=val
 
     # Optional parameters that depend on what method is being called
     # Need to understand if these are important differences...
@@ -1049,10 +1051,21 @@ def RunInference(source_or_kwargs, detector, inference_params, PlotInference=Fal
     if is_master:
         # See if we have a source class or kwargs -- only master node since this can get memory heavy
         source=SYSs.SMBH_Merger(**source_or_kwargs) if isinstance(source_or_kwargs,dict) else source_or_kwargs
+
+        # Check times match and adjust times if they don't match
+        det_mission_times_gps = [detector.gps_science_start, detector.gps_science_start+detector.mission_duration*365.25]
+        source_times_gps = [source.gps_timetomerger_max, source.gps_timetomerger_max+source.timetomerger_max*365.25+source.DeltatL_cut/(60.*60.*24.)]
+        if source_times_gps[0]<det_mission_times_gps[0]:
+            source.gps_timetomerger_max = detector.gps_science_start
+            source.timetomerger_max = source.timetomerger_max - (det_mission_times_gps[0] - source_times_gps[0])/365.25
+        if source_times_gps[1]>det_mission_times_gps[1]:
+            source.DeltatL_cut = source.DeltatL_cut - (source_times_gps[1] - det_mission_times_gps[1])*24.*60.*60.
+
         # Write params to json file
         print("Creating json file...")
         WriteParamsToJson(source,detector,inference_params,is_master,**RunTimekwargs)
         sourceJsonFile=source.JsonFile
+        print("Done.")
     else:
         sourceJsonFile=None # So we only have master node running later if one source and/or detector given
 
@@ -1064,13 +1077,13 @@ def RunInference(source_or_kwargs, detector, inference_params, PlotInference=Fal
     # Start the run. Data will be saved to the 'inference_data' folder by default
     # All processes must execute the run together. mapper (inside ptemcee) will handle coordination between p's.
     # SYP.RunPTEMCEE(source.JsonFile)
-    if is_master: print(" --------------- START PTEMCEE --------------- ")
+    if is_master: print(" --------------- START INFERENCE --------------- ")
     print("Does Json exist?",MPI_rank,os.path.isfile(sourceJsonFile))
     t1 = time.time()
     command = "python3 " + SYNEX_PATH + "/lisabeta/lisabeta/inference/ptemcee_smbh.py " + sourceJsonFile
     os.system(command)
     t2 = time.time()
-    if is_master: print(" ---------------- END PTEMCEE ---------------- ")
+    if is_master: print(" ---------------- END INFERENCE ---------------- ")
     if is_master: print("Time to execute ptemcee: ", round((t2-t1)*10.)/10., "s")
     if is_master: print(" --------------------------------------------- ")
 
@@ -1617,15 +1630,22 @@ def GetFisher_smbh(source, detector, **kwargs):
     # Call the fisher function
     return lisa_fisher.fisher_covariance_smbh(param_dict, **waveform_params)
 
-def GetSMBHGWDetection(source, detector):
+def GetSMBHGWDetection(source, detector, **kwargs):
     """
-    Wrapper function to get the measured (TDI) waveform from a SYNEX binary object
-    and SYNEX GW detector object
+    Wrapper function to get the measured (TDI) waveform from a SYNEX source class
+    and SYNEX GW detector class.
 
     PARAMS
     ------
         - Source : SYNEX source object
         - Detector : SYNEX detector object
+        - kwargs : Dict
+            Dictionary of values to replace source or detector values quickly.
+            Note that if a parameter is given here, the function will load the
+            source and detector params to lisabeta dictionaries, and then replace
+            the corresponding values within those dictionaries. It will *NOT*
+            replace the values within the source and or detector classes that
+            will remain unchanged.
     OUTPUT
     ------
         - wftdi : Dict
@@ -1634,7 +1654,7 @@ def GetSMBHGWDetection(source, detector):
           'phase'.  'modes' (a list of all the modes) is also contained in 'wftdi'
     """
     # Get the parameters out of the classes and assign if given in kwargs dict
-    [param_dict, waveform_params, extra_params] = ClassesToParams(source, detector, "Fisher", **kwargs) # this might need to be changed to 'Base' or something...
+    [param_dict, waveform_params, extra_params] = ClassesToParams(source, detector, "Fisher", **kwargs)
 
     # This is a workaround for flexibility with the input dicts. Not sure how fast it is- to be improved later!
     s = ' '
@@ -1839,7 +1859,9 @@ def ComputeDetectorNoise(source, detector, freqs=None, Lframe=False, **kwargs):
           of each object.
     """
     # Grab the variables from classes
-    [params, waveform_params, extra_params] = ClassesToParams(source,detector,"Fisher",**kwargs)
+    [params, waveform_params, extra_params] = ClassesToParams(source,detector,"Inference",**kwargs)
+
+    print("WDduration checks:",waveform_params["LISAnoise"]["WDduration"])
 
     LISAnoise = waveform_params.get('LISAnoise', pyLISAnoise.LISAnoiseSciRDv1)
     TDI = waveform_params.get('TDI', 'TDIAET')
@@ -2543,13 +2565,12 @@ def TileWithGwemopt(source,telescope,outDirExtension=None,verbose=True):
     t_tile_0=time.time()
     go_params,map_struct=PrepareGwemoptDicts(source,telescope,outDirExtension)
 
-    # Get segments -- need to understand what this is. Line 469 of binary file 'gwemopt_run'
+    # Get segments
     import SYNEX.segments_athena as segs_a
     go_params = segs_a.get_telescope_segments(go_params)
 
     # Get tile_structs
     if go_params["tilesType"]=="MaxProb":
-        # Get tiling structs
         moc_structs = gwemopt.moc.create_moc(go_params, map_struct=map_struct)
         tile_structs = gwemopt.tiles.moc(go_params,map_struct,moc_structs)
     elif go_params["tilesType"]=="moc":
@@ -2580,13 +2601,12 @@ def TileWithGwemopt(source,telescope,outDirExtension=None,verbose=True):
                 go_params["config"][tel]["tesselation"] = np.append(go_params["config"][tel]["tesselation"],[[index,ra,dec]],axis=0)
             go_params["Ntiles"].append(len(tiles_struct.keys()))
     elif go_params["tilesType"]=="ranked":
-        # Get tiling structs
         moc_structs = gwemopt.rankedTilesGenerator.create_ranked(go_params,map_struct)
         tile_structs = gwemopt.tiles.moc(go_params,map_struct,moc_structs,doSegments=False)
         for tel in tile_structs.keys():
             tile_structs[tel] = segs_a.get_segments_tiles(go_params, go_params["config"][tel], tile_structs[tel], verbose)
     elif go_params["tilesType"]=="galaxy":
-        # Really not sure how this works and where segments are calculated... Use this method with care.
+        # Really not sure how this works... Use this method with care.
         map_struct, catalog_struct = gwemopt.catalog.get_catalog(go_params, map_struct)
         tile_structs = gwemopt.tiles.galaxy(go_params,map_struct,catalog_struct)
         for tel in go_params["telescopes"]:
@@ -2606,7 +2626,7 @@ def TileWithGwemopt(source,telescope,outDirExtension=None,verbose=True):
     # Add info about source to coverage summary
     SourceInfo={
                 "source save file":source.ExistentialFileName,
-                "source gpstime":source.gpstime,
+                "source gps_timetomerger_max":source.gps_timetomerger_max,
                 "source sky_map":source.sky_map,
                 "source fisher area":source.FisherSkyArea,
                 "source post area":source.PostSkyArea,
@@ -2664,18 +2684,28 @@ def PrepareGwemoptDicts(source,telescope,outDirExtension=None):
 
     # Update missing params in go_params contained in source
     go_params["nside"]=nside
-    if source.gpstime!=None:
-        go_params["gpstime"]=source.gpstime
-    else:
-        go_params["gpstime"]=telescope.telescope_config_struct["gps_science_start"]-source.DeltatL_cut/86400.
-        source.gpstime=go_params["gpstime"]
     go_params["do3D"]=source.do3D
     go_params["true_ra"]=source.true_ra
     go_params["true_dec"]=source.true_dec
     go_params["true_distance"]=source.true_distance
 
-    # See what Tobs we have for each detector
-    # go_params["Tobs"]=np.array([0.,-source.DeltatL_cut/86400.]) # np.array([0.,100.]) # in pairs of [Tstart,Tend] for times in DAYS. We CAN pass more than one pair here.
+    ################################### THIS BLOCK NEEDS CHECKING ###########################################################################################
+    # Check times match up an correct if they don't
+    telescope_times_gps = [telescope.telescope_config_struct["gps_science_start"], telescope.telescope_config_struct["gps_science_start"] + telescope.telescope_config_struct["mission_duration"]*365.25]
+    source_times_gps = [source.gps_timetomerger_max + source.timetomerger_max*365.25 + source.DeltatL_cut/(60.*60.*24.), source.gps_timetomerger_max + source.timetomerger_max*365.25]
+    if source_times_gps[0]>telescope_times_gps[0]:
+        go_params["gpstime"]=source_times_gps[0]
+    else:
+        go_params["gpstime"]=telescope.telescope_config_struct["gps_science_start"]
+
+    # Constrain to mission time
+    if go_params["gpstime"]+go_params["Tobs"][-1] > telescope_times_gps[1]:
+        go_params["Tobs"][-1] = telescope_times_gps[1]-go_params["gpstime"]
+
+    # Constain to source timeline ???
+    if go_params["gpstime"]+go_params["Tobs"][-1] > source_times_gps[1]:
+        go_params["Tobs"][-1] = source_times_gps[1]-go_params["gpstime"]
+    #########################################################################################################################################################
 
     # Update the gwemopt output dir to comply with lisabeta h5 and json filenames
     # This will overwrite existing files with the same event name... Maybe later include checks?
@@ -2848,7 +2878,7 @@ def GetCoverageInfo(go_params, map_struct, tile_structs, coverage_struct, telesc
 
         # Get CTR data out from source and cut to Tobs -- times here are seconds to merger (<0)
         CTRs=source.CTR_Data["CTR"]
-        CTR_times=list(86400.*(-np.array(source.EM_Flux_Data["xray_time"])/86400. - Time(source.gpstime, format='gps', scale='utc').mjd + Time(go_params["gpstime"], format='gps', scale='utc').mjd)) # Just in case these are different -- i.e. if we have a run with multiple sources within Tobs
+        CTR_times=list(86400.*(-np.array(source.EM_Flux_Data["xray_time"])/86400. - Time(source.gpstime_merger_max, format='gps', scale='utc').mjd + Time(go_params["gpstime"], format='gps', scale='utc').mjd)) # Just in case these are different -- i.e. if we have a run with multiple sources within Tobs
         CTRs=[CTR for CTR,t in zip(CTRs,CTR_times) if t>=(go_params["Tobs"][0]*86400.) and t<=(go_params["Tobs"][-1]*86400.)]
         CTR_times=[t for t in CTR_times if t>=(go_params["Tobs"][0]*86400.) and t<=(go_params["Tobs"][-1]*86400.)] # because times are seconds TO MERGER (-ve)
 
@@ -3764,14 +3794,17 @@ def PlotInferenceData(FileName, SaveFig=False):
     # Check filenames
     JsonFileLocAndName,H5FileLocAndName = CompleteLisabetaDataAndJsonFileNames(FileName)
 
+    # Get some useful info from Json first
+    with open(JsonFileLocAndName) as f: json_data = json.load(f)
+    labels = json_data["prior_params"]["infer_params"] # should be a list of inferred parameters
+    ndim = len(labels)
+
     # Unpack the data
     [infer_params, inj_param_vals, static_params, meta_data] = read_h5py_file(H5FileLocAndName)
     if not inj_param_vals: # Raw files at first didn't record this, so make sure it's there...
         # Get the inj values from the processed data file instead
         DataFileLocAndName_NotRaw = DataFileLocAndName[:-7] + ".h5"
         [_,inj_param_vals,_,_] = read_h5py_file(DataFileLocAndName_NotRaw)
-    ndim = len(infer_params.keys())
-    labels = list(infer_params.keys())
     if np.size(infer_params[labels[0]][0])>1:
         nsamples = len(infer_params[labels[0]][0])
     else:
@@ -3795,8 +3828,11 @@ def PlotInferenceData(FileName, SaveFig=False):
 
     # Get injected values
     InjParam_InjVals = []
-    for key in infer_params.keys():
-        InjParam_InjVals.append(inj_param_vals["source_params_Lframe"][key][0]) # Lframe is right.
+    for key in labels:
+        if json_data["run_params"]["sample_Lframe"]:
+            InjParam_InjVals.append(inj_param_vals["source_params_Lframe"][key][0])
+        else:
+            InjParam_InjVals.append(inj_param_vals["source_params_SSBframe"][key][0])
 
     # Corner plot of posteriors
     figure = corner.corner(data, labels=labels,
@@ -3892,11 +3928,14 @@ def PlotInferenceLambdaBeta(FileName, bins=50, SkyProjection=False, SaveFig=Fals
     # Check filenames
     JsonFileLocAndName,H5FileLocAndName = CompleteLisabetaDataAndJsonFileNames(FileName)
 
+    # Get some useful info from Json first
+    with open(JsonFileLocAndName) as f: Jsondata = json.load(f)
+    labels = ["lambda","beta"] # Jsondata["prior_params"]["infer_params"] # should be a list of inferred parameters
+    ndim = len(labels)
+    print(labels)
+
     # Unpack the data
     [infer_params, inj_param_vals, static_params, meta_data] = read_h5py_file(H5FileLocAndName)
-    with open(JsonFileLocAndName) as f: Jsondata = json.load(f)
-    ndim = len(infer_params.keys())
-    labels = list(infer_params.keys())
     if np.size(infer_params[labels[0]][0])>1:
         nsamples = len(infer_params[labels[0]][0])
     else:
@@ -3920,7 +3959,7 @@ def PlotInferenceLambdaBeta(FileName, bins=50, SkyProjection=False, SaveFig=Fals
 
     # Get injected values
     InjParam_InjVals = []
-    for key in infer_params.keys():
+    for key in labels:
         if Jsondata["run_params"]["sample_Lframe"]:
             InjParam_InjVals.append(inj_param_vals["source_params_Lframe"][key][0])
         else:
@@ -3935,11 +3974,11 @@ def PlotInferenceLambdaBeta(FileName, bins=50, SkyProjection=False, SaveFig=Fals
     levels_labels=[str(int((1.-l)*1000)/10) for l in levels]
 
     # Manually do 2D histogram because I don't trust the ones I found online
-    # data to hist = [data[:,0], data[:,5]] = beta, lambda. Beta is y data since it is declination.
+    # data to hist = [data[:,0], data[:,1]] = lambda, beta. Beta is y data since it is declination.
     hist2D_pops = np.empty([bins,bins])
     areas = np.empty([bins,bins])
-    bin_max = max(max(data[:,5]),SampleModes[5]+np.pi/10000.)
-    bin_min = min(min(data[:,5]),SampleModes[5]-np.pi/10000.)
+    bin_max = max(max(data[:,0]),SampleModes[0]+np.pi/10000.)
+    bin_min = min(min(data[:,0]),SampleModes[0]-np.pi/10000.)
     if bin_max>np.pi:
         bin_max=np.pi
     if bin_min<-np.pi:
@@ -3949,8 +3988,8 @@ def PlotInferenceLambdaBeta(FileName, bins=50, SkyProjection=False, SaveFig=Fals
     if isinstance(bin_max,np.ndarray):
         bin_max = bin_max[0]
     lambda_bins = np.linspace(bin_min, bin_max, bins+1) # np.linspace(np.min(data[:,5]), np.max(data[:,5]), bins+1)
-    bin_max = max(max(data[:,0]),SampleModes[0]+np.pi/20000.)
-    bin_min = min(min(data[:,0]),SampleModes[0]-np.pi/20000.)
+    bin_max = max(max(data[:,1]),SampleModes[1]+np.pi/20000.)
+    bin_min = min(min(data[:,1]),SampleModes[1]-np.pi/20000.)
     if bin_max>np.pi/2.:
         bin_max=np.pi/2.
     if bin_min<-np.pi/2.:
@@ -3963,12 +4002,12 @@ def PlotInferenceLambdaBeta(FileName, bins=50, SkyProjection=False, SaveFig=Fals
     lambda_BinW = np.diff(lambda_bins)
     beta_BinW = np.diff(beta_bins)
     for xii in range(bins):
-        list_len = list(range(len(data[:,5])))
+        list_len = list(range(len(data[:,0])))
         if xii == 0:
-            values_ii = [valii for valii in list_len if (lambda_bins[xii]<=data[valii,5]<=lambda_bins[xii+1])]
+            values_ii = [valii for valii in list_len if (lambda_bins[xii]<=data[valii,0]<=lambda_bins[xii+1])]
         else:
-            values_ii = [valii for valii in list_len if (lambda_bins[xii]<=data[valii,5]<lambda_bins[xii+1])]
-        beta_pops, beta_bins = np.histogram(data[values_ii,0], bins=beta_bins) # beta_bins
+            values_ii = [valii for valii in list_len if (lambda_bins[xii]<=data[valii,0]<lambda_bins[xii+1])]
+        beta_pops, beta_bins = np.histogram(data[values_ii,1], bins=beta_bins) # beta_bins
         for yii in range(bins):
             hist2D_pops[yii,xii] = beta_pops[yii] # hist2D_pops[xii,yii] = beta_pops[yii]
             areas[yii,xii] = beta_BinW[yii]*lambda_BinW[xii]
@@ -3995,14 +4034,14 @@ def PlotInferenceLambdaBeta(FileName, bins=50, SkyProjection=False, SaveFig=Fals
 
     # Add injected and mode vertical and horizontal lines
     if not SkyProjection:
-        ax.axhline(InjParam_InjVals[0], color="r", linestyle=":")
-        ax.axhline(SampleModes[0], color="b", linestyle=":")
-        ax.axvline(InjParam_InjVals[5], color="r", linestyle=":")
-        ax.axvline(SampleModes[5], color="b", linestyle=":")
+        ax.axhline(InjParam_InjVals[1], color="r", linestyle=":")
+        ax.axhline(SampleModes[1], color="b", linestyle=":")
+        ax.axvline(InjParam_InjVals[0], color="r", linestyle=":")
+        ax.axvline(SampleModes[0], color="b", linestyle=":")
 
     # Add points at injected and mode values
-    plt.plot(InjParam_InjVals[5], InjParam_InjVals[0], "sr")
-    plt.plot(SampleModes[5], SampleModes[0], "sb")
+    plt.plot(InjParam_InjVals[0], InjParam_InjVals[1], "sr")
+    plt.plot(SampleModes[0], SampleModes[1], "sb")
 
     # legend informing if we are Lframe or not
     plt.legend("Lframe:",str(Jsondata["run_params"]["sample_Lframe"]))
@@ -4010,11 +4049,11 @@ def PlotInferenceLambdaBeta(FileName, bins=50, SkyProjection=False, SaveFig=Fals
     # Labels
     if not SkyProjection:
         if Jsondata["run_params"]["sample_Lframe"]:
-            plt.xlabel(labels[5]+r"$_{L}$") # Lambda
-            plt.ylabel(labels[0]+r"$_{L}$") # beta
+            plt.xlabel(labels[0]+r"$_{L}$") # Lambda
+            plt.ylabel(labels[1]+r"$_{L}$") # beta
         else:
-            plt.xlabel(labels[5]+r"$_{SSB}$") # Lambda
-            plt.ylabel(labels[0]+r"$_{SSB}$") # beta
+            plt.xlabel(labels[0]+r"$_{SSB}$") # Lambda
+            plt.ylabel(labels[1]+r"$_{SSB}$") # beta
 
     # show now or return?
     if not return_data:
@@ -4847,6 +4886,8 @@ def CreateDataFrameFromDetectorList(telescopes, SaveFile=None):
     ------
         - Include error bounds from lisabeta inferece? Might be interesting to
           compare error bounds for a static parameter when randomizing others ?
+        - Optimise... Creating each source from posterior data files every time
+          is ridiculously laboursome and I am sure there is a better way to do this.
     """
     ###
     # Variables of interest:

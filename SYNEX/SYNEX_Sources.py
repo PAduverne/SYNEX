@@ -4,6 +4,7 @@ import healpy as hp
 from astropy.cosmology import WMAP9 as cosmo
 from astropy.cosmology import Planck13, z_at_value # needed only to convert a given distance to redshift at initialization
 import astropy.units as u
+from astropy.time import Time
 import warnings
 import os
 from datetime import date
@@ -222,7 +223,11 @@ class SMBH_Merger:
             elif key == "t0":
                 self.t0 = value
             elif key == "timetomerger_max":
-                self.timetomerger_max = value
+                self.timetomerger_max = value # In YEARS
+            elif key=='gps_timetomerger_max':
+                # gps time at which we *start* the waveform
+                # Equivalent to the time of "timetomerger_max" BEFORE merger happens
+                self.gps_timetomerger_max=Time('2033-02-02T00:00:00.00', format='isot', scale='utc').gps
             elif key == "fend":
                 self.fend = value
             elif key == "phiref":
@@ -257,8 +262,6 @@ class SMBH_Merger:
                 self.ExistentialFileName=value
             elif key=='do3D':
                 self.do3D=value
-            elif key=='gpstime':
-                self.gpstime=value
             elif key=='EM_Flux_Data':
                 self.EM_Flux_Data=value
             elif key=='CTR_Data':
@@ -273,15 +276,15 @@ class SMBH_Merger:
 
         # Make sure m1>m2 and q>1
         if hasattr(self,"m1") and hasattr(self,"m2"):
-                if self.m1<self.m2:
-                    if self.verbose: print("Redefining m1>m2")
-                    tmp = self.m1
-                    self.m1 = self.m2
-                    self.m2 = tmp
+            if self.m1<self.m2:
+                if self.verbose: print("Redefining m1>m2")
+                tmp = self.m1
+                self.m1 = self.m2
+                self.m2 = tmp
         if hasattr(self,"q"):
-                if self.q<1.:
-                    if self.verbose: print("Redefining q>=1")
-                    self.q = 1./self.q
+            if self.q<1.:
+                if self.verbose: print("Redefining q>=1")
+                self.q = 1./self.q
 
         # Default mass parameters if all four mass params are givien - include a warning
         if all([hasattr(self,"M"), hasattr(self,"q"), hasattr(self,"m1"), hasattr(self,"m2")]):
@@ -293,18 +296,18 @@ class SMBH_Merger:
         # Default mass parameters if three mass params are givien - include a warning
         if all([hasattr(self,"m1"), hasattr(self,"m2"), hasattr(self,"M"), not hasattr(self,"q")]) or all([hasattr(self,"m1"), hasattr(self,"m2"), not hasattr(self,"M"), hasattr(self,"q")]):
             if hasattr(self,"M") and self.m1 + self.m2 != self.M:
-                    if self.verbose: print("The total mass does not match the sum of m1 and m2. Redefining based on m1 and m2")
-                    self.M = self.m1 + self.m2
-                    self.q = self.m1/self.m2
+                if self.verbose: print("The total mass does not match the sum of m1 and m2. Redefining based on m1 and m2")
+                self.M = self.m1 + self.m2
+                self.q = self.m1/self.m2
             if hasattr(self,"q") and self.m1/self.m2 != self.q:
-                    if self.verbose: print("The mass ratio does not match the sum of m1 and m2. Redefining based on m1 and m2")
-                    self.M = self.m1 + self.m2
-                    self.q = self.m1/self.m2
+                if self.verbose: print("The mass ratio does not match the sum of m1 and m2. Redefining based on m1 and m2")
+                self.M = self.m1 + self.m2
+                self.q = self.m1/self.m2
         if all([hasattr(self,"M"), hasattr(self,"q"), hasattr(self,"m1"), not hasattr(self,"m2")]) or all([hasattr(self,"M"), hasattr(self,"q"), not hasattr(self,"m1"), hasattr(self,"m2")]):
             if hasattr(self,"m1") and self.m1 != self.M*(self.q/(1.+self.q)):
-                    if self.verbose: print("The primary mass m1 does not match the total mass and mass ratio. Redefining based on M and q")
-                    self.m1 = self.M*(self.q/(1.+self.q))
-                    self.m2 = self.M/(1.+self.q)
+                if self.verbose: print("The primary mass m1 does not match the total mass and mass ratio. Redefining based on M and q")
+                self.m1 = self.M*(self.q/(1.+self.q))
+                self.m2 = self.M/(1.+self.q)
             if hasattr(self,"m2") and self.m2 != self.M/(1.+self.q):
                 if self.verbose: print("The secondary mass m2 does not match the total mass and mass ratio. Redefining based on M and q")
                 self.m1 = self.M*(self.q/(1.+self.q))
@@ -312,51 +315,51 @@ class SMBH_Merger:
 
         # Default mass parameters if two mass params are givien
         if hasattr(self,"m1") and hasattr(self,"m2"):
-                    self.M = self.m1 + self.m2
-                    self.q = self.m1/self.m2
+            self.M = self.m1 + self.m2
+            self.q = self.m1/self.m2
         elif hasattr(self,"M") and hasattr(self,"q"):
-                    self.m1 = self.M*(self.q/(1.+self.q))
-                    self.m2 = self.M/(1.+self.q)
+            self.m1 = self.M*(self.q/(1.+self.q))
+            self.m2 = self.M/(1.+self.q)
         elif hasattr(self,"M") and hasattr(self,"m1"):
-                    self.m2 = self.M-self.m1
-                    self.q = self.m1/self.m2
+            self.m2 = self.M-self.m1
+            self.q = self.m1/self.m2
         elif hasattr(self,"M") and hasattr(self,"m2"):
-                    self.m1 = self.M-self.m2
-                    self.q = self.m1/self.m2
+            self.m1 = self.M-self.m2
+            self.q = self.m1/self.m2
         elif hasattr(self,"q") and hasattr(self,"m1"):
-                    self.m2 = self.m1/self.q
-                    self.M = self.m1 + self.m2
+            self.m2 = self.m1/self.q
+            self.M = self.m1 + self.m2
         elif hasattr(self,"q") and hasattr(self,"m2"):
-                    self.m1 = self.q*self.m2
-                    self.M = self.m1 + self.m2
+            self.m1 = self.q*self.m2
+            self.M = self.m1 + self.m2
         elif hasattr(self,"M"): # Set defaults if only one mass param is givien
-                if self.verbose: print("Assuming q=1")
-                self.q = 1.
-                self.m1 = self.M/2.
-                self.m2 = self.m1
+            if self.verbose: print("Assuming q=1")
+            self.q = 1.
+            self.m1 = self.M/2.
+            self.m2 = self.m1
         elif hasattr(self,"q"):
-                if self.verbose: print("Assuming m1=1e6 M_sol")
-                self.m1 = 1.e6
-                self.m2 = self.m1/self.q
-                self.M = self.m1+self.m2
+            if self.verbose: print("Assuming m1=1e6 M_sol")
+            self.m1 = 1.e6
+            self.m2 = self.m1/self.q
+            self.M = self.m1+self.m2
         elif hasattr(self,"m1"):
-                if self.verbose: print("Assuming q=1")
-                self.q = 1.
-                self.m2 = self.m1
-                self.M = self.m1+self.m2
+            if self.verbose: print("Assuming q=1")
+            self.q = 1.
+            self.m2 = self.m1
+            self.M = self.m1+self.m2
         elif hasattr(self,"m2"):
-                if self.verbose: print("Assuming q=1")
-                self.q = 1.
-                self.m1 = self.m2
-                self.M = self.m1+self.m2
+            if self.verbose: print("Assuming q=1")
+            self.q = 1.
+            self.m1 = self.m2
+            self.M = self.m1+self.m2
 
         # Default mass parameters if no mass param is givien
         if all([not hasattr(self,"M"), not hasattr(self,"q"), not hasattr(self,"m1"), not hasattr(self,"m2")]):
-                if self.verbose: print("Assuming q=1 and m1=1e6 M_sol")
-                self.m1 = 1.e6
-                self.m2 = self.m1
-                self.M = self.m1 + self.m2
-                self.q = 1.
+            if self.verbose: print("Assuming q=1 and m1=1e6 M_sol")
+            self.m1 = 1.e6
+            self.m2 = self.m1
+            self.M = self.m1 + self.m2
+            self.q = 1.
 
         # Default base source parameters
         if not hasattr(self,"z"): # If this is true then distance is also missing. Set default to redshift 3.
@@ -367,77 +370,77 @@ class SMBH_Merger:
             if self.verbose: print("Setting chi1=0")
             self.chi1 = 0.
         if not hasattr(self,"chi2"):
-                if self.verbose: print("Setting chi2=0")
-                self.chi2 = 0.
+            if self.verbose: print("Setting chi2=0")
+            self.chi2 = 0.
         if not hasattr(self,"lamda"):
-                if self.verbose: print("Setting lambda=0")
-                self.lamda = 0.
+            if self.verbose: print("Setting lambda=0")
+            self.lamda = 0.
         if not hasattr(self,"beta"):
-                if self.verbose: print("Setting beta=0")
-                self.beta = 0.
+            if self.verbose: print("Setting beta=0")
+            self.beta = 0.
         if not hasattr(self,"inc"):
-                if self.verbose: print("Setting inc=0")
-                self.inc= 0.
+            if self.verbose: print("Setting inc=0")
+            self.inc= 0.
         if not hasattr(self,"psi"):
-                if self.verbose: print("Setting psi=0")
-                self.psi = 0.
+            if self.verbose: print("Setting psi=0")
+            self.psi = 0.
         if not hasattr(self,"Deltat"):
-                if self.verbose: print("Setting Deltat=0")
-                self.Deltat = 0.
+            if self.verbose: print("Setting Deltat=0")
+            self.Deltat = 0.
         if not hasattr(self,"phi"):
-                if self.verbose: print("Setting phi=0")
-                self.phi = 0.
+            if self.verbose: print("Setting phi=0")
+            self.phi = 0.
 
         # Default source parameters for waveform generation
         if not hasattr(self,"minf"):
-                self.minf = 1e-5     # Included
+            self.minf = 1e-5     # Included
         if not hasattr(self,"maxf"):
-                self.maxf = 0.5     # Included
+            self.maxf = 0.5     # Included
         if not hasattr(self,"t0"):
-                self.t0 = 0.0     # Included
+            self.t0 = 0.0     # Included
         if not hasattr(self,"timetomerger_max"):
-                self.timetomerger_max = 1.0     # Included
+            self.timetomerger_max = 1.0     # Included
         if not hasattr(self,"fend"):
-                self.fend = None     # Included
+            self.fend = None     # Included
         if not hasattr(self,"phiref"):
-                self.phiref = 0.0     # Included
+            self.phiref = 0.0     # Included
         if not hasattr(self,"fref_for_phiref"):
-                self.fref_for_phiref = 0.0     # Included
+            self.fref_for_phiref = 0.0     # Included
         if not hasattr(self,"tref"):
-                self.tref = 0.0     # Included
+            self.tref = 0.0     # Included
         if not hasattr(self,"fref_for_tref"):
-                self.fref_for_tref = 0.0     # Included
+            self.fref_for_tref = 0.0     # Included
         if not hasattr(self,"force_phiref_fref"):
-                self.force_phiref_fref = True     # Included
+            self.force_phiref_fref = True     # Included
         if not hasattr(self,"toffset"):
-                self.toffset = 0.0     # Included
+            self.toffset = 0.0     # Included
         if not hasattr(self,"modes"):
-                self.modes = None     # Included
+            self.modes = None     # Included
         if not hasattr(self,"acc"):
-                self.acc = 1e-4     # Included
+            self.acc = 1e-4     # Included
         if not hasattr(self,"approximant"):
-                self.approximant = "IMRPhenomHM"     # Included
+            self.approximant = "IMRPhenomHM"     # Included
         if not hasattr(self,"DeltatL_cut"):
-                self.DeltatL_cut = None     # Included
+            self.DeltatL_cut = None     # Included
         if not hasattr(self,"Lframe"):
-                self.Lframe = True
+            self.Lframe = True
         if not hasattr(self,"H5File"):
-                self.H5File=None
+            self.H5File=None
         if not hasattr(self,"JsonFile"):
-                self.JsonFile=None
+            self.JsonFile=None
         if not hasattr(self,"sky_map"):
-                self.sky_map=None
+            self.sky_map=None
         if not hasattr(self,"ExistentialFileName"):
-                # Default name to include source 'name' variable?
-                today = date.today()
-                d = today.strftime("%d_%m_%Y")
-                ExistentialFile = d + "_SourceDict.dat"
-                ExistentialFile=SYNEX_PATH+"/Saved_Source_Dicts/"+ExistentialFile
-                self.ExistentialFileName=ExistentialFile
+            # Default name to include source 'name' variable?
+            today = date.today()
+            d = today.strftime("%d_%m_%Y")
+            ExistentialFile = d + "_SourceDict.dat"
+            ExistentialFile=SYNEX_PATH+"/Saved_Source_Dicts/"+ExistentialFile
+            self.ExistentialFileName=ExistentialFile
         if not hasattr(self,"do3D"):
-                self.do3D=False
-        if not hasattr(self,"gpstime"):
-                self.gpstime=None # Will be synced with detectors at EM observation stage
+            self.do3D=False
+        if not hasattr(self,"gps_timetomerger_max"):
+            self.gps_timetomerger_max=Time('2033-01-01T00:00:00.00', format='isot', scale='utc').gps
 
         # Check h5 and Json files are congruent...
         if self.JsonFile and not self.H5File:

@@ -10,6 +10,7 @@ Definitions can be found here: https://iopscience.iop.org/article/10.3847/1538-4
 
 from SYNEX.SYNEX_Utils import SYNEX_PATH
 import numpy as np
+from astropy.time import Time
 
 # Define flags that are either not useful to Athena and LISA, or we want to default to False.
 go_params_default={
@@ -85,7 +86,7 @@ go_params_default["Ntiles"] = None # 50 # Speific to tilesType=hierarchical and 
 go_params_default["Ntiles_cr"] = 0.70 # Speific to tilesType=hierarchical and greedy (I think)
 go_params_default["Dscale"] = 1.0
 go_params_default["nside"] = 128
-go_params_default["Tobs"] = np.array([0.,9.]) # pairs of [Tstart,Tend], for times in DAYS from science start... We need to join this with lisabeta time stamps later. Default 9 days.
+go_params_default["Tobs"] = np.array([0.,9.]) # pairs of [Tstart,Tend], for times in DAYS from science start... I think several pairs is supposed to link with several telescopes at once so we should probably stick to one pair at a time.
 go_params_default["powerlaw_cl"] = 0.9
 go_params_default["powerlaw_n"] = 1.0
 go_params_default["powerlaw_dist_exp"] = 0
@@ -160,8 +161,8 @@ config_struct_default = {
 "overhead_per_exposure" : None, # 10., # Settle time after each slew/per tile? in seconds or what?
 "filt_change_time" : 0.,
 "sat_sun_restriction" : 5., # 45.,
-"sat_earth_constraint" : 5., # 30.,
-"sat_moon_constraint" : 5., # 20.0,
+"sat_earth_restriction" : 5., # 30.,
+"sat_moon_restriction" : 5., # 20.0,
 "orbitFile" : None, # Where to save orbit to
 "frozenAthena" : False, # Consider stuck at L2 exactly so we only take Earth, Sun and Moon orbital motions into account
 "inc" : 60., # deg incline of orbital plane normal to Sun-Earth axis.
@@ -173,11 +174,10 @@ config_struct_default = {
 "AscendingNode" : 0., # In DEGREES
 "phi_0" : 0., # In DEGREeS, initial phase of Athena when measurments start
 "period" : 180., # In days, for one complete halo orbit about L2
-"gps_science_start" : 1703721618.0, # 01/01/2034 00:00:00.000 UTC -- gps start time of science measurements
+"gps_science_start" : Time('2033-01-01T00:00:00.00', format='isot', scale='utc').gps, # -- gps start time of science measurements
 "mission_duration" : 3. # in YEARS- total time from *start of science* to end of Athena mission
 }
 # "dec_constraint" : "-90,90",
-
 
 
 

@@ -60,47 +60,37 @@ class LISA:
                 self.TDIrescaled = value
             elif key == "LISAnoise":
                 self.LISAnoise = value
-            elif key == "InstrumentalNoise" and hasattr(self,"LISAnoise"):
-                self.LISAnoise["InstrumentalNoise"] = value
-            elif key == "InstrumentalNoise":
-                self.LISAnoise = {}
-                self.LISAnoise["InstrumentalNoise"] = value
-            elif key == "WDbackground" and hasattr(self,"LISAnoise"):
-                self.LISAnoise["WDbackground"] = value
-            elif key == "WDbackground":
-                self.LISAnoise = {}
-                self.LISAnoise["WDbackground"] = value
-            elif key == "WDduration" and hasattr(self,"LISAnoise"):
-                self.LISAnoise["WDduration"] = value
-            elif key == "WDduration":
-                self.LISAnoise = {}
-                self.LISAnoise["WDduration"] = value
+            elif key == "gps_science_start":
+                self.gps_science_start = value
+            elif key == "mission_duration":
+                self.mission_duration = value
+
+        # Defaults if not anything not specified in kwargs
         if not hasattr(self,"tmin"):
-            self.tmin = None     # Included
+            self.tmin = None
         if not hasattr(self,"tmax"):
-            self.tmax = None     # Included
+            self.tmax = None
         if not hasattr(self,"TDI"):
-            self.TDI = "TDIAET"     # Included
+            self.TDI = "TDIAET"
         if not hasattr(self,"order_fresnel_stencil"):
-            self.order_fresnel_stencil = 0     # Included
+            self.order_fresnel_stencil = 0
         if not hasattr(self,"LISAconst"):
-            self.LISAconst = "Proposal"     # Included
+            self.LISAconst = "Proposal"
         if not hasattr(self,"responseapprox"):
-            self.responseapprox = "full"     # Included
+            self.responseapprox = "full"
         if not hasattr(self,"frozenLISA"):
-            self.frozenLISA = False     # Included
+            self.frozenLISA = False
         if not hasattr(self,"TDIrescaled"):
-            self.TDIrescaled = True     # Included
-        if not hasattr(self,"LISAnoise"):
-                self.LISAnoise = {
-                "InstrumentalNoise": "SciRDv1",
-                "WDbackground": True,
-                "WDduration" : 3.0,
-                'lowf_add_pm_noise_f0': 0.0,
-                'lowf_add_pm_noise_alpha': 2.0}     # Included
-        if not hasattr(self.LISAnoise,"InstrumentalNoise"):
-                self.LISAnoise["InstrumentalNoise"] = "SciRDv1"
-        if not hasattr(self.LISAnoise,"WDbackground"):
-                self.LISAnoise["WDbackground"] = True
-        if not hasattr(self.LISAnoise,"WDduration"):
-                self.LISAnoise["WDduration"] = 3.0
+            self.TDIrescaled = True
+        if not hasattr(self,"gps_science_start"):
+            self.gps_science_start = Time('2033-01-01T00:00:00.00', format='isot', scale='utc').gps
+        if not hasattr(self,"mission_duration"):
+            self.mission_duration = 3.
+
+        # Now replace LISA noise params if mentioned in kwargs (replacing any LISAnoise existing dict)
+        if not hasattr(self,"LISAnoise"): self.LISAnoise = {}
+        self.LISAnoise["InstrumentalNoise"]=kwargs["InstrumentalNoise"] if "InstrumentalNoise" in kwargs else "SciRDv1"
+        self.LISAnoise["InstrumentalNoise"]=kwargs["InstrumentalNoise"] if "WDbackground" in kwargs else True
+        self.LISAnoise["InstrumentalNoise"]=kwargs["InstrumentalNoise"] if "WDduration" in kwargs else self.mission_duration
+        self.LISAnoise["InstrumentalNoise"]=kwargs["InstrumentalNoise"] if "lowf_add_pm_noise_f0" in kwargs else 0.
+        self.LISAnoise["InstrumentalNoise"]=kwargs["InstrumentalNoise"] if "lowf_add_pm_noise_alpha" in kwargs else 2.

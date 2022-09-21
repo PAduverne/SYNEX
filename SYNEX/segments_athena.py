@@ -81,22 +81,7 @@ def get_segments_tile(config_struct, radec, segmentlist):
     This function is heavily modified because the functions are just not
     useful as are in "segments.py" for a telescope like Athena.
     """
-    # Set defaults for constraints just in case they aren't handled elsewhere.
-    if "sat_moon_restriction" not in config_struct:
-        config_struct["sat_moon_restriction"]=20.
-    elif config_struct["sat_moon_restriction"]==None:
-        config_struct["sat_moon_restriction"]=20.
-
-    if "sat_earth_restriction" not in config_struct:
-        config_struct["sat_earth_restriction"]=30.
-    elif config_struct["sat_earth_restriction"]==None:
-        config_struct["sat_earth_restriction"]=30.
-
-    if "sat_sun_restriction" not in config_struct:
-        config_struct["sat_sun_restriction"]=45.
-    elif config_struct["sat_sun_restriction"]==None:
-        config_struct["sat_sun_restriction"]=45.
-
+    
     # Get constraints for tile proximity to Sun, Earth, and Moon.
     moon_constraint = float(config_struct["sat_moon_restriction"])
     earth_constraint = float(config_struct["sat_earth_restriction"])

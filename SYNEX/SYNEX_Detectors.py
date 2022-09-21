@@ -90,7 +90,7 @@ class LISA:
         # Now replace LISA noise params if mentioned in kwargs (replacing any LISAnoise existing dict)
         if not hasattr(self,"LISAnoise"): self.LISAnoise = {}
         self.LISAnoise["InstrumentalNoise"]=kwargs["InstrumentalNoise"] if "InstrumentalNoise" in kwargs else "SciRDv1"
-        self.LISAnoise["InstrumentalNoise"]=kwargs["InstrumentalNoise"] if "WDbackground" in kwargs else True
-        self.LISAnoise["InstrumentalNoise"]=kwargs["InstrumentalNoise"] if "WDduration" in kwargs else self.mission_duration
-        self.LISAnoise["InstrumentalNoise"]=kwargs["InstrumentalNoise"] if "lowf_add_pm_noise_f0" in kwargs else 0.
-        self.LISAnoise["InstrumentalNoise"]=kwargs["InstrumentalNoise"] if "lowf_add_pm_noise_alpha" in kwargs else 2.
+        self.LISAnoise["WDbackground"]=kwargs["WDbackground"] if "WDbackground" in kwargs else True
+        self.LISAnoise["WDduration"]=kwargs["WDduration"] if "WDduration" in kwargs else self.mission_duration
+        self.LISAnoise["lowf_add_pm_noise_f0"]=kwargs["lowf_add_pm_noise_f0"] if "lowf_add_pm_noise_f0" in kwargs else 0.
+        self.LISAnoise["lowf_add_pm_noise_alpha"]=kwargs["lowf_add_pm_noise_alpha"] if "lowf_add_pm_noise_alpha" in kwargs else 2.

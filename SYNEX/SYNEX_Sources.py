@@ -776,7 +776,7 @@ class SMBH_Merger:
             # Read dicts out
             param_dict = data["source_params"]
             waveform_params = data["waveform_params"]
-
+            
             try:
                 # Get fishercov from lisabeta functions
                 fishercov = lisa_fisher.fisher_covariance_smbh(param_dict, **waveform_params)

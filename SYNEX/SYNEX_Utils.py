@@ -1861,8 +1861,6 @@ def ComputeDetectorNoise(source, detector, freqs=None, Lframe=False, **kwargs):
     # Grab the variables from classes
     [params, waveform_params, extra_params] = ClassesToParams(source,detector,"Inference",**kwargs)
 
-    print("WDduration checks:",waveform_params["LISAnoise"]["WDduration"])
-
     LISAnoise = waveform_params.get('LISAnoise', pyLISAnoise.LISAnoiseSciRDv1)
     TDI = waveform_params.get('TDI', 'TDIAET')
     TDIrescaled = waveform_params.get('TDIrescaled', True)
@@ -1954,6 +1952,7 @@ def GetSourceFromLisabetaData(FileName, **kwargs):
 
     # Check filenames
     JsonFileLocAndName,H5FileLocAndName=CompleteLisabetaDataAndJsonFileNames(FileName)
+    print("name checks", JsonFileLocAndName, H5FileLocAndName)
 
     # Extract data
     with open(JsonFileLocAndName, 'r') as f: input_params = json.load(f)
@@ -2966,7 +2965,6 @@ def WriteSkymapToFile(map_struct,SkyMapFileName,go_params=None,PermissionToWrite
         if go_params!=None:
             go_params["do3D"]=True
     elif PermissionToWrite:
-        print("skymap properties pre-save:",type(map_struct["prob"]), np.shape(map_struct["prob"]))
         data_to_save = map_struct["prob"] # np.vstack((map_struct["prob"], map_struct["cumprob"], map_struct["ipix_keep"], map_struct["pixarea"], map_struct["pixarea_deg2"]))
         hp.write_map(SkyMapFileName, data_to_save, overwrite=True) # , column_names=["prob"])
 

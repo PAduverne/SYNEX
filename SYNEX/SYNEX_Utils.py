@@ -1141,7 +1141,37 @@ def WriteParamsToJson(source, detector, inference_params, IsMaster=True, **RunTi
             print("Json and H5 filenames are not matched... There is currently no check that the paths are ok here so make sure to pass the entire path if doing this.")
 
     # import some default parameters defined the ptemcee handler script
-    from SYNEX.SYNEX_PTMC import run_params_default # , waveform_params_default
+    # from lisabeta.inference.ptemcee_smbh import run_params_default # , waveform_params_default
+    run_params_default = {
+        "sampler": "ptemcee",
+        "sample_Lframe": True,
+        "multimodal": True,
+        "multimodal_pattern": "8modes",
+        "p_jump": 0.5,
+        "ensemble_proposal": "ptemcee",
+        "likelihood_method": "fresnel",
+        "likelihood_residuals_ngrid": None,
+        "skip_fisher": False,
+        "init_method": "fisher",
+        "init_file": None,
+        "init_scale_cov": 1.,
+        "zerolike": False,
+        "n_temps": 10,
+        "temp_max": None,
+        "adaptive_temp": False,
+        "n_walkers": 96,
+        "n_iter": 8000,
+        "burn_in": 5000,
+        "autocor_method": "autocor_new",
+        "thin_samples": True,
+        "seed": None,
+        "print_info": True,
+        "n_iter_info": 10,
+        "output": True,
+        "output_raw": False,
+        "upsample": 1, ## Extra parameter not sure what its for...
+        "params_map": None ## Extra parameter not sure what its for...
+    }
 
     # Create the default json file parameters
     json_default_dict = {}
@@ -1952,7 +1982,6 @@ def GetSourceFromLisabetaData(FileName, **kwargs):
 
     # Check filenames
     JsonFileLocAndName,H5FileLocAndName=CompleteLisabetaDataAndJsonFileNames(FileName)
-    print("name checks", JsonFileLocAndName, H5FileLocAndName)
 
     # Extract data
     with open(JsonFileLocAndName, 'r') as f: input_params = json.load(f)

@@ -152,6 +152,9 @@ if is_master and len(JsonFiles)==0:
             OutFileName+=str(iiLoop+1)+"_"+T_obs_labels[iiCut]
             RunTimekwargs["out_file"]=OutFileName
 
+            # Add lisbeta file names (Json and H5)
+            Merger_kwargs["JsonFile"]=SYNEX_PATH+OutFileName+".json"
+
             # Create source object
             source=SYSs.SMBH_Merger(**Merger_kwargs)
 

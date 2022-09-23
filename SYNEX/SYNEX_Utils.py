@@ -8,6 +8,7 @@ Might get tricky if we are e.g. running randomized sources... For the moment kee
 import sys
 import os
 import pathlib
+import glob
 # Set the path to root SYNEX directory so file reading and writing is easier -- NOTE: NO TRAILING SLASH
 SYNEX_PATH=str(pathlib.Path(__file__).parent.resolve()).split("SYNEX")[0]+"SYNEX"
 import astropy.constants as const
@@ -2417,6 +2418,8 @@ def TileSkyArea(CloningTrackFile=None,sources=None,telescopes=None,base_telescop
             base_telescope_params=None
             if isinstance(telescopes,list):
                 telescopes=[SYDs.Athena(**dict(tel,**{"verbose":verbose})) if isinstance(tel,dict) else setattr(tel,"verbose",verbose) for tel in telescopes]
+            elif isinstance(telescopes,str):
+                telescopes=glob.glob(telescopes) if "*" in telescopes else [SYDs.Athena(**dict(telescopes,**{"verbose":verbose}))]
             else:
                 telescopes=[SYDs.Athena(**telescopes)] if isinstance(telescopes,dict) else [telescopes]
 
@@ -3822,6 +3825,8 @@ def PlotInferenceData(FileName, SaveFig=False):
     JsonFileLocAndName,H5FileLocAndName = CompleteLisabetaDataAndJsonFileNames(FileName)
 
     # Get some useful info from Json first
+    print(FileName)
+    print(JsonFileLocAndName)
     with open(JsonFileLocAndName) as f: json_data = json.load(f)
     labels = json_data["prior_params"]["infer_params"] # should be a list of inferred parameters
     ndim = len(labels)

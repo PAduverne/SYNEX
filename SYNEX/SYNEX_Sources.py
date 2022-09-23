@@ -445,20 +445,20 @@ class SMBH_Merger:
         # Check h5 and Json files are congruent...
         if self.JsonFile and not self.H5File:
             JsonFileLocAndName,H5FileLocAndName=SYU.CompleteLisabetaDataAndJsonFileNames(self.JsonFile)
+            self.JsonFile = JsonFileLocAndName
             if os.path.isfile(H5FileLocAndName):
                 if self.verbose: print("Using similar H5 file found \n"+H5FileLocAndName)
                 self.H5File=H5FileLocAndName
         if not self.JsonFile and self.H5File:
             JsonFileLocAndName,H5FileLocAndName=SYU.CompleteLisabetaDataAndJsonFileNames(self.H5File)
+            self.H5File = H5FileLocAndName
             if os.path.isfile(JsonFileLocAndName):
                 if self.verbose: print("Using similar Json file found \n"+JsonFileLocAndName)
                 self.JsonFile=JsonFileLocAndName
         if self.JsonFile and self.H5File:
             JsonFileLocAndName,H5FileLocAndName=SYU.CompleteLisabetaDataAndJsonFileNames(self.JsonFile)
-            if os.path.isfile(JsonFileLocAndName) and os.path.isfile(H5FileLocAndName):
-                if self.verbose: print("Using similar Json file found \n"+JsonFileLocAndName+"and similar H5 file found \n"+H5FileLocAndName)
-                self.JsonFile=JsonFileLocAndName
-                self.H5File=H5FileLocAndName
+            self.JsonFile = JsonFileLocAndName
+            self.H5File = H5FileLocAndName
 
         # If we resurrected with mutation, keep a reference to where this class came from
         if MUTATED:
@@ -571,7 +571,6 @@ class SMBH_Merger:
             self.do3D = False
 
         # Pixel locations
-        print("loaded map struct probability properties",type(self.map_struct["prob"]), np.shape(self.map_struct["prob"]))
         nside = hp.pixelfunc.get_nside(self.map_struct["prob"])
         npix = hp.nside2npix(nside)
         theta, phi = hp.pix2ang(nside, np.arange(npix))
@@ -743,8 +742,6 @@ class SMBH_Merger:
         map_struct["pixarea"] = pixarea
         map_struct["pixarea_deg2"] = pixarea_deg2
 
-        print("calculated map struct probability properties",type(map_struct["prob"]), np.shape(map_struct["prob"]))
-
         # create class attribute
         self.map_struct=map_struct
 
@@ -760,8 +757,6 @@ class SMBH_Merger:
     def calculateFisherSkyArea(self,LISA=None,ConfLevel=0.9):
         """
             Explicit function to calculate and return sky area from Fisher matrix.
-
-            NB: Need a LISA object !
         """
         if LISA!=None:
             # Get Fisher covariance matrix
@@ -776,7 +771,7 @@ class SMBH_Merger:
             # Read dicts out
             param_dict = data["source_params"]
             waveform_params = data["waveform_params"]
-            
+
             try:
                 # Get fishercov from lisabeta functions
                 fishercov = lisa_fisher.fisher_covariance_smbh(param_dict, **waveform_params)

@@ -1,0 +1,132 @@
+{
+  "run_params": {
+    "sampler": "ptemcee",
+    "sample_Lframe": true,
+    "multimodal": true,
+    "multimodal_pattern": "8modes",
+    "p_jump": 0.5,
+    "ensemble_proposal": "ptemcee",
+    "likelihood_method": "fresnel",
+    "likelihood_residuals_ngrid": null,
+    "skip_fisher": false,
+    "init_method": "fisher",
+    "init_file": null,
+    "init_scale_cov": 1.0,
+    "zerolike": false,
+    "n_temps": 10,
+    "temp_max": null,
+    "adaptive_temp": false,
+    "n_walkers": 32,
+    "n_iter": 8500,
+    "burn_in": 5000,
+    "autocor_method": "autocor_new",
+    "thin_samples": true,
+    "seed": null,
+    "print_info": true,
+    "n_iter_info": 10,
+    "output": true,
+    "output_raw": false,
+    "upsample": 1,
+    "params_map": null,
+    "out_dir": "/Users/baird/Documents/LabEx_PostDoc/SYNEX/inference_data/",
+    "out_name": "Test_system"
+  },
+  "source_params": {
+    "m1": 26190476.19047619,
+    "m2": 23809523.80952381,
+    "chi1": 0.9,
+    "chi2": 0.95,
+    "Deltat": 0.0,
+    "dist": 27170.04601155036,
+    "inc": 0.3141592653589793,
+    "phi": 0.0,
+    "lambda": 1.0471975511965976,
+    "beta": -0.39269908169872414,
+    "psi": 0.4,
+    "Lframe": true
+  },
+  "waveform_params": {
+    "timetomerger_max": 1.0,
+    "minf": 1e-05,
+    "t0": 0.0,
+    "tref": 0.0,
+    "phiref": 0.0,
+    "fref_for_phiref": 0.0,
+    "fref_for_tref": 0.0,
+    "force_phiref_fref": true,
+    "toffset": 0.0,
+    "acc": 0.0001,
+    "approximant": "IMRPhenomHM",
+    "DeltatL_cut": -86400,
+    "TDI": "TDIAET",
+    "order_fresnel_stencil": 0,
+    "LISAconst": "Proposal",
+    "responseapprox": "full",
+    "frozenLISA": false,
+    "TDIrescaled": true,
+    "LISAnoise": {
+      "InstrumentalNoise": "SciRDv1",
+      "WDbackground": true,
+      "WDduration": 3.0,
+      "lowf_add_pm_noise_f0": 0.0,
+      "lowf_add_pm_noise_alpha": 2.0
+    }
+  },
+  "prior_params": {
+    "infer_params": [
+      "chi1",
+      "chi2",
+      "dist",
+      "inc",
+      "phi",
+      "lambda",
+      "beta",
+      "psi"
+    ],
+    "params_range": [
+      [
+        -1.0,
+        1.0
+      ],
+      [
+        -1.0,
+        1.0
+      ],
+      [
+        5000.0,
+        200000.0
+      ],
+      [
+        0.0,
+        3.141592653589793
+      ],
+      [
+        -3.141592653589793,
+        3.141592653589793
+      ],
+      [
+        -3.141592653589793,
+        3.141592653589793
+      ],
+      [
+        -1.5707963267948966,
+        1.5707963267948966
+      ],
+      [
+        0.0,
+        3.141592653589793
+      ]
+    ],
+    "prior_type": [
+      "uniform",
+      "uniform",
+      "uniform",
+      "sin",
+      "uniform",
+      "uniform",
+      "cos",
+      "uniform"
+    ],
+    "wrap_params": null
+  }
+}

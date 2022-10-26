@@ -380,10 +380,14 @@ class Athena:
 
     def GetKuiper(self, TilePickleFile, source=None):
         """
+        ################# This function is no longer frequently used #################
+
         # Figure out maximum times we can do in the time available
         # Will include time slew as an extra exit flag in the loop over tiles,
         # cutting out the last m tiles (m<n) once the slew time consumes the equivalent time for m tiles.
         # Define the time to merger
+
+        ################# This function is no longer frequently used #################
         """
         # Get tiles from json file
         with open(TilePickleFile, 'rb') as f:
@@ -545,38 +549,7 @@ class Athena:
         if self.verbose: print(self.n_exposures, "exposures of source by tiles", self.exposure_tiles, "using", TileDict["Tile Strat"], "tiling strategy.")
         # if self.verbose: print("Total photons:", sum(self.n_photons), "with", sum(self.n_photons[:-1]), "exposure photons and", self.n_photons[-1],"background photons.")
         if self.verbose: print("Accumulated photons during on-source exposures (S+B):", sum(self.n_photons))
-
-    def RunSIXTE(self,TileJsonFile):
-        # Figure out maximum times we can do in the time available
-        # Will include time slew as an extra exit flag in the loop over tiles,
-        # cutting out the last m tiles (m<n) once the slew time consumes the equivalent time for m tiles.
-        # Define the time to merger
-        json_file = TileJsonFile['LISA Data File']
-        json_file = json_file.split("inference_data")[0] + "inference_param_files" + json_file.split("inference_data")[-1]
-        with open(json_file, 'r') as f:
-            input_params = json.load(f)
-        f.close()
-        TimeToMerger = input_params["waveform_params"]["DeltatL_cut"]
-        n_times = int((-TimeToMerger-self.T_init)//self.T_lat)
-
-        # Get tiles from json file
-        with open(TileJsonFile, 'r') as f:
-            TileDict = json.load(f)
-        f.close()
-
-        # Sort the dictionary to contain just the tiles we want
-        Extra_keys = ['Tile Strat', 'overlap', 'LISA Data File']
-        TileDict_reduced = {k: v for k, v in TileDict.items() if k not in Extra_keys and int(k)<=n_times}
-        max_key = [int(k) for k in TileDict_reduced.keys()]
-        max_key = max(max_key)
-        if max_key<n_times:
-            n_times = max_key
-
-        # Now loop through the SIXTE commands
-        for i in range(n_times):
-            TileDict[str(i)]['beta']
-            TileDict[str(i)]['lambda']
-
+    
     def ExistentialCrisis(self,NewFileName=None):
         """
         Function to save all class attributes as a dictionary to file,

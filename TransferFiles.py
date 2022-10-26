@@ -75,13 +75,13 @@ elif DO_INFERENCE_FROM_SSH:
 elif DO_INFERENCE_TO_SSH:
     # Set up params for filenames we want to transfer over
     FileBeginning = "Randomized_angles_spins_MRat_" #
-    Cuts = ["_5hr","_10hr","_1d","_3d","_1wk", "_2wk", "_3wk", "_1mon"] # ["_0cut","_5hr","_10hr","_1d","_3d","_1wk", "_2wk", "_3wk", "_1mon"] # ["0cut_","4hr_","1d_","1wk_"] #
-    FileEnds = [str(ii) for ii in range(1,90+1)]
+    Cuts = ["_0cut","_5hr","_10hr","_1d","_3d","_1wk", "_2wk", "_3wk", "_1mon"] # ["_5hr","_10hr","_1d","_3d","_1wk", "_2wk", "_3wk", "_1mon"] #
+    FileEnds = [str(ii) for ii in range(1,130+1)]
 
     # Iterate through each param, adding to the string
     Files = [FileBeginning + FileEnd + Cut for FileEnd in FileEnds for Cut in Cuts]
     NFiles=len(Files)
-    bunch_limit=100
+    bunch_limit=300
 
     # Transfer in bunches otherwise we reach memory issues (idk why)
     if NFiles>bunch_limit:
@@ -104,15 +104,26 @@ elif DO_TILED_FROM_SSH:
     # Get all source files
     source_saves=list(os.popen('ssh baird@apcssh.in2p3.fr "ls sources"').read())
     source_saves = str("".join(source_saves)).replace('\n','')
-    source_saves = ",".join(list(source_saves.split(".json")))
+    print(len(list(source_saves.split(".dat"))),"source saves...")
+    source_saves = ",".join(list(source_saves.split(".dat")))
 
     # Get all telescope files
-    telescope_saves=list(os.popen('ssh baird@apcssh.in2p3.fr "ls detectors"').read())
+    telescope_saves=list(os.popen('ssh baird@apcssh.in2p3.fr "ls telescopes"').read())
     telescope_saves = str("".join(telescope_saves)).replace('\n','')
-    telescope_saves = ",".join(list(telescope_saves.split(".h5")))
+    len_tels=len(list(telescope_saves.split(".dat")))
+    print(len_tels, len(telescope_saves[0:int(len_tels//2)]), len(telescope_saves[int(len_tels//2):len_tels]),"telescope saves...")
+    telescope_saves = list(telescope_saves.split(".dat"))
+    telescope_saves_1 = ",".join(telescope_saves[0:int(len_tels//4)])
+    telescope_saves_2 = ",".join(telescope_saves[int(len_tels//4):2*int(len_tels//4)])
+    telescope_saves_3 = ",".join(telescope_saves[2*int(len_tels//4):3*int(len_tels//4)])
+    telescope_saves_4 = ",".join(telescope_saves[3*int(len_tels//4):len_tels])
+    print(len_tels, len(telescope_saves_1), len(telescope_saves_2), len(telescope_saves_3), len(telescope_saves_4))
 
     # transfer source savefiles
     os.system("scp baird@apcssh.in2p3.fr:/home/baird/sources/\{" + source_saves[:-1] + "\}.dat Saved_Source_Dicts/Randomized_SYNEX2/")
 
     # transfer telescope savefiles
-    os.system("scp baird@apcssh.in2p3.fr:/home/baird/detectors/\{" + telescope_saves[:-1] + "\}.dat Saved_Telescope_Dicts/Randomized_SYNEX2/")
+    os.system("scp baird@apcssh.in2p3.fr:/home/baird/telescopes/\{" + telescope_saves_1 + "\}.dat Saved_Telescope_Dicts/Randomized_SYNEX2/")
+    os.system("scp baird@apcssh.in2p3.fr:/home/baird/telescopes/\{" + telescope_saves_2 + "\}.dat Saved_Telescope_Dicts/Randomized_SYNEX2/")
+    os.system("scp baird@apcssh.in2p3.fr:/home/baird/telescopes/\{" + telescope_saves_3 + "\}.dat Saved_Telescope_Dicts/Randomized_SYNEX2/")
+    os.system("scp baird@apcssh.in2p3.fr:/home/baird/telescopes/\{" + telescope_saves_4[:-1] + "\}.dat Saved_Telescope_Dicts/Randomized_SYNEX2/")

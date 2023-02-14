@@ -140,14 +140,14 @@ def main():
                                        'lisabeta/lisabeta/inference/ptemcee_smbh.py')
 
             # print("python3 " + script_path + " " + Merger.JsonFile)
-            print("Starting the inference with Lisabeta.")
-            t0 = time.time()
             if os.path.isfile(Merger.H5File) and not args.skip:
+                print("Starting the inference with Lisabeta.")
+                t0 = time.time()
                 os.system(("python3 " + # Call the right python version
                            script_path + " " + # Path for the inference script
                            Merger.JsonFile)) # Inference parameters
-            t1 = time.time()
-            print("Time to complete the inference: ", (t1-t0)/60, "min")
+                t1 = time.time()
+                print("Time to complete the inference: ", (t1-t0)/60, "min")
 
             # See inference results
             print("Creating the corner plot.")

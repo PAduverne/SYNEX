@@ -320,7 +320,9 @@ def ParamsToClasses(input_params,CollectionMethod="Inference",**kwargs):
     param_dict = input_params["source_params"]
 
     # Hand everything useful to one dict - anything not used in class creation is left alone.
-    source_kwargs = {**param_dict, "lisabetaFile":run_params["out_dir"] + run_params["out_name"] + ".h5", **waveform_params}
+    source_kwargs = {**param_dict,
+                     "lisabetaFile":run_params["out_dir"] +
+                     run_params["out_name"] + ".h5", **waveform_params}
 
     # Check if we will modify something
     MUTATED=False
@@ -353,70 +355,123 @@ def ParamsToClasses(input_params,CollectionMethod="Inference",**kwargs):
 
     return source
 
-def CompleteLisabetaDataAndJsonFileNames(FileName):
+# def CompleteLisabetaDataAndJsonFileNames(FileName,
+#                                          rep_param="inference_param_files",
+#                                          rep_inf="inference_data"):
+#     """
+#     Function to give back congruent json and h5 filenames, complete with paths and
+#     proper file extensions. This is particularly useful when transfering files
+#     from cluster to local workspaces where locations of files may be different
+#     (e.g. SYNEX_PATH is different, AND we wish to group cluster runs into sub directories
+#     according to test generation etc).
+
+#     PARAMS
+#     ------
+#         - FileName :: String
+#             Filename, with or without '.json' or '.h5' extensions, including any
+#             desired architecture existing below the locations './SYNEX/inference_data'
+#             or './SYNEX/inference_param_files'.
+#     """
+
+#     # Create paths to data and json folders
+#     LisabetaJsonPath = SYNEX_PATH + "/inference_param_files"
+#     # LisabetaJsonPath = os.path.join(SYNEX_PATH, rep_param)
+#     LisabetaDataPath = SYNEX_PATH + "/inference_data"
+#     # LisabetaDataPath = os.path.join(SYNEX_PATH, rep_inf)
+
+#     print(FileName)
+#     if FileName[0]!="/":
+#         LisabetaJsonPath+="/"
+#         LisabetaDataPath+="/"
+
+#     # Figure out if its a json or h5 filename
+#     if FileName[-3]==".":
+#         JsonFileLocAndName = FileName[:-3] + '.json'
+#         H5FileLocAndName = FileName
+#     elif FileName[-5]==".":
+#         JsonFileLocAndName = FileName
+#         H5FileLocAndName = FileName[:-5] + '.h5'
+#     else:
+#         JsonFileLocAndName = FileName + '.json'
+#         H5FileLocAndName = FileName + '.h5'
+
+#     # Add file path if only the filenames specified
+#     bool_vec = [len(FileName.split("inference_param_files"))==1,
+#                 len(FileName.split("inference_data"))==1]
+#     if bool_vec[0] and bool_vec[1]:
+#         H5FileLocAndName = LisabetaDataPath + H5FileLocAndName
+#         JsonFileLocAndName = LisabetaJsonPath + JsonFileLocAndName
+#     elif bool_vec[0] and not bool_vec[1]:
+#         JsonFileLocAndName = LisabetaJsonPath + H5FileLocAndName.split("inference_data")[-1]
+#         JsonFileLocAndName = ".".join(JsonFileLocAndName.split(".")[:-1])+".json"
+#     elif not bool_vec[0] and bool_vec[1]:
+#         H5FileLocAndName = LisabetaDataPath + JsonFileLocAndName.split("inference_param_files")[-1]
+#         H5FileLocAndName = ".".join(H5FileLocAndName.split(".")[:-1])+".h5"
+
+#     # Check if the subdirectories exist for both data and json files
+#     JsonPathOnly="/".join(JsonFileLocAndName.split("/")[:-1])
+#     DataPathOnly="/".join(H5FileLocAndName.split("/")[:-1])
+#     try:
+#         # See if the directories exist in case we load ource from savefile or something
+#         pathlib.Path(JsonPathOnly).mkdir(parents=True, exist_ok=True)
+#         pathlib.Path(DataPathOnly).mkdir(parents=True, exist_ok=True)
+#     except:
+#         JsonPathOnly=LisabetaJsonPath
+#         DataPathOnly=LisabetaDataPath
+#         JsonFileLocAndName=JsonPathOnly+JsonFileLocAndName.split("inference_param_files")[-1]
+#         H5FileLocAndName=DataPathOnly+H5FileLocAndName.split("inference_data")[-1]
+#         print(JsonPathOnly)
+#         pathlib.Path(JsonPathOnly).mkdir(parents=True, exist_ok=True)
+#         pathlib.Path(DataPathOnly).mkdir(parents=True, exist_ok=True)
+
+#     # Return full paths and names all harmonious and what not
+#     return JsonFileLocAndName,H5FileLocAndName
+
+def CompleteLisabetaDataAndJsonFileNames(FileName, path=SYNEX_PATH):
     """
-    Function to give back congruent json and h5 filenames, complete with paths and
-    proper file extensions. This is particularly useful when transfering files
+    Function to give back congruent json and h5 filenames with their complete
+    paths. This is particularly useful when transfering files
     from cluster to local workspaces where locations of files may be different
-    (e.g. SYNEX_PATH is different, AND we wish to group cluster runs into sub directories
-    according to test generation etc).
+    (e.g. SYNEX_PATH is different, AND we wish to group cluster runs into
+    sub-directories according to test generation etc).
 
     PARAMS
     ------
         - FileName :: String
-            Filename, with or without '.json' or '.h5' extensions, including any
-            desired architecture existing below the locations './SYNEX/inference_data'
-            or './SYNEX/inference_param_files'.
+            Filename, with or without '.json' or '.h5' extensions
+        - path :: String
+            Path where the subdirectories with the json and h5 files are stored
+            Default: SYNEX path
     """
 
-    # Create paths to data and json folders
-    LisabetaJsonPath = SYNEX_PATH + "/inference_param_files"
-    LisabetaDataPath = SYNEX_PATH + "/inference_data"
+    if ("inference_param_files" in FileName): # check if the dirs are already OK
+        splited = FileName.split("inference_param_files")
+        path = splited[0]
+        FileName = splited[1].split('.')[0] # Remove extension if necessary
 
-    if FileName[0]!="/":
-        LisabetaJsonPath+="/"
-        LisabetaDataPath+="/"
-
-    # Figure out if its a json or h5 filename
-    if FileName[-3]==".":
-        JsonFileLocAndName = FileName[:-3] + '.json'
-        H5FileLocAndName = FileName
-    elif FileName[-5]==".":
-        JsonFileLocAndName = FileName
-        H5FileLocAndName = FileName[:-5] + '.h5'
+    elif ("inference_data" in FileName):
+        splited = FileName.split("inference_data")
+        path = splited[0]
+        FileName = splited[1].split('.')[0].split('/')[1] # Remove extension if necessary
     else:
-        JsonFileLocAndName = FileName + '.json'
-        H5FileLocAndName = FileName + '.h5'
+        # Find the filename for the H5 and json files
+        if ("json" in FileName) or ("h5" in FileName):
+            FileName = FileName.split('.')[0].split('/')[1] # Remove extension if necessary
+    # Setup the repertory path containing the parameter and data files.``
+    LisabetaJsonPath = os.path.join(path, "inference_param_files")
+    LisabetaDataPath = os.path.join(path,  "inference_data")
 
-    # Add file path if only the filenames specified
-    bool_vec = [len(FileName.split("inference_param_files"))==1,len(FileName.split("inference_data"))==1]
-    if bool_vec[0] and bool_vec[1]:
-        H5FileLocAndName = LisabetaDataPath + H5FileLocAndName
-        JsonFileLocAndName = LisabetaJsonPath + JsonFileLocAndName
-    elif bool_vec[0] and not bool_vec[1]:
-        JsonFileLocAndName = LisabetaJsonPath + H5FileLocAndName .split("inference_data")[-1]
-        JsonFileLocAndName = ".".join(JsonFileLocAndName.split(".")[:-1])+".json"
-    elif not bool_vec[0] and bool_vec[1]:
-        H5FileLocAndName = LisabetaDataPath + JsonFileLocAndName.split("inference_param_files")[-1]
-        H5FileLocAndName = ".".join(H5FileLocAndName.split(".")[:-1])+".h5"
+    # Join path, filenames and extension
+    JsonFileLocAndName = os.path.join(LisabetaJsonPath, FileName + '.json')
+    H5FileLocAndName = os.path.join(LisabetaDataPath, FileName + '.h5')
 
-    # Check if the subdirectories exist for both data and json files
-    JsonPathOnly="/".join(JsonFileLocAndName.split("/")[:-1])
-    DataPathOnly="/".join(H5FileLocAndName.split("/")[:-1])
-    try:
-        # See if the directories exist in case we load ource from savefile or something
-        pathlib.Path(JsonPathOnly).mkdir(parents=True, exist_ok=True)
-        pathlib.Path(DataPathOnly).mkdir(parents=True, exist_ok=True)
-    except:
-        JsonPathOnly=LisabetaJsonPath
-        DataPathOnly=LisabetaDataPath
-        JsonFileLocAndName=JsonPathOnly+JsonFileLocAndName.split("inference_param_files")[-1]
-        H5FileLocAndName=DataPathOnly+H5FileLocAndName.split("inference_data")[-1]
-        pathlib.Path(JsonPathOnly).mkdir(parents=True, exist_ok=True)
-        pathlib.Path(DataPathOnly).mkdir(parents=True, exist_ok=True)
+    # Create all the relevant repertories if they do not exist yet
+    if not os.path.exists(LisabetaJsonPath):
+        os.makedirs(LisabetaJsonPath)
+    if not os.path.exists(LisabetaDataPath):
+        os.makedirs(LisabetaDataPath)
 
-    # Return full paths and names all harmonious and what not
-    return JsonFileLocAndName,H5FileLocAndName
+    return JsonFileLocAndName, H5FileLocAndName
 
 def GWEMOPTPathChecks(go_params, config_struct):
     """
@@ -725,7 +780,7 @@ def GetTotSkyAreaFromPostData_OLD(FileName,ConfLevel=0.9):
         nsamples = len(infer_params["lambda"][0])
     else:
         nsamples = len(infer_params["lambda"])
-    print("Posterior sample length: " + str(nsamples))
+    # print("Posterior sample length: " + str(nsamples))
     # Grab data for sky location
     data = np.empty([2,nsamples])
     SampleModes = []
@@ -941,7 +996,7 @@ def GetOctantLikeRatioAndPostProb(FileName):
 
     return lnLikeRatios,OctantPostProbs
 
-def read_h5py_file(FileName):
+def read_h5py_file(FileName, path=SYNEX_PATH):
     """
     Function to read a lisabeta output H5file.
 
@@ -965,7 +1020,8 @@ def read_h5py_file(FileName):
     """
 
     # Check filenames
-    JsonFileLocAndName,H5FileLocAndName = CompleteLisabetaDataAndJsonFileNames(FileName)
+    JsonFileLocAndName, H5FileLocAndName = CompleteLisabetaDataAndJsonFileNames(FileName,
+                                                                                path)
 
     # Load data from h5 file
     f = h5py.File(H5FileLocAndName,'r')
@@ -1064,7 +1120,8 @@ def RunInference(source_or_kwargs, detector, inference_params, PlotInference=Fal
 
         # Write params to json file
         print("Creating json file...")
-        WriteParamsToJson(source,detector,inference_params,is_master,**RunTimekwargs)
+        WriteParamsToJson(source, detector, inference_params,
+                          is_master, **RunTimekwargs)
         sourceJsonFile=source.JsonFile
         print("Done.")
     else:
@@ -1103,43 +1160,68 @@ def RunInference(source_or_kwargs, detector, inference_params, PlotInference=Fal
         # Automatically save the fig if called within inference.
         PlotInferenceData(source.H5File,SaveFig=True)
 
-def WriteParamsToJson(source, detector, inference_params, IsMaster=True, **RunTimekwargs):
+def WriteParamsToJson(source, detector, inference_params,
+                      IsMaster=True, **RunTimekwargs):
     """
-    Function to save source and GW detector params to json file for lisabeta inference runs,
-    using the saved json file name in source class.
+    Function to save source and GW detector params to json file for
+    lisabeta inference runs, using the saved json file name in source class.
     """
     # Only verbose if both classes are verbose
     verbose=source.verbose and detector.verbose
 
+    # Chose the repertory where the files are saved. Use SYNEX path b y default``
+    #  if nothing provided in the RunTimekwargs parameters.
+    if "out_rep" in RunTimekwargs:
+        out_rep = RunTimekwargs["out_rep"]
+    else:
+        out_rep = SYNEX_PATH
+
     # See if we have output filenames to asign
-    if "out_file" in RunTimekwargs:
-        JsonFile,H5File=CompleteLisabetaDataAndJsonFileNames(RunTimekwargs["out_file"])
-        source.JsonFile=JsonFile
-        source.H5File=H5File
-        del RunTimekwargs["out_file"]
+    # if "out_file" in RunTimekwargs:
+    #     out_file = RunTimekwargs["out_file"]
+    #     del RunTimekwargs["out_file"]
+
+    #     JsonFile, H5File = CompleteLisabetaDataAndJsonFileNames(out_file,
+    #                                                             out_rep)
+    #     source.JsonFile = JsonFile
+    #     source.H5File = H5File
+
 
     # double check names and paths are ok
-    if source.JsonFile==None and source.H5File==None:
+    # if source.JsonFile==None and source.H5File==None:
+    # No filename provided at all
+    if (not source.JsonFile) and (not source.H5File):
+        # Prepare the default filename
         from datetime import date
         today = date.today()
         d = today.strftime("%d_%m_%Y")
-        JsonOrOutFile = d + "_InferParams_" + '_'.join(inference_params["infer_params"])
-        JsonFile,H5File=CompleteLisabetaDataAndJsonFileNames(JsonOrOutFile)
-        source.JsonFile=JsonFile
-        source.H5File=H5File
-        if verbose: print("Creating default json name:",JsonFile)
-    elif source.JsonFile==None and source.H5File!=None:
-        JsonFile,H5File=CompleteLisabetaDataAndJsonFileNames(source.H5File)
-        source.JsonFile=JsonFile
-        source.H5File=H5File
-    elif source.JsonFile!=None and source.H5File==None:
-        JsonFile,H5File=CompleteLisabetaDataAndJsonFileNames(source.JsonFile)
-        source.JsonFile=JsonFile
-        source.H5File=H5File
+        JsonOrOutFile = (d + "_InferParams_"
+                         + '_'.join(inference_params["infer_params"]))
+
+        # Create the repertories
+        JsonFile, H5File = CompleteLisabetaDataAndJsonFileNames(JsonOrOutFile,
+                                                                out_rep)
+
+        if verbose: print("Creating default json name: {}".format(JsonFile))
+
+    # Case where only the json file is provided
+    elif (source.JsonFile) and (not source.H5File):
+        JsonFile, H5File = CompleteLisabetaDataAndJsonFileNames(source.JsonFile,
+                                                                out_rep)
+    # Case where only the H5 file is provided and not the json
+    elif (not source.JsonFile) and (source.H5File):
+        JsonFile, H5File = CompleteLisabetaDataAndJsonFileNames(source.H5File,
+                                                                out_rep)
+    # Case where both json and h5 filename are given
     elif source.JsonFile!=None and source.H5File!=None:
-        JsonFile,H5File=CompleteLisabetaDataAndJsonFileNames(source.JsonFile)
+        JsonFile, H5File = CompleteLisabetaDataAndJsonFileNames(source.JsonFile,
+                                                                out_rep)
         if source.H5File!=H5File and verbose:
-            print("Json and H5 filenames are not matched... There is currently no check that the paths are ok here so make sure to pass the entire path if doing this.")
+            print("Json and H5 filenames are not matched... \n"
+                  "There is currently no check that the paths are ok here.\n"
+                  "Make sure to pass the entire path if doing this.")
+
+    # source.JsonFile = Jsons
 
     # import some default parameters defined the ptemcee handler script
     # from lisabeta.inference.ptemcee_smbh import run_params_default # , waveform_params_default
@@ -1183,15 +1265,19 @@ def WriteParamsToJson(source, detector, inference_params, IsMaster=True, **RunTi
     # Therefore can rename the dictionaries for clarity, and then delete the key,value unwrap next
     # for the run_params update, since the run_params are handed to the function at call time.
     # But double check that the run_params are not not in the returned waveform params list etc.
-    [param_dict, waveform_params, _ ] = ClassesToParams(source,detector,"Inference")
+    [param_dict, waveform_params, _ ] = ClassesToParams(source,
+                                                        detector,
+                                                        "Inference")
     json_default_dict["source_params"] = param_dict
     json_default_dict["waveform_params"] = waveform_params
     json_default_dict["prior_params"] = inference_params
 
-    # Add some missing kwargs in the LISAnoise subdictionary in waveform params. Not really sure what this does but it is needed.
-    # Need to fiure out if this is needed in theFisher stuff too - it will change where we put the defaults etc at detector initialization.
-    json_default_dict["waveform_params"]["LISAnoise"]["lowf_add_pm_noise_f0"]=0.0
-    json_default_dict["waveform_params"]["LISAnoise"]["lowf_add_pm_noise_alpha"]=2.0
+    # Add some missing kwargs in the LISAnoise subdictionary in waveform params.
+    # Not really sure what this does but it is needed.
+    # Need to fiure out if this is needed in theFisher stuff too - it will
+    # change where we put the defaults etc at detector initialization.
+    json_default_dict["waveform_params"]["LISAnoise"]["lowf_add_pm_noise_f0"] = 0.0
+    json_default_dict["waveform_params"]["LISAnoise"]["lowf_add_pm_noise_alpha"] = 2.0
 
     # Update json dict field defaults where needed
     for key,value in waveform_params.items():
@@ -1202,7 +1288,7 @@ def WriteParamsToJson(source, detector, inference_params, IsMaster=True, **RunTi
 
     # Change now any keys set in the run time dictionary of kwargs (this could plot flags, run params values, no. of walkers etc)
     # This is NOT meant for binary params or prior params - these need to be specified at the highest script level
-    for key,value in RunTimekwargs.items():
+    for key, value in RunTimekwargs.items():
         if key in json_default_dict["run_params"]:
             json_default_dict["run_params"][key] = value
         elif key in json_default_dict["waveform_params"]:
@@ -1211,15 +1297,15 @@ def WriteParamsToJson(source, detector, inference_params, IsMaster=True, **RunTi
             json_default_dict["source_params"][key] = value
 
     # Set the output file and directory location in the json param list
-    H5FilePath="/".join(source.H5File.split("/")[:-1])+"/"
-    H5FileName=source.H5File.split("/")[-1]
+    H5FilePath = "/".join(source.H5File.split("/")[:-1])+"/"
+    H5FileName = source.H5File.split("/")[-1]
     H5FileName=".".join(H5FileName.split(".")[:-1])
     json_default_dict["run_params"]["out_dir"] = H5FilePath
     json_default_dict["run_params"]["out_name"] =  H5FileName # this needs to not have the '.h5' added at the end to work
 
     # Write the json file only if master node or not mpi
     if IsMaster:
-        if verbose: print("Writting params to",source.JsonFile)
+        if verbose: print("Writting params to", source.JsonFile)
         with open(source.JsonFile, 'w') as f:
             json.dump(json_default_dict, f, indent=2)
         f.close()
@@ -1372,7 +1458,6 @@ def RunFoMOverRange(source,detector,ParamDict,FigureOfMerit='SNR',RunGrid=False,
                 if FigureOfMerit == 'SkyLocInfer':
                     # Make sure json and output file locations exist
                     LisaBetaPath = os.path.dirname(os.path.realpath(__file__))
-                    print(LisaBetaPath)
                     if not os.path.isdir(os.path.join(LisaBetaPath+"/../inference_param_files/GridInference_"+Var1+"_"+Var2+"/")):
                         os.mkdir(os.path.join(LisaBetaPath+"/../inference_param_files/GridInference_"+Var1+"_"+Var2+"/"))
                     if not os.path.isdir(os.path.join(OutFileLoc+"/../inference_data/GridInference_"+Var1+"_"+Var2+"/")):
@@ -2829,8 +2914,13 @@ def GetCoverageInfo(go_params, map_struct, tile_structs, coverage_struct, telesc
     if verbose:
         print("\n\n")
         print("#"*20+"  "+telescope_name+"  "+"#"*20+"\n")
-        print("Total prob (tile_struct, map_struct, map_struct drop dups):",TotProb1,TotProb2,TotProb3)
-        print("Params/Config checks:", telescope_name, go_params["config"][telescope]["tot_obs_time"], go_params["config"][telescope_name]["exposuretime"], go_params["config"][telescope_name]["tot_obs_time"]/go_params["config"][telescope_name]["exposuretime"], "Tot tiles avail:", len(tile_struct.keys()))
+        print("Total prob (tile_struct, map_struct, map_struct drop dups):",
+              TotProb1, TotProb2, TotProb3)
+        print("Params/Config checks:", telescope_name,
+              go_params["config"][telescope]["tot_obs_time"],
+              go_params["config"][telescope_name]["exposuretime"],
+              go_params["config"][telescope_name]["tot_obs_time"]/go_params["config"][telescope_name]["exposuretime"],
+              "Tot tiles avail:", len(tile_struct.keys()))
         print("\n")
 
     # Coverage info
@@ -2847,9 +2937,14 @@ def GetCoverageInfo(go_params, map_struct, tile_structs, coverage_struct, telesc
     # Print summary if asked for
     if verbose:
         print(len(ex_Times),"/",len(cov_data[:,4]), "coverage tiles")
-        print("Detector coverage prob (cov_struct data, map_struct, map_struct dup drop):",prob1,prob2,prob3)
-        print(len(ex_Times_unique),"/",len(cov_data[:,4]), "unique coverage tiles")
-        print(len(ex_Times_unique),"unique exposure times with (min, mean, max):",np.min(ex_Times_unique),np.mean(ex_Times_unique),np.max(ex_Times_unique))
+        print("Detector coverage prob (cov_struct data, map_struct, map_struct dup drop):",
+              prob1, prob2, prob3)
+        print(len(ex_Times_unique),"/",len(cov_data[:,4]),
+              "unique coverage tiles")
+        print(len(ex_Times_unique),"unique exposure times with (min, mean, max):",
+              np.min(ex_Times_unique),
+              np.mean(ex_Times_unique),
+              np.max(ex_Times_unique))
         print("\n")
 
     ## Source tile info -- was it covered?
@@ -2930,7 +3025,8 @@ def GetCoverageInfo(go_params, map_struct, tile_structs, coverage_struct, telesc
     # Return values
     return telescope
 
-def WriteSkymapToFile(map_struct,SkyMapFileName,go_params=None,PermissionToWrite=True):
+def WriteSkymapToFile(map_struct, SkyMapFileName,
+                      go_params=None, PermissionToWrite=True):
     """
     Helper funciton to save a skymap to fits file.
 
@@ -2969,36 +3065,58 @@ def WriteSkymapToFile(map_struct,SkyMapFileName,go_params=None,PermissionToWrite
 
     Note: filename is JUST the name without the path- the path is calculated in situ.
     """
-    from astropy.table import Table, Column
-    import os.path
+    # from astropy.table import Table, Column
+    # import os.path
 
     # get path and check filename...
-    # TO DO: add this to a helper function to check paths of data directories are congruent.... Can also do this for tile functions in the same function but different to lisabeta function, but this function reference lisabeta one to harmonize the architectures..
+    # TODO: add this to a helper function to check paths of data directories
+    # are congruent....
+    # Can also do this for tile functions in the same function but different
+    # to lisabeta function, but this function reference lisabeta one
+    # to harmonize the architectures..
+
+    # ???
     if len(SkyMapFileName.split("Skymap_files"))==1 and len(SkyMapFileName.split("SYNEX"))>1:
-        raise ValueError("Sorry but for continuity across functions please direct skymap directories to be within './SYNEX/Skymap_files/...'")
+        raise ValueError("Sorry but for continuity across functions please"
+                          "direct skymap directories to be within './SYNEX/Skymap_files/...'")
     elif len(SkyMapFileName.split("Skymap_files"))>1 and len(SkyMapFileName.split("SYNEX"))==1:
         print("Directing given filename to './SYNEX/Skymap_files/...'")
         SkyMapFileName = SYNEX_PATH + "/Skymap_files" + SkyMapFileName.split("Skymap_files")[-1]
     elif len(SkyMapFileName.split("Skymap_files"))==1 and len(SkyMapFileName.split("SYNEX"))==1:
         print("WARNING: Adding ./SYNEX/Skymap_files/ to filename provided...")
         SkyMapFileName = SYNEX_PATH + "/Skymap_files/" + SkyMapFileName
-    if SkyMapFileName[-5:]!='.fits':
-        SkyMapFileName = SkyMapFileName+'.fits'
 
+    if '.fits' not in SkyMapFileName:
+        SkyMapFileName = SkyMapFileName + '.fits'
     # Check if directory exists and create if it doesnt
     SkyMapFilePath = "/".join(SkyMapFileName.split("/")[:-1])
     pathlib.Path(SkyMapFilePath).mkdir(parents=True, exist_ok=True)
 
     # Write to fits file
     if "distmu" in map_struct:
-        data_to_save = np.vstack((map_struct["prob"], map_struct["distmu"], map_struct["distsigma"], map_struct["distnorm"])) # np.vstack((map_struct["prob"], map_struct["cumprob"], map_struct["ipix_keep"], map_struct["pixarea"], map_struct["pixarea_deg2"],map_struct["distmu"],map_struct["distsigma"],map_struct["distnorm"]))
+        data_to_save = np.vstack((map_struct["prob"],
+                                  map_struct["distmu"],
+                                  map_struct["distsigma"],
+                                  map_struct["distnorm"]))
+        # np.vstack((map_struct["prob"], map_struct["cumprob"],
+        # map_struct["ipix_keep"], map_struct["pixarea"],
+        # map_struct["pixarea_deg2"],map_struct["distmu"],
+        # map_struct["distsigma"],map_struct["distnorm"]))
         if PermissionToWrite:
-            hp.write_map(SkyMapFileName, data_to_save, overwrite=True, column_names=["prob", "distmu", "distsigma", "distnorm"])
+            hp.write_map(SkyMapFileName,
+                         data_to_save,
+                         overwrite=True,
+                         column_names=["prob", "distmu",
+                                       "distsigma", "distnorm"])
         if go_params!=None:
             go_params["do3D"]=True
     elif PermissionToWrite:
-        data_to_save = map_struct["prob"] # np.vstack((map_struct["prob"], map_struct["cumprob"], map_struct["ipix_keep"], map_struct["pixarea"], map_struct["pixarea_deg2"]))
-        hp.write_map(SkyMapFileName, data_to_save, overwrite=True) # , column_names=["prob"])
+        data_to_save = map_struct["prob"]
+        # np.vstack((map_struct["prob"], map_struct["cumprob"],
+        #            map_struct["ipix_keep"], map_struct["pixarea"],
+        #            map_struct["pixarea_deg2"]))
+        hp.write_map(SkyMapFileName, data_to_save, overwrite=True)
+        # , column_names=["prob"])
 
     if go_params!=None:
         # update the filename stored in go_params
@@ -3018,65 +3136,91 @@ def WriteSkymapToFile(map_struct,SkyMapFileName,go_params=None,PermissionToWrite
 #                      #                        #
 #                      ##########################
 
-##### Need to organize these better and rename #####
+# plotName = plotName[:-5]+"_prob.pdf"
+# Check extension is there - move this to a general function please
+# if plotName[-4:]!=".pdf":
+#     plotName = ".".join(plotName.split(".")[:-1]) + ".pdf"
+# Check if directory tree exists
+# PlotPath="/".join(plotName.split("/")[:-1])
+# pathlib.Path(PlotPath).mkdir(parents=True, exist_ok=True)
 
-def PlotSkyMapData(source,SaveFig=False,plotName=None):
+##### Need to organize these better and rename #####
+# SaveFig=False, plotName=None):
+def PlotSkyMapData(source, save_path=None, plot_name=None, extension=".png"):
     """
     Plotting tool to plot a source object's skymap.
     Adapted from 'gwemopt.plotting.skymap.py'
     """
-    unit='Gravitational-wave probability'
-    cbar=False
+    unit = 'Gravitational-Wave probability'
+    cbar = False
+    title = r"Lisabeta Localisation"
+    xsize = 1500 # Image size
 
-    if np.percentile(source.map_struct["prob"],99) > 0:
-        hp.mollview(source.map_struct["prob"],title='',unit=unit,cbar=cbar,min=np.percentile(source.map_struct["prob"],1),max=np.percentile(source.map_struct["prob"],99),cmap=cmap)
+    if np.percentile(source.map_struct["prob"], 99) > 0:
+        hp.mollview(source.map_struct["prob"], unit=unit, title=None,
+                    cbar=cbar, min=np.percentile(source.map_struct["prob"], 1),
+                    max=np.percentile(source.map_struct["prob"],99), cmap=cmap,
+                    xsize=xsize)
     else:
-        hp.mollview(source.map_struct["prob"],title='',unit=unit,cbar=cbar,min=np.percentile(source.map_struct["prob"],1),cmap=cmap)
+        hp.mollview(source.map_struct["prob"], unit=unit, title=None,
+                    cbar=cbar, min=np.percentile(source.map_struct["prob"], 1),
+                    cmap=cmap, xsize=xsize)
 
-    # Projplot has funky conventions... This was discovered playing around with coordinates and seeing how they moved. They inverted phi and this needs to be in radians...
+    # Projplot has funky conventions... This was discovered playing around with
+    # coordinates and seeing how they moved.
+    # They inverted phi and this needs to be in radians...
     phi = -source.true_lamdaSSB
-    theta = np.pi/2-source.true_betaSSB
-    hp.projplot(theta, phi, lonlat=False, coord=None, marker='D', markersize=1.7, c='blue', linestyle='None', label='true location')
-    plt.legend()
+    theta = np.pi/2 - source.true_betaSSB
+    hp.projplot(theta, phi, lonlat=False, coord=None, marker='*',
+                markersize=10, markeredgewidth=1, c='black', linestyle='None',
+                label='True Location')
+    fig = plt.gcf()
+    ax = plt.gca()
+    plt.rcParams.update({'font.size':16})
+
+    ax.set_title(title, fontsize=20)
+    ax.legend(fontsize=18)
 
     add_edges()
-    if SaveFig:
+    if save_path:
         # Default save name
-        if plotName==None:
-            plotName = SYNEX_PATH+"/Plots"+source.sky_map.split("Skymap_files")[-1]
-            plotName = plotName[:-5]+"_prob.pdf"
-        # Check extension is there - move this to a general function please
-        if plotName[-4:]!=".pdf":
-            plotName = ".".join(plotName.split(".")[:-1]) + ".pdf"
-        # Check if directory tree exists
-        PlotPath="/".join(plotName.split("/")[:-1])
-        pathlib.Path(PlotPath).mkdir(parents=True, exist_ok=True)
+        extensions = ["png", "pdf"]
+        if plot_name:
+            # add extension if necessary
+            if plot_name.split(".")[-1] not in extensions:
+                plot_name += extension
+            plot_name = os.path.join(save_path, plot_name)
+        else:
+            plot_name = os.path.join(save_path, "skymap_proba_density.pdf")
         # Save
-        plt.savefig(plotName,dpi=200)
+        fig.savefig(plot_name, dpi=200)
+        plt.close(fig)
     else:
         plt.show()
-    plt.close('all')
 
     # Extra plotting for 3D skymaps
     if "distmu" in source.map_struct:
         fin = np.copy(source.map_struct["distmu"])
         fin[~np.isfinite(fin)] = np.nan
-        hp.mollview(source.map_struct["distmu"],unit='Distance [Mpc]',min=np.nanpercentile(fin,10),max=np.nanpercentile(fin,90))
+        hp.mollview(source.map_struct["distmu"], unit='Distance [Mpc]',
+                    min=np.nanpercentile(fin,10), max=np.nanpercentile(fin,90))
         add_edges()
-        if SaveFig:
-            plotName = plotName.split("_prob")[0]+'_dist.pdf'
-            plt.savefig(plotName,dpi=200)
+        if save_path:
+            plot_name_dist = plot_name.split(".")[0] + '_distance.pdf'
+            plt.savefig(plot_name_dist, dpi=200)
         else:
             plt.show()
         plt.close('all')
+
     if "distmed" in source.map_struct:
         fin = np.copy(source.map_struct["distmed"])
         fin[~np.isfinite(fin)] = np.nan
-        hp.mollview(source.map_struct["distmed"],unit='Distance [Mpc]',min=np.nanpercentile(fin,10),max=np.nanpercentile(fin,90))
+        hp.mollview(source.map_struct["distmed"], unit='Distance [Mpc]',
+                    min=np.nanpercentile(fin,10), max=np.nanpercentile(fin,90))
         add_edges()
-        if SaveFig:
-            plotName = plotName.split("_dist")[0]+'_dist_median.pdf'
-            plt.savefig(plotName,dpi=200)
+        if save_path:
+            plot_name_median_dist = plot_name.split(".")[0] + '_dist_median.pdf'
+            plt.savefig(plot_name_median_dist, dpi=200)
         else:
             plt.show()
         plt.close('all')
@@ -3099,11 +3243,15 @@ def PlotTilesArea_old(TileFileName,n_tiles=10):
     from matplotlib.patches import Rectangle
 
     # Set the default color cycle
-    TileColor=["#1f77b4", "#ff7f0e", "#2ca02c", "#d62728", "#9467bd", "#8c564b", "#e377c2", "#7f7f7f", "#bcbd22", "#17becf"]
+    TileColor=["#1f77b4", "#ff7f0e", "#2ca02c", "#d62728",
+               "#9467bd", "#8c564b", "#e377c2", "#7f7f7f",
+               "#bcbd22", "#17becf"]
     n_tile_colours = 10
 
     # Get background data for liklihoods
-    fig, InjParam_InjVals, SampleModes, X, lambda_bins, Y, beta_bins, Z = PlotInferenceLambdaBeta(TileDict["LISA Data File"], bins=50, SkyProjection=False, SaveFig=False, return_data=True)
+    fig, InjParam_InjVals, SampleModes, X, lambda_bins, Y, beta_bins,Z = PlotInferenceLambdaBeta(TileDict["LISA Data File"],
+                                                                                                 bins=50, SkyProjection=False,
+                                                                                                 SaveFig=False, return_data=True)
     # fig = PlotInferenceLambdaBeta(TileDict["LISA Data File"], bins=50, SkyProjection=False, SaveFig=False, return_data=True)
     ax = plt.gca()
 
@@ -3129,7 +3277,9 @@ def PlotTilesArea_old(TileFileName,n_tiles=10):
     plt.ylim([-np.pi/2.,np.pi/2.])
     plt.show()
 
-def PlotLikeRatioFoMFromJsonWithInferenceInlays(FoMJsonFileAndPath, BF_lim=20., SaveFig=False, InlayType="histogram"):
+def PlotLikeRatioFoMFromJsonWithInferenceInlays(FoMJsonFileAndPath, BF_lim=20.,
+                                                SaveFig=False,
+                                                InlayType="histogram"):
     """
     ################# This function is no longer frequently used #################
 
@@ -3269,7 +3419,9 @@ def PlotLikeRatioFoMFromJsonWithInferenceInlays(FoMJsonFileAndPath, BF_lim=20., 
                 nsamples = len(infer_params[labels[0]][0])
             else:
                 nsamples = len(infer_params[labels[0]])
-            print("Posterior sample length: " + str(nsamples) + ", number of infered parameters: " + str(ndim))
+            # print("Posterior sample length: " + str(nsamples) +
+            #       ", number of infered parameters: " + str(ndim))
+
             # Grab data for infered parameters
             data = np.empty([ndim,nsamples])
             SampleModes = []
@@ -3452,7 +3604,8 @@ def PlotLikeRatioFoMFromJsonWithInferenceInlays(FoMJsonFileAndPath, BF_lim=20., 
                 nsamples = len(infer_params[labels[0]][0])
             else:
                 nsamples = len(infer_params[labels[0]])
-            print("Posterior sample length: " + str(nsamples) + ", number of infered parameters: " + str(ndim))
+            # print("Posterior sample length: " + str(nsamples) +
+            #       ", number of infered parameters: " + str(ndim))
             # Grab data for infered parameters
             data = np.empty([ndim,nsamples])
             SampleModes = []
@@ -3752,7 +3905,7 @@ def PlotHistsLambdaBeta(FileName, SaveFig=False, ParamToPlot="beta"): # "lambda"
         nsamples = len(infer_params[labels[0]][0])
     else:
         nsamples = len(infer_params[labels[0]])
-    print("Posterior sample length: " + str(nsamples) + ", number of infered parameters: " + str(ndim))
+    # print("Posterior sample length: " + str(nsamples) + ", number of infered parameters: " + str(ndim))
     # Grab data for infered parameters
     data = np.empty([ndim,nsamples])
     SampleModes = []
@@ -3801,7 +3954,50 @@ def PlotHistsLambdaBeta(FileName, SaveFig=False, ParamToPlot="beta"): # "lambda"
 
         plt.show()
 
-def PlotInferenceData(FileName, SaveFig=False):
+def set_nice_label_corner_plot(inferred_param_list):
+    """
+    Take the list of inferred parameters and returns a list with the
+    corresponding label in latex format for a more aestetically pleasant
+    corner plot.
+    """
+    nice_label_dic = {
+        # Total *redshifted* mass M=m1+m2, solar masses
+        "M": r'M$_{tot}$',
+        # Chirp Mass
+        "Mchirp": r"$\mathcal{M}_{c}$",
+        # Mass ratio q=m1/m2
+        "q": '$q$',
+        # Dimensionless spin component 1 along orbital momentum
+        "chi1": r"$\chi_{1}$",
+        # Dimensionless spin component 2 along orbital momentum
+        "chi2": r"$\chi_{2}$",
+        # Dimensionless mass-weighted spin positive component
+        "chim": r"$\chi_{-}$",
+        # Dimensionless mass-weighted spin negative component
+        "chip": r"$\chi_{+}$",
+        # Luminosity distance, Mpc
+        "dist": r"$D_L$",
+        # Inclination, observer's colatitude in source-frame
+        "inc": r"$\iota$",
+        # Phase, observer's longitude in source-frame
+        "phi": r"$\phi$",
+        # Longitude in the sky
+        "lambda": r"$\lambda$",
+        # Latitude in the sky
+        "beta": r"$\beta$",
+        # Polarization angle
+        "psi": r"$\Psi$",
+        }
+
+    nice_label_list = []
+    for inferred_param_list_item in inferred_param_list:
+        item_label = nice_label_dic[inferred_param_list_item]
+        nice_label_list.append(item_label)
+
+    return nice_label_list
+
+
+def PlotInferenceData(FileName, extension='png'):
     """
     Plotting function to output corner plot of inference data after a lisabeta
     inference run.
@@ -3825,8 +4021,6 @@ def PlotInferenceData(FileName, SaveFig=False):
     JsonFileLocAndName,H5FileLocAndName = CompleteLisabetaDataAndJsonFileNames(FileName)
 
     # Get some useful info from Json first
-    print(FileName)
-    print(JsonFileLocAndName)
     with open(JsonFileLocAndName) as f: json_data = json.load(f)
     labels = json_data["prior_params"]["infer_params"] # should be a list of inferred parameters
     ndim = len(labels)
@@ -3841,7 +4035,7 @@ def PlotInferenceData(FileName, SaveFig=False):
         nsamples = len(infer_params[labels[0]][0])
     else:
         nsamples = len(infer_params[labels[0]])
-    print("Posterior sample length: " + str(nsamples) + ", number of infered parameters: " + str(ndim))
+    # print("Posterior sample length: " + str(nsamples) + ", number of infered parameters: " + str(ndim))
     # Grab data for infered parameters
     data = np.empty([ndim,nsamples])
     SampleModes = []
@@ -3866,10 +4060,18 @@ def PlotInferenceData(FileName, SaveFig=False):
         else:
             InjParam_InjVals.append(inj_param_vals["source_params_SSBframe"][key][0])
 
+    labels = set_nice_label_corner_plot(labels)
     # Corner plot of posteriors
     figure = corner.corner(data, labels=labels,
                            quantiles=[0.16, 0.5, 0.84],
-                           show_titles=True)
+                           show_titles=True,
+                           label_kwargs=dict(fontsize=16),
+                           title_kwargs=dict(fontsize=16),)
+    # Set the size a the Figure
+    figure.set_size_inches(20., 20.)
+
+    for ax in figure.get_axes():
+        ax.tick_params(axis='both', labelsize=16)
 
     # Extract the axes
     axes = np.array(figure.axes).reshape((ndim, ndim))
@@ -3890,18 +4092,26 @@ def PlotInferenceData(FileName, SaveFig=False):
             ax.axhline(SampleModes[yi], color="r")
             ax.plot(InjParam_InjVals[xi], InjParam_InjVals[yi], "sg")
             ax.plot(SampleModes[xi], SampleModes[yi], "sr")
+            # ax.xaxis.set_tick_params(labelsize=20)
+            # ax.yaxis.set_tick_params(labelsize=20)
+            # ax.set_ylabel(fontsize=20)
 
-    # save the figure if asked
-    if SaveFig:
-        # Put in folder for all lisabeta-related plots
-        SaveFile = H5FileLocAndName[:-3]+'.png'
-        pathlib.Path(SYNEX_PATH + "/Plots/lisabeta/").mkdir(parents=True, exist_ok=True)
-        SaveFile = SYNEX_PATH + "/Plots/lisabeta/" + SaveFile.split("/")[-1]
-        plt.savefig(SaveFile)
+    # save the figure
+    # Put in folder for all lisabeta-related plots
+    SaveFile = (os.path.basename(FileName).split('.')[0] +
+                '_corner.{}'.format(extension))
+    SaveRep = os.path.dirname(FileName) + '/../Plots'
+    if not os.path.exists(SaveRep):
+        os.makedirs(SaveRep)
+    SaveFile = os.path.join(SaveRep, SaveFile)
+    # pathlib.Path(SYNEX_PATH + "/Plots/lisabeta/").mkdir(parents=True, exist_ok=True)
+    # SaveFile = SYNEX_PATH + "/Plots/lisabeta/" + SaveFile.split("/")[-1]
+    plt.savefig(SaveFile)
+    plt.close(figure)
+    return 0
 
-    plt.show()
-
-def PlotInferenceLambdaBeta(FileName, bins=50, SkyProjection=False, SaveFig=False, return_data=False):
+def PlotInferenceLambdaBeta(FileName, bins=50, SkyProjection=False,
+                            SaveFig=False, return_data=False, extension='png'):
     """
     Plotting function to show just the localization parameters lambda and beta
     after a lisabeta inference run. This is effectively a two-dimensional grid
@@ -3958,21 +4168,26 @@ def PlotInferenceLambdaBeta(FileName, bins=50, SkyProjection=False, SaveFig=Fals
     # GeneralPlotFormatting()
 
     # Check filenames
-    JsonFileLocAndName,H5FileLocAndName = CompleteLisabetaDataAndJsonFileNames(FileName)
+    JsonFileLocAndName, H5FileLocAndName = CompleteLisabetaDataAndJsonFileNames(FileName)
 
     # Get some useful info from Json first
     with open(JsonFileLocAndName) as f: Jsondata = json.load(f)
-    labels = ["lambda","beta"] # Jsondata["prior_params"]["infer_params"] # should be a list of inferred parameters
+    labels = ["lambda","beta"]
+    # Jsondata["prior_params"]["infer_params"]
+    # should be a list of inferred parameters
     ndim = len(labels)
     print(labels)
 
     # Unpack the data
-    [infer_params, inj_param_vals, static_params, meta_data] = read_h5py_file(H5FileLocAndName)
+    [infer_params, inj_param_vals,
+     static_params, meta_data] = read_h5py_file(H5FileLocAndName)
     if np.size(infer_params[labels[0]][0])>1:
         nsamples = len(infer_params[labels[0]][0])
     else:
         nsamples = len(infer_params[labels[0]])
-    print("Posterior sample length: " + str(nsamples) + ", number of infered parameters: " + str(ndim))
+    # print("Posterior sample length: " + str(nsamples) +
+    #       ", number of infered parameters: " + str(ndim))
+
     # Grab data for infered parameters
     data = np.empty([ndim,nsamples])
     SampleModes = []
@@ -3985,7 +4200,9 @@ def PlotInferenceLambdaBeta(FileName, bins=50, SkyProjection=False, SaveFig=Fals
         histbins = histbins[:-1] + 0.5*(histbins[2]-histbins[1]) # change from left bins edges to middle of bins
         mode = histbins[histn==max(histn)]
         if len(mode)>1:
-            mode = mode[1] # Doe now take the first on the list, but if there are several we need to work out what to do there...
+            mode = mode[1]
+            # Does now take the first on the list,
+            # but if there are several we need to work out what to do there...
         SampleModes.append(mode)
     data = np.transpose(np.array(data)) # should have shape [nsamples, ndim]
 
@@ -4002,15 +4219,16 @@ def PlotInferenceLambdaBeta(FileName, bins=50, SkyProjection=False, SaveFig=Fals
     if SkyProjection: plt.subplot(111, projection="mollweide") # To match gwemopt projections
 
     # Get 2D hitogram data
-    levels = [1.-0.997, 1.-0.95, 1.-0.9, 1.-0.68] # Plot contours for 1 sigma, 90% confidence, 2 sigma, and 3 sigma
+    levels = [1.-0.997, 1.-0.95, 1.-0.9, 1.-0.68]
+    # Plot contours for 1 sigma, 90% confidence, 2 sigma, and 3 sigma
     levels_labels=[str(int((1.-l)*1000)/10) for l in levels]
 
     # Manually do 2D histogram because I don't trust the ones I found online
     # data to hist = [data[:,0], data[:,1]] = lambda, beta. Beta is y data since it is declination.
     hist2D_pops = np.empty([bins,bins])
     areas = np.empty([bins,bins])
-    bin_max = max(max(data[:,0]),SampleModes[0]+np.pi/10000.)
-    bin_min = min(min(data[:,0]),SampleModes[0]-np.pi/10000.)
+    bin_max = max(max(data[:,0]), SampleModes[0]+np.pi/10000.)
+    bin_min = min(min(data[:,0]), SampleModes[0]-np.pi/10000.)
     if bin_max>np.pi:
         bin_max=np.pi
     if bin_min<-np.pi:
@@ -4020,8 +4238,8 @@ def PlotInferenceLambdaBeta(FileName, bins=50, SkyProjection=False, SaveFig=Fals
     if isinstance(bin_max,np.ndarray):
         bin_max = bin_max[0]
     lambda_bins = np.linspace(bin_min, bin_max, bins+1) # np.linspace(np.min(data[:,5]), np.max(data[:,5]), bins+1)
-    bin_max = max(max(data[:,1]),SampleModes[1]+np.pi/20000.)
-    bin_min = min(min(data[:,1]),SampleModes[1]-np.pi/20000.)
+    bin_max = max(max(data[:,1]), SampleModes[1]+np.pi/20000.)
+    bin_min = min(min(data[:,1]), SampleModes[1]-np.pi/20000.)
     if bin_max>np.pi/2.:
         bin_max=np.pi/2.
     if bin_min<-np.pi/2.:
@@ -4056,49 +4274,79 @@ def PlotInferenceLambdaBeta(FileName, bins=50, SkyProjection=False, SaveFig=Fals
 
     # function for contour labeling
     labels_dict={}
-    for l,s in zip(levels,levels_labels):
+    for l,s in zip(levels, levels_labels):
         labels_dict[l]=s
 
     # Plot contour
     contour = plt.contour(X, Y, Z, levels)
-    plt.clabel(contour, colors ='k', fmt=labels_dict, fontsize=2)
-    ax=plt.gca()
+    plt.clabel(contour, colors ='k', fmt=labels_dict, fontsize=20)
+    fig, ax = plt.gcf(), plt.gca()
+
+    # Set the size a the Figure
+    fig.set_size_inches(15., 15.)
 
     # Add injected and mode vertical and horizontal lines
     if not SkyProjection:
-        ax.axhline(InjParam_InjVals[1], color="r", linestyle=":")
-        ax.axhline(SampleModes[1], color="b", linestyle=":")
-        ax.axvline(InjParam_InjVals[0], color="r", linestyle=":")
-        ax.axvline(SampleModes[0], color="b", linestyle=":")
-
-    # Add points at injected and mode values
-    plt.plot(InjParam_InjVals[0], InjParam_InjVals[1], "sr")
-    plt.plot(SampleModes[0], SampleModes[1], "sb")
-
-    # legend informing if we are Lframe or not
-    plt.legend("Lframe:",str(Jsondata["run_params"]["sample_Lframe"]))
+        linewidth = 4
+        ax.axhline(InjParam_InjVals[1], color="r", linestyle=":",
+                   linewidth=linewidth)
+        ax.axhline(SampleModes[1], color="b", linestyle=":",
+                   linewidth=linewidth)
+        ax.axvline(InjParam_InjVals[0], color="r", linestyle=":",
+                   linewidth=linewidth)
+        ax.axvline(SampleModes[0], color="b", linestyle=":",
+                   linewidth=linewidth)
 
     # Labels
     if not SkyProjection:
+        fontsize=25
         if Jsondata["run_params"]["sample_Lframe"]:
-            plt.xlabel(labels[0]+r"$_{L}$") # Lambda
-            plt.ylabel(labels[1]+r"$_{L}$") # beta
+            plt.xlabel(r"$\lambda_{L}$", fontsize=fontsize) # Lambda
+            plt.ylabel(r"$\beta_{L}$", fontsize=fontsize) # beta
+            frame = "LISA"
         else:
-            plt.xlabel(labels[0]+r"$_{SSB}$") # Lambda
-            plt.ylabel(labels[1]+r"$_{SSB}$") # beta
+            plt.xlabel(r"$\lambda_{SSB}$", fontsize=fontsize) # Lambda
+            plt.ylabel(r"$\beta_{SSB}$", fontsize=fontsize) # beta
+            frame = "SSB"
+
+        # Add points at injected and mode values
+        ax.plot(InjParam_InjVals[0], InjParam_InjVals[1], "*",color="r", ms=25,
+                label="Injected Position in {} frame".format(frame))
+        ax.plot(SampleModes[0], SampleModes[1], "o", color="b",  ms=18,
+                label="Recovered Position in {} frame".format(frame))
+
+        # Increase size of the tick in axes so that I can read
+        label_size = 20
+        ax.xaxis.set_tick_params(labelsize=label_size)
+        ax.yaxis.set_tick_params(labelsize=label_size)
+        ax.set_title(r'2D Localisation with Lisabeta', fontsize=30)
+        # legend informing if we are Lframe or not
+        ax.legend(fontsize=fontsize)
 
     # show now or return?
     if not return_data:
-        plt.grid()
-        plt.show()
+        # plt.grid()
+        # plt.show()
 
         # save the figure if asked
         if SaveFig:
             # Put in folder for all lisabeta-related plots
-            SaveFile = H5FileLocAndName[:-3]+'.png'
-            pathlib.Path(SYNEX_PATH + "/Plots/lisabeta/").mkdir(parents=True, exist_ok=True)
-            SaveFile = SYNEX_PATH + "/Plots/lisabeta/" + SaveFile.split("/")[-1]
+            # SaveFile = H5FileLocAndName[:-3]+'.png'
+            # pathlib.Path(SYNEX_PATH + "/Plots/lisabeta/").mkdir(parents=True, exist_ok=True)
+            # SaveFile = SYNEX_PATH + "/Plots/lisabeta/" + SaveFile.split("/")[-1]
+            # plt.savefig(SaveFile)
+            # save the figure
+            # Put in folder for all lisabeta-related plots
+            SaveFile = (os.path.basename(FileName).split('.')[0] +
+                        '_skymap.{}'.format(extension))
+            SaveRep = os.path.dirname(FileName) + '/../Plots'
+            if not os.path.exists(SaveRep):
+                os.makedirs(SaveRep)
+            SaveFile = os.path.join(SaveRep, SaveFile)
+            # pathlib.Path(SYNEX_PATH + "/Plots/lisabeta/").mkdir(parents=True, exist_ok=True)
+            # SaveFile = SYNEX_PATH + "/Plots/lisabeta/" + SaveFile.split("/")[-1]
             plt.savefig(SaveFile)
+            plt.close(fig)
     else:
         return fig, InjParam_InjVals, SampleModes, X, lambda_bins, Y, beta_bins, Z
 

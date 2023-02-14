@@ -149,8 +149,8 @@ class SMBH_Merger:
 
         if "MUTATED" in kwargs_in:
             # Check if we want to force savefile either way
-            MUTATED=kwargs_in["MUTATED"]
-            if self.verbose: print("Source mutation set to",MUTATED)
+            MUTATED = kwargs_in["MUTATED"]
+            # if self.verbose: print("Source mutation set to", MUTATED)
             del kwargs_in["MUTATED"]
             kwargs=kwargs_in
         elif "ExistentialFileName" in kwargs_in.keys() and os.path.isfile(kwargs_in["ExistentialFileName"]):
@@ -209,7 +209,8 @@ class SMBH_Merger:
                 self.psi = value
             elif key == "dist":
                 if hasattr(self,"dist"):
-                    if self.verbose: print("Distance already defined by redshift, sticking with the redshift equivalent distance.")
+                    if self.verbose: print("Distance already defined by redshift,"
+                                           "sticking with the redshift equivalent distance.")
                 else:
                     self.dist = value
                     self.z = z_at_value(cosmo.luminosity_distance, value*u.Mpc).value
@@ -226,8 +227,10 @@ class SMBH_Merger:
                 self.timetomerger_max = value # In YEARS
             elif key=='gps_timetomerger_max':
                 # gps time at which we *start* the waveform
-                # Equivalent to the time of "timetomerger_max" BEFORE merger happens
-                self.gps_timetomerger_max=Time('2033-02-02T00:00:00.00', format='isot', scale='utc').gps
+                # Equivalent to the time of "timetomerger_max"
+                # BEFORE merger happens
+                self.gps_timetomerger_max=Time('2033-02-02T00:00:00.00',
+                                               format='isot', scale='utc').gps
             elif key == "fend":
                 self.fend = value
             elif key == "phiref":
@@ -249,9 +252,9 @@ class SMBH_Merger:
             elif key == 'Lframe':
                 self.Lframe = value
             elif key=='lisabetaFile':
-                JsonFileLocAndName,H5FileLocAndName=SYU.CompleteLisabetaDataAndJsonFileNames(value)
-                self.H5File=H5FileLocAndName
-                self.JsonFile=JsonFileLocAndName
+                JsonFileLocAndName, H5FileLocAndName=SYU.CompleteLisabetaDataAndJsonFileNames(value)
+                self.H5File = H5FileLocAndName
+                self.JsonFile = JsonFileLocAndName
             elif key=='H5File':
                 self.H5File=value
             elif key=='JsonFile':
@@ -266,6 +269,8 @@ class SMBH_Merger:
                 self.EM_Flux_Data=value
             elif key=='CTR_Data':
                 self.CTR_Data=value
+            elif key=='rep_path':
+                self.rep_path = value
 
         #########
         ##
@@ -426,7 +431,7 @@ class SMBH_Merger:
             self.Lframe = True
         if not hasattr(self,"H5File"):
             self.H5File=None
-        if not hasattr(self,"JsonFile"):
+        if not hasattr(self, "JsonFile"):
             self.JsonFile=None
         if not hasattr(self,"sky_map"):
             self.sky_map=None
@@ -442,21 +447,30 @@ class SMBH_Merger:
         if not hasattr(self,"gps_timetomerger_max"):
             self.gps_timetomerger_max=Time('2033-01-01T00:00:00.00', format='isot', scale='utc').gps
 
+        if not self.rep_path:
+            rep_path = SYNEX_PATH
+        else:
+            rep_path = self.rep_path
+
         # Check h5 and Json files are congruent...
         if self.JsonFile and not self.H5File:
-            JsonFileLocAndName,H5FileLocAndName=SYU.CompleteLisabetaDataAndJsonFileNames(self.JsonFile)
+            JsonFileLocAndName, H5FileLocAndName=SYU.CompleteLisabetaDataAndJsonFileNames(self.JsonFile,
+                                                                                         rep_path)
             self.JsonFile = JsonFileLocAndName
             if os.path.isfile(H5FileLocAndName):
                 if self.verbose: print("Using similar H5 file found \n"+H5FileLocAndName)
                 self.H5File=H5FileLocAndName
         if not self.JsonFile and self.H5File:
-            JsonFileLocAndName,H5FileLocAndName=SYU.CompleteLisabetaDataAndJsonFileNames(self.H5File)
+            JsonFileLocAndName,H5FileLocAndName=SYU.CompleteLisabetaDataAndJsonFileNames(self.H5File,
+                                                                                         rep_path)
             self.H5File = H5FileLocAndName
             if os.path.isfile(JsonFileLocAndName):
                 if self.verbose: print("Using similar Json file found \n"+JsonFileLocAndName)
-                self.JsonFile=JsonFileLocAndName
+                self.JsonFile = JsonFileLocAndName
         if self.JsonFile and self.H5File:
-            JsonFileLocAndName,H5FileLocAndName=SYU.CompleteLisabetaDataAndJsonFileNames(self.JsonFile)
+
+            JsonFileLocAndName, H5FileLocAndName = SYU.CompleteLisabetaDataAndJsonFileNames(self.JsonFile,
+                                                                                            rep_path)
             self.JsonFile = JsonFileLocAndName
             self.H5File = H5FileLocAndName
 
@@ -515,7 +529,8 @@ class SMBH_Merger:
                 try:
                     self.CreateSkyMapStruct()
                 except:
-                    if self.verbose: print("No h5 data located- skipping skymap calculation.")
+                    if self.verbose: print("No h5 data located.\n"
+                                           "Skipping skymap calculation.")
                     self.PostSkyArea = None
                     self.FisherSkyArea = None
         else:
@@ -1122,7 +1137,8 @@ class SMBH_Merger:
         if "EM_Flux_Data" in MyExistentialDict: del MyExistentialDict["EM_Flux_Data"]
 
         # Save to file...
-        if self.verbose: print("Saving source attributes to:",self.ExistentialFileName)
+        # if self.verbose: print("Saving source attributes to:",
+        #                        self.ExistentialFileName)
         with open(self.ExistentialFileName, 'wb') as f:
             pickle.dump(MyExistentialDict, f)
-        if self.verbose: print("Done.")
+        # if self.verbose: print("Done.")

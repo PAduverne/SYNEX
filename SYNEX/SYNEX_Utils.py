@@ -1286,8 +1286,10 @@ def WriteParamsToJson(source, detector, inference_params,
         # elif key in json_default_dict["waveform_params"]:
         #     json_default_dict["waveform_params"][key] = value
 
-    # Change now any keys set in the run time dictionary of kwargs (this could plot flags, run params values, no. of walkers etc)
-    # This is NOT meant for binary params or prior params - these need to be specified at the highest script level
+    # Change now any keys set in the run time dictionary of kwargs
+    # (this could plot flags, run params values, no. of walkers etc)
+    # This is NOT meant for binary params or prior params - these need to be
+    # specified at the highest script level
     for key, value in RunTimekwargs.items():
         if key in json_default_dict["run_params"]:
             json_default_dict["run_params"][key] = value

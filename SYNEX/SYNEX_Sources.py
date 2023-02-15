@@ -1137,8 +1137,8 @@ class SMBH_Merger:
         if "EM_Flux_Data" in MyExistentialDict: del MyExistentialDict["EM_Flux_Data"]
 
         # Save to file...
-        # if self.verbose: print("Saving source attributes to:",
-        #                        self.ExistentialFileName)
+        if self.verbose: print("Saving source attributes to:",
+                                self.ExistentialFileName)
         with open(self.ExistentialFileName, 'wb') as f:
             pickle.dump(MyExistentialDict, f)
         # if self.verbose: print("Done.")

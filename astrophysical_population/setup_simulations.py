@@ -42,6 +42,7 @@ n_sim = 1
 
 # Total number of simulations
 N_tot_sim = len(mass_ratio) * len(log_M) * n_sim
+index = 0
 
 for i, q in enumerate(mass_ratio):
     for j, M in enumerate(log_M):
@@ -49,7 +50,7 @@ for i, q in enumerate(mass_ratio):
 
             # Computing the index to chose the correct raw
             # in the injection table
-            index = i * len(mass_ratio) * n_sim + j * n_sim + k
+            # index = i * len(mass_ratio) * n_sim + j * n_sim + k
             print(index)
 
             # create the repertory and sub-repertories containing the files
@@ -60,6 +61,7 @@ for i, q in enumerate(mass_ratio):
 
             # Get the parameter raw from table
             parameters = Table(parameters_cbc[index])
+            index += 1
 
             # Replacing the mass with the right values
             # based on the mass ratio q and M_tot
@@ -236,3 +238,4 @@ for i, q in enumerate(mass_ratio):
                 with open(json_files_name, 'w') as f:
                     json.dump(json_files_dict, f, indent=2)
                     f.close()
+                index += 1
